@@ -1,0 +1,341 @@
+# ==========================================
+# Handler TrackSamples - .gitignore Global
+# ==========================================
+
+# ==========================================
+# DEPENDENCIAS
+# ==========================================
+
+# Node_modules (todos los gestores de paquetes)
+node_modules/
+jspm_packages/
+
+# pnpm
+.pnpm-store/
+pnpm-debug.log*
+
+# npm (no usar lock porque usamos pnpm)
+package-lock.json
+npm-debug.log*
+
+# yarn
+yarn.lock
+.yarn-integrity
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# ==========================================
+# VARIABLES DE ENTORNO Y SECRETS
+# ==========================================
+
+# Archivos de entorno (contienen credenciales)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# Archivos con credenciales y certificados
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# ==========================================
+# LOGS
+# ==========================================
+
+# Logs de aplicación y del sistema
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==========================================
+# ARCHIVOS DE BUILD Y DISTRIBUCIÓN
+# ==========================================
+
+# React Build (frontend)
+frontend/build/
+frontend/dist/
+
+# Electron build output
+frontend/dist-electron/
+frontend/release/
+
+# Source maps (no commitear en producción)
+*.map
+
+# ==========================================
+# EDITORES DE CÓDIGO E IDEs
+# ==========================================
+
+# VSCode (solo ignorar archivos personales)
+.vscode/*.code-snippets
+.vscode/*.code-workspace
+.history/
+
+# Mantener configuraciones compartidas
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ==========================================
+# KILO CODE / AI ASSISTANTS
+# ==========================================
+
+# Kilo Code - Solo archivos temporales y cache
+# Las reglas (.kilocode/rules/) y skills (.kilocode/skills/) SÍ se versionan
+
+# Caché y datos temporales de Kilo Code
+.kilocode/.cache/
+.kilocode/tmp/
+.kilocode/*.log
+.kilocode/*.tmp
+
+# KiloCode modes file (generado automáticamente)
+# .kilocodemodes - Descomentar si no quieres versionarlo
+# .kilocodemodes
+
+# Roo Code (similar a Kilo Code)
+.roo/
+.rooignore
+
+# Cursor Editor
+.cursor/
+.cursorrules
+
+# GitHub Copilot
+.copilot/
+
+# Otros AI assistants
+.windsurf/
+.claude/
+
+# ==========================================
+# SISTEMAS OPERATIVOS
+# ==========================================
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ==========================================
+# DOCKER
+# ==========================================
+
+# Docker compose overrides locales
+docker-compose.override.yml
+docker-compose.dev.yml
+docker-compose.local.yml
+
+# ==========================================
+# BASE DE DATOS LOCAL
+# ==========================================
+
+# PostgreSQL data local (Docker volumes)
+pgdata/
+postgres-data/
+postgres_data/
+
+# Archivos de base de datos locales
+*.db
+*.sqlite
+*.sqlite3
+
+# ==========================================
+# ARCHIVOS DE SUBIDA (UPLOADS)
+# ==========================================
+
+# CoA PDFs y otros archivos subidos
+backend/uploads/
+uploads/
+C:/Handler/CoA/
+
+# ==========================================
+# ELECTRON / TAURI
+# ==========================================
+
+# Electron builder output
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+
+# Tauri build
+src-tauri/target/
+
+# ==========================================
+# TESTING Y COBERTURA
+# ==========================================
+
+# Coverage reports
+coverage/
+.nyc_output/
+.c8/
+
+# Playwright
+playwright-report/
+test-results/
+playwright/.cache/
+
+# Jest
+jest-results.json
+
+# Cypress
+cypress/screenshots/
+cypress/videos/
+
+# ==========================================
+# ARCHIVOS TEMPORALES Y CACHE
+# ==========================================
+
+# Directorios temporales
+tmp/
+temp/
+*.tmp
+*.temp
+tmp-*
+*-tmp
+
+# Cache de herramientas
+.cache/
+.parcel-cache/
+.turbo/
+.eslintcache
+
+# TypeScript incremental
+*.tsbuildinfo
+
+# ==========================================
+# ARCHIVOS ESPECÍFICOS DEL PROYECTO
+# ==========================================
+
+# Scripts temporales de desarrollo
+backend/tmp_schema.js
+tmp-out.txt
+
+# Notas personales del desarrollador
+NOTES.md
+notes.md
+
+# ==========================================
+# PATRONES DE SEGURIDAD ADICIONALES
+# ==========================================
+
+# Archivos que puedan contener contraseñas
+*password*
+*secret*
+*credential*
+
+# SSH keys
+.ssh/
+*.pub
+
+# Certificados SSL
+ssl/
+certs/
+
+# ==========================================
+# ARCHIVOS DE DEBUG
+# ==========================================
+
+# PID files
+*.pid
+*.sock
+
+# Heap dumps de Node.js
+*.heapsnapshot
+
+# ==========================================
+# ARCHIVOS GRANDES (no deben estar en git)
+# ==========================================
+
+# Imágenes de disco
+*.iso
+*.vmdk
+*.vdi
+
+# Videos y audio
+*.mp4
+*.avi
+*.mov
+*.mp3
+*.wav
+
+# Archivos comprimidos grandes
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# ==========================================
+# DOCUMENTACIÓN GENERADA
+# ==========================================
+
+# PDFs grandes generados
+docuementacion/*.pdf
+
+# ==========================================
+# EXCEPCIONES IMPORTANTES
+# ==========================================
+
+# Forzar inclusión de directorios vacíos necesarios
+# (git no trackea directorios vacíos, usar .gitkeep)
+!.gitkeep
+
+# Mantener el directorio logs pero no su contenido
+logs/
+!logs/.gitkeep

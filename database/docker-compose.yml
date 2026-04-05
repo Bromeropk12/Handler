@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: handler-track-samples-db
+    environment:
+      POSTGRES_DB: handler_track_samples
+      POSTGRES_USER: handler_user
+      POSTGRES_PASSWORD: handler_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./scripts/enable-rls-local.sql:/docker-entrypoint-initdb.d/02-enable-rls.sql
+    networks:
+      - handler-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U handler_user -d handler_track_samples"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  handler-network:
+    driver: bridge

@@ -1,0 +1,128 @@
+{
+  "name": "handler-tracksamples-frontend",
+  "version": "1.0.0",
+  "description": "Frontend React para sistema Handler TrackSamples",
+  "main": "public/electron.js",
+  "homepage": "./",
+  "scripts": {
+    "start": "cross-env BROWSER=none GENERATE_SOURCEMAP=false react-scripts start",
+    "build": "cross-env GENERATE_SOURCEMAP=false react-scripts build",
+    "test": "react-scripts test",
+    "test:property": "jest src/__tests__/validations.test.js",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:report": "playwright show-report",
+    "eject": "react-scripts eject",
+    "lint": "eslint src --ext .js,.jsx",
+    "format": "prettier --write src/**/*.{js,jsx,css}",
+    "electron:dev": "cross-env ELECTRON_DEV=true electron .",
+    "electron:wait": "wait-on http://localhost:3000 && npm run electron:dev",
+    "electron:start": "concurrently --kill-others \"npm start\" \"npm run electron:wait\"",
+    "electron:build": "npm run build && electron-builder --win",
+    "electron:pack": "npm run build && electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "com.handler.tracksamples",
+    "productName": "Handler TrackSamples",
+    "copyright": "Copyright © 2026 Handler Colombia",
+    "directories": {
+      "buildResources": "public",
+      "output": "dist-electron"
+    },
+    "files": [
+      "build/**/*",
+      "public/electron.js",
+      "public/favicon.png"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/favicon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "public/favicon.png",
+      "uninstallerIcon": "public/favicon.png",
+      "installerHeaderIcon": "public/favicon.png",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Handler TrackSamples"
+    }
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.0.18",
+    "@react-three/drei": "^9.96.1",
+    "@react-three/fiber": "^8.15.12",
+    "@types/three": "^0.150.0",
+    "axios": "^1.6.0",
+    "html5-qrcode": "^2.3.8",
+    "immer": "^10.0.3",
+    "lucide-react": "^1.7.0",
+    "opossum": "^8.1.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-error-boundary": "^4.0.13",
+    "react-router-dom": "^6.30.3",
+    "react-scripts": "5.0.1",
+    "recharts": "^3.8.1",
+    "tailwindcss": "^3.3.6",
+    "three": "^0.150.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.2",
+    "@babel/preset-react": "^7.28.5",
+    "@babel/preset-typescript": "^7.28.5",
+    "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.45.0",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "autoprefixer": "^10.4.16",
+    "babel-jest": "^30.3.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^41.1.1",
+    "electron-builder": "^26.8.1",
+    "eslint": "^8.57.1",
+    "eslint-config-react-app": "^7.0.1",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
+    "fast-check": "^3.18.0",
+    "postcss": "^8.4.31",
+    "prettier": "^3.0.3",
+    "tailwindcss": "^3.3.6",
+    "wait-on": "^9.0.4",
+    "web-vitals": "^2.1.4"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "proxy": "http://localhost:3001"
+}
