@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TYPE danger_class AS ENUM ('Sin Riesgo', 'Inflamable', 'Corrosivo', 'Toxico', 'Comburente', 'Explosivo');
 CREATE TYPE sample_status AS ENUM ('stored', 'dispatched', 'expired');
 CREATE TYPE dimensions AS ENUM ('1x1', '1x2', '2x1', '2x2');
-CREATE TYPE action_type AS ENUM ('created', 'dispensed', 'stored', 'moved', 'dispatched', 'expired');
+CREATE TYPE action_type AS ENUM ('created', 'dispensed', 'stored', 'moved', 'dispatched', 'expired', 'password_reset');
 CREATE TYPE user_role AS ENUM ('admin', 'operator', 'analyst');
 
 -- Users table
@@ -30,12 +30,24 @@ CREATE TABLE market_lines (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Suppliers table (Proveedores)
+CREATE TABLE suppliers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) UNIQUE NOT NULL,
+    market_lines TEXT[], -- Array de líneas de mercado que abastece
+    phone VARCHAR(50),
+    email VARCHAR(255),
+    address TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Shelves table (Anaqueles)
 CREATE TABLE shelves (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     market_line_id UUID NOT NULL REFERENCES market_lines(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
-    provider VARCHAR(100), -- BASF, JRS, THOR, MEGGLE, etc.
+    provider VARCHAR(100), -- BASF, JRS, THOR, MEGGLE, etc. (referencia visual al proveedor)
     grid_width INTEGER NOT NULL DEFAULT 10 CHECK (grid_width > 0 AND grid_width <= 50),
     grid_height INTEGER NOT NULL DEFAULT 10 CHECK (grid_height > 0 AND grid_height <= 50),
     total_capacity INTEGER GENERATED ALWAYS AS (grid_width * grid_height) STORED,
@@ -48,20 +60,22 @@ CREATE TABLE shelves (
 CREATE TABLE global_samples (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
-    provider VARCHAR(255) NOT NULL,
+    supplier_id UUID NOT NULL REFERENCES suppliers(id),
+    provider VARCHAR(255), -- Mantenido por compatibilidad, se deprecará
     lot VARCHAR(100) NOT NULL,
     expiration_date DATE NOT NULL,
     manufacture_date DATE NOT NULL,
     ghs_danger_class danger_class NOT NULL,
     market_line_id UUID NOT NULL REFERENCES market_lines(id) ON DELETE CASCADE,
     dimensions dimensions NOT NULL,
-    total_weight_grams DECIMAL(10,2) NOT NULL CHECK (total_weight_grams > 0),
-    current_weight_grams DECIMAL(10,2) NOT NULL CHECK (current_weight_grams >= 0),
-    coa_file_path VARCHAR(500), -- Ruta al archivo CoA PDF del bulk
+    total_units INTEGER NOT NULL DEFAULT 0 CHECK (total_units >= 0),
+    available_units INTEGER NOT NULL DEFAULT 0 CHECK (available_units >= 0),
+    weight_per_unit_grams DECIMAL(10,2) NOT NULL CHECK (weight_per_unit_grams > 0),
+    coa_file_path VARCHAR(500), -- Ruta al archivo CoA PDF del bulk (puede ser ruta UNC de red)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CHECK (manufacture_date <= expiration_date),
-    CHECK (current_weight_grams <= total_weight_grams)
+    CHECK (available_units <= total_units)
 );
 
 -- Dispensed samples table (Muestras Individuales)
@@ -75,6 +89,7 @@ CREATE TABLE dispensed_samples (
     shelf_id UUID REFERENCES shelves(id) ON DELETE SET NULL,
     position_x INTEGER,
     position_y INTEGER,
+    position_z INTEGER DEFAULT 0, -- Profundidad en el anaquel (eje Z)
     width INTEGER NOT NULL DEFAULT 1 CHECK (width >= 1 AND width <= 2),
     height INTEGER NOT NULL DEFAULT 1 CHECK (height >= 1 AND height <= 2),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -82,6 +97,7 @@ CREATE TABLE dispensed_samples (
     dispatched_at TIMESTAMP WITH TIME ZONE,
     CHECK (position_x >= 0),
     CHECK (position_y >= 0),
+    CHECK (position_z >= 0),
     CHECK ((width = 1 AND height = 1) OR (width = 1 AND height = 2) OR (width = 2 AND height = 1) OR (width = 2 AND height = 2))
 );
 
@@ -98,11 +114,12 @@ CREATE TABLE movements (
 -- Indexes for performance
 CREATE INDEX idx_global_samples_market_line ON global_samples(market_line_id);
 CREATE INDEX idx_global_samples_lot ON global_samples(lot);
+CREATE INDEX idx_global_samples_supplier ON global_samples(supplier_id);
 CREATE INDEX idx_dispensed_samples_global_sample ON dispensed_samples(global_sample_id);
 CREATE INDEX idx_dispensed_samples_qr ON dispensed_samples(qr_code);
 CREATE INDEX idx_dispensed_samples_shelf ON dispensed_samples(shelf_id);
 CREATE INDEX idx_dispensed_samples_status ON dispensed_samples(status);
-CREATE INDEX idx_dispensed_samples_position ON dispensed_samples(shelf_id, position_x, position_y);
+CREATE INDEX idx_dispensed_samples_position ON dispensed_samples(shelf_id, position_x, position_y, position_z);
 CREATE INDEX idx_shelves_market_line ON shelves(market_line_id);
 CREATE INDEX idx_shelves_provider ON shelves(provider);
 CREATE INDEX idx_movements_sample ON movements(sample_id);
@@ -114,6 +131,16 @@ INSERT INTO market_lines (name) VALUES
 ('Cosmética'),
 ('Farmacéutica'),
 ('Industrial');
+
+-- Insert initial suppliers (proveedores principales de Handler)
+INSERT INTO suppliers (name, market_lines, phone, email, address) VALUES
+('BASF', ARRAY['Cosmética', 'Industrial', 'Farmacéutica'], NULL, NULL, NULL),
+('JRS', ARRAY['Cosmética'], NULL, NULL, NULL),
+('THOR', ARRAY['Cosmética', 'Industrial'], NULL, NULL, NULL),
+('JRF', ARRAY['Farmacéutica'], NULL, NULL, NULL),
+('SUDEEP', ARRAY['Farmacéutica'], NULL, NULL, NULL),
+('GIVAUDAN', ARRAY['Farmacéutica'], NULL, NULL, NULL),
+('MEGGLE', ARRAY['Farmacéutica'], NULL, NULL, NULL);
 
 -- Insert shelves according to company distribution
 -- Cosmética: 5 anaqueles (3 BASF, 1 JRS, 1 THOR)
@@ -147,7 +174,8 @@ INSERT INTO users (username, password_hash, secret_password_hash, role) VALUES
 -- Comments for documentation
 COMMENT ON TABLE users IS 'Usuarios del sistema con autenticación JWT y contraseña secreta';
 COMMENT ON TABLE market_lines IS 'Líneas de mercado: Cosmética (5 anaqueles), Farmacéutica (6), Industrial (3)';
+COMMENT ON TABLE suppliers IS 'Proveedores de materias primas químicas (BASF, JRS, THOR, etc.)';
 COMMENT ON TABLE shelves IS 'Anaqueles con grid 2D (width x height) organizados por línea y proveedor';
-COMMENT ON TABLE global_samples IS 'Muestras globales (bulk) con metadatos químicos y archivo CoA';
-COMMENT ON TABLE dispensed_samples IS 'Muestras individuales con QR único, dimensiones variables y posición en anaquel';
+COMMENT ON TABLE global_samples IS 'Muestras globales (bulk) con metadatos químicos, archivo CoA y relación con proveedor';
+COMMENT ON TABLE dispensed_samples IS 'Muestras individuales (hijas del bulk) con QR único, dimensiones variables y posición en anaquel';
 COMMENT ON TABLE movements IS 'Log completo de trazabilidad de todas las operaciones del sistema';

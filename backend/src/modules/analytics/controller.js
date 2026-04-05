@@ -3,14 +3,32 @@ const { AppError } = require('../../middleware/errorHandler');
 
 const getDashboardStats = async (req, res, next) => {
   try {
-    const bulkCheck = await query(`
+    // Contar muestras dispensadas almacenadas
+    const samplesCheck = await query(`
       SELECT 
-        COUNT(cs.id) as total_samples,
-        (SELECT COUNT(*) FROM shelves) as total_shelves,
-        (SELECT COUNT(*) FROM global_samples WHERE expiration_date < CURRENT_DATE) as expired_count,
-        (SELECT COUNT(*) FROM global_samples WHERE expiration_date >= CURRENT_DATE AND expiration_date <= CURRENT_DATE + INTERVAL '30 days') as warning_count
-      FROM child_samples cs
-      WHERE cs.status = 'available'
+        COUNT(ds.id) as total_samples
+      FROM dispensed_samples ds
+      WHERE ds.status = 'stored'
+    `);
+    
+    // Contar anaqueles totales
+    const shelvesCheck = await query(`
+      SELECT COUNT(*) as total_shelves FROM shelves
+    `);
+    
+    // Contar productos vencidos
+    const expiredCheck = await query(`
+      SELECT COUNT(*) as expired_count 
+      FROM global_samples 
+      WHERE expiration_date < CURRENT_DATE
+    `);
+    
+    // Contar productos por vencer (30 días)
+    const warningCheck = await query(`
+      SELECT COUNT(*) as warning_count 
+      FROM global_samples 
+      WHERE expiration_date >= CURRENT_DATE 
+        AND expiration_date <= CURRENT_DATE + INTERVAL '30 days'
     `);
     
     // Obtener ocupación real de los anaqueles
@@ -30,11 +48,11 @@ const getDashboardStats = async (req, res, next) => {
     const mlStats = await query(`
       SELECT ml.name, 
         COUNT(DISTINCT sh.id) as shelves,
-        COUNT(DISTINCT cs.id) as samples
+        COUNT(DISTINCT ds.id) as samples
       FROM market_lines ml
-      LEFT JOIN global_samples gs ON gs.market_line_id = ml.id
-      LEFT JOIN child_samples cs ON cs.global_sample_id = gs.id AND cs.status = 'available'
       LEFT JOIN shelves sh ON sh.market_line_id = ml.id
+      LEFT JOIN global_samples gs ON gs.market_line_id = ml.id
+      LEFT JOIN dispensed_samples ds ON ds.global_sample_id = gs.id AND ds.status = 'stored'
       GROUP BY ml.id, ml.name
     `);
     
@@ -51,7 +69,10 @@ const getDashboardStats = async (req, res, next) => {
       LIMIT 6
     `);
 
-    const stats = bulkCheck.rows[0];
+    const totalSamples = parseInt(samplesCheck.rows[0].total_samples);
+    const totalShelves = parseInt(shelvesCheck.rows[0].total_shelves);
+    const expiredCount = parseInt(expiredCheck.rows[0].expired_count);
+    const warningCount = parseInt(warningCheck.rows[0].warning_count);
     const maxCapacity = parseInt(occupancyCheck.rows[0].max_capacity);
     const currentlyStored = parseInt(filledCheck.rows[0].currently_stored);
     
@@ -60,7 +81,6 @@ const getDashboardStats = async (req, res, next) => {
     // Format ML stats to have % occupancy visually
     const marketLines = mlStats.rows.map((row, index) => {
        const colors = ['bg-pink-500', 'bg-blue-500', 'bg-amber-500', 'bg-green-500', 'bg-purple-500'];
-       // For mock purposes if shelf capacities individually are not calc'd here: using simple ratio
        const occupancy = row.shelves > 0 ? Math.min(100, Math.round((row.samples / parseInt(row.shelves)) * 10)) : 0;
        return {
          name: row.name,
@@ -87,11 +107,11 @@ const getDashboardStats = async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        totalSamples: parseInt(stats.total_samples),
-        totalShelves: parseInt(stats.total_shelves),
+        totalSamples,
+        totalShelves,
         avgOccupancy,
-        expiredCount: parseInt(stats.expired_count),
-        warningCount: parseInt(stats.warning_count),
+        expiredCount,
+        warningCount,
         marketLines,
         recentAlerts
       }

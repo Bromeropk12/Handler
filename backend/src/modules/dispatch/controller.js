@@ -3,8 +3,8 @@ const { AppError } = require('../../middleware/errorHandler');
 
 /**
  * Endpoint de Recomendación FEFO
- * Busca unidades por nombre y recomienda las que están más cerca del vencimiento.
- * Incluye el nombre real del anaquel donde está almacenada cada unidad.
+ * Busca muestras dispensadas por nombre y recomienda las que están más cerca del vencimiento.
+ * Incluye el nombre real del anaquel donde está almacenada cada muestra.
  */
 const getFefoRecommendation = async (req, res, next) => {
   try {
@@ -13,27 +13,28 @@ const getFefoRecommendation = async (req, res, next) => {
 
     const result = await query(`
       SELECT 
-        cs.id as child_id,
-        cs.qr_code,
-        cs.status,
+        ds.id as dispensed_id,
+        ds.qr_code,
+        ds.status,
+        ds.position_y as level,
+        ds.position_x as column_x,
+        ds.position_z as depth_z,
         gs.id as global_sample_id,
         gs.name,
         gs.lot,
         gs.expiration_date,
         gs.weight_per_unit_grams,
+        gs.coa_file_path,
         COALESCE(sh.name, 'Sin asignar') as shelf_name,
-        ds.position_y as level,
-        ds.position_x as column_x,
-        ds.position_z as depth_z,
-        COALESCE(ml.name, 'Sin línea')   as market_line_name,
+        COALESCE(sh.id, NULL) as shelf_id,
+        COALESCE(ml.name, 'Sin línea') as market_line_name,
         -- Días restantes hasta vencimiento (negativo = ya venció)
         (gs.expiration_date::date - CURRENT_DATE) as days_until_expiry
-      FROM child_samples cs
-      JOIN global_samples gs ON cs.global_sample_id = gs.id
-      LEFT JOIN dispensed_samples ds ON ds.child_sample_id = cs.id AND ds.status = 'stored'
+      FROM dispensed_samples ds
+      JOIN global_samples gs ON ds.global_sample_id = gs.id
       LEFT JOIN shelves sh ON ds.shelf_id = sh.id
       LEFT JOIN market_lines ml ON sh.market_line_id = ml.id
-      WHERE gs.name ILIKE $1 AND cs.status = 'available'
+      WHERE gs.name ILIKE $1 AND ds.status = 'stored'
       ORDER BY gs.expiration_date ASC
       LIMIT 20
     `, [`%${product_name}%`]);
@@ -61,10 +62,10 @@ const executeDispatch = async (req, res, next) => {
     const { qr_code, expected_product_name } = req.body;
     if (!qr_code) throw new AppError('El código QR es requerido', 400);
 
-    // Buscar child_sample con todos sus datos relacionados
-    const childCheck = await query(`
+    // Buscar muestra dispensada con todos sus datos relacionados
+    const sampleCheck = await query(`
       SELECT 
-        cs.*,
+        ds.*,
         gs.id as global_sample_id,
         gs.available_units,
         gs.coa_file_path,
@@ -73,91 +74,81 @@ const executeDispatch = async (req, res, next) => {
         gs.expiration_date,
         gs.market_line_id,
         COALESCE(sh.name, 'Sin asignar') as shelf_name,
-        COALESCE(sh.id, NULL) as shelf_id,
-        COALESCE(ds.id, NULL) as dispensed_sample_id
-      FROM child_samples cs
-      JOIN global_samples gs ON cs.global_sample_id = gs.id
-      LEFT JOIN dispensed_samples ds ON ds.child_sample_id = cs.id AND ds.status = 'stored'
+        COALESCE(sh.id, NULL) as shelf_id
+      FROM dispensed_samples ds
+      JOIN global_samples gs ON ds.global_sample_id = gs.id
       LEFT JOIN shelves sh ON ds.shelf_id = sh.id
-      WHERE cs.qr_code = $1
+      WHERE ds.qr_code = $1
     `, [qr_code]);
 
-    if (childCheck.rows.length === 0) {
+    if (sampleCheck.rows.length === 0) {
       throw new AppError('Código de muestra escaneado no encontrado en la base de datos', 404);
     }
 
-    const child = childCheck.rows[0];
+    const sample = sampleCheck.rows[0];
 
     // REGLA DE NEGOCIO: Validar nombre del producto si se proporcionó
     if (expected_product_name) {
-      if (child.product_name.toLowerCase() !== expected_product_name.toLowerCase()) {
+      if (sample.product_name.toLowerCase() !== expected_product_name.toLowerCase()) {
         throw new AppError(
-          `Bloqueo de Seguridad: Escaneaste [${child.product_name}], pero intentabas despachar [${expected_product_name}].`,
+          `Bloqueo de Seguridad: Escaneaste [${sample.product_name}], pero intentabas despachar [${expected_product_name}].`,
           403
         );
       }
     }
 
-    if (child.status !== 'available') {
-      throw new AppError('La unidad ya fue despachada o no está disponible', 400);
+    if (sample.status !== 'stored') {
+      throw new AppError('La muestra ya fue despachada o no está disponible', 400);
     }
 
-    if (child.available_units <= 0) {
+    if (sample.available_units <= 0) {
       throw new AppError('No hay unidades disponibles en el stock global', 400);
     }
 
     // Transacción atómica del despacho
     const txOps = [
-      // 1. Marcar la unidad hija como despachada
+      // 1. Marcar la muestra dispensada como despachada
       {
-        query: `UPDATE child_samples SET status = 'dispatched', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-        params: [child.id]
+        query: `UPDATE dispensed_samples SET status = 'dispatched', dispatched_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+        params: [sample.id]
       },
       // 2. Reducir contador de unidades disponibles del lote global
       {
         query: `UPDATE global_samples SET available_units = available_units - 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-        params: [child.global_sample_id]
+        params: [sample.global_sample_id]
       },
       // 3. Registrar movimiento con trazabilidad completa
       {
         query: `INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)`,
         params: [
-          child.global_sample_id,
+          sample.global_sample_id,
           'dispatched',
           req.user.id,
           JSON.stringify({
-            type: 'child_dispatch',
-            child_id: child.id,
-            qr_code: child.qr_code,
-            shelf_name: child.shelf_name,
-            lot: child.lot,
-            expiration_date: child.expiration_date,
+            type: 'dispatch',
+            dispensed_sample_id: sample.id,
+            qr_code: sample.qr_code,
+            shelf_name: sample.shelf_name,
+            lot: sample.lot,
+            expiration_date: sample.expiration_date,
             dispatched_by: req.user.username
           })
         ]
       }
     ];
 
-    // Si la unidad estaba en un anaquel físico, liberamos esa celda
-    if (child.dispensed_sample_id) {
-      txOps.push({
-        query: `UPDATE dispensed_samples SET status = 'dispatched', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-        params: [child.dispensed_sample_id]
-      });
-    }
-
     await transaction(txOps);
 
     res.json({
       success: true,
-      message: `Muestra despachada exitosamente desde ${child.shelf_name}`,
+      message: `Muestra despachada exitosamente desde ${sample.shelf_name}`,
       data: {
-        product_name: child.product_name,
-        lot: child.lot,
-        expiration_date: child.expiration_date,
-        shelf_name: child.shelf_name,
-        qr_code: child.qr_code,
-        coa_file_path: child.coa_file_path,
+        product_name: sample.product_name,
+        lot: sample.lot,
+        expiration_date: sample.expiration_date,
+        shelf_name: sample.shelf_name,
+        qr_code: sample.qr_code,
+        coa_file_path: sample.coa_file_path,
         dispatched_by: req.user.username,
         dispatched_at: new Date().toISOString()
       }
@@ -170,7 +161,7 @@ const executeDispatch = async (req, res, next) => {
 
 /**
  * Historial de Despachos
- * Retorna los últimos N despachos registrados en movements con FEFO score.
+ * Retorna los últimos N despachos registrados en movements.
  */
 const getDispatchHistory = async (req, res, next) => {
   try {

@@ -14,6 +14,7 @@ const {
   updateBulkSample,
   deleteBulkSample,
   getMarketLines,
+  getSuppliers,
 } = require('./controller');
 const { verifyToken, requireAdmin } = require('../auth/controller');
 
@@ -63,6 +64,12 @@ router.get('/', verifyToken, getBulkSamples);
  * Obtener líneas de mercado disponibles
  */
 router.get('/market-lines', verifyToken, getMarketLines);
+
+/**
+ * GET /api/samples/suppliers
+ * Obtener proveedores disponibles
+ */
+router.get('/suppliers', verifyToken, getSuppliers);
 
 /**
  * GET /api/samples/:id

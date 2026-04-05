@@ -140,7 +140,7 @@ const getBulkSamples = async (req, res, next) => {
 
     // Filtro de búsqueda
     if (search) {
-      whereConditions.push(`(name ILIKE $${paramIndex} OR provider ILIKE $${paramIndex} OR lot ILIKE $${paramIndex})`);
+      whereConditions.push(`(gs.name ILIKE $${paramIndex} OR sup.name ILIKE $${paramIndex} OR gs.lot ILIKE $${paramIndex})`);
       params.push(`%${search}%`);
       paramIndex++;
     }
@@ -269,7 +269,7 @@ const updateBulkSample = async (req, res, next) => {
     const currentSample = existing.rows[0];
 
     // No permitir actualizar si ya se ha dispensado
-    if (currentSample.current_weight_grams < currentSample.total_weight_grams) {
+    if (currentSample.available_units > 0) {
       throw new AppError('No se puede actualizar una muestra que ya ha sido dispensada', 400);
     }
 
@@ -283,8 +283,8 @@ const updateBulkSample = async (req, res, next) => {
     const params = [];
     let paramIndex = 1;
 
-    const allowedFields = ['name', 'provider', 'expiration_date', 'manufacture_date',
-                          'ghs_danger_class', 'market_line_id', 'dimensions'];
+    const allowedFields = ['name', 'supplier_id', 'expiration_date', 'manufacture_date',
+                          'ghs_danger_class', 'market_line_id', 'dimensions', 'weight_per_unit_grams', 'coa_file_path'];
 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
@@ -349,7 +349,7 @@ const deleteBulkSample = async (req, res, next) => {
     // Verificar que existe y no ha sido dispensada
     const existing = await query(`
       SELECT gs.*, 
-             (SELECT COUNT(*) FROM child_samples WHERE global_sample_id = $1 AND status != 'available') as dispensed_count
+             (SELECT COUNT(*) FROM dispensed_samples WHERE global_sample_id = $1 AND status != 'stored') as dispensed_count
       FROM global_samples gs
       WHERE gs.id = $1
     `, [id]);
@@ -420,6 +420,30 @@ const getMarketLines = async (req, res, next) => {
   }
 };
 
+/**
+ * Obtener proveedores disponibles
+ */
+const getSuppliers = async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT s.*, 
+        (SELECT COUNT(*) FROM global_samples gs WHERE gs.supplier_id = s.id) as sample_count
+      FROM suppliers s 
+      ORDER BY s.name ASC
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        suppliers: result.rows
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBulkSample,
   getBulkSamples,
@@ -427,4 +451,5 @@ module.exports = {
   updateBulkSample,
   deleteBulkSample,
   getMarketLines,
+  getSuppliers,
 };
