@@ -87,7 +87,7 @@ const getShelfMap = async (req, res, next) => {
       data: {
         shelf: shelf.rows[0],
         samples: samples.rows,
-        grid_matrix_3d: generateGridMatrix3D(shelf.rows[0], samples.rows)
+        grid_matrix_3d: samples.rows.length > 0 ? generateGridMatrix3D(shelf.rows[0], samples.rows) : []
       }
     });
 

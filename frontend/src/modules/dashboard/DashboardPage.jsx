@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import StatCard from '../../components/StatCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import AlertBanner from '../../components/AlertBanner';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
@@ -67,6 +68,9 @@ const DashboardPage = () => {
         </div>
         <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-handler-red/5 rounded-full blur-2xl" />
       </div>
+
+      {/* Alert Banner */}
+      <AlertBanner />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

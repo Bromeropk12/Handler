@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import {
   BellIcon,
   MagnifyingGlassIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
+import { alertsAPI } from '../services/api';
 
 const routeTitles = {
   '/': { title: 'Dashboard', subtitle: 'Resumen general del sistema' },
@@ -18,8 +20,24 @@ const routeTitles = {
 const Header = () => {
   const { user } = useAuth();
   const location = useLocation();
+  const [alertCount, setAlertCount] = useState(0);
 
   const currentRoute = routeTitles[location.pathname] || routeTitles['/'];
+
+  useEffect(() => {
+    const fetchAlertCount = async () => {
+      try {
+        const resp = await alertsAPI.getSummary();
+        setAlertCount(resp.data.data.counts.expired + resp.data.data.counts.warning);
+      } catch (err) {
+        // Silenciar errores de alertas en header
+      }
+    };
+    fetchAlertCount();
+    // Actualizar cada 5 minutos
+    const interval = setInterval(fetchAlertCount, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <header className="h-16 bg-surface-400/80 backdrop-blur-md border-b border-gray-700/50 flex items-center justify-between px-6 shrink-0 z-30">
@@ -50,7 +68,11 @@ const Header = () => {
         {/* Notifications */}
         <button className="btn-icon relative">
           <BellIcon className="w-5 h-5" />
-          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-handler-red rounded-full"></span>
+          {alertCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center">
+              <span className="text-[10px] font-bold text-white">{alertCount > 9 ? '9+' : alertCount}</span>
+            </span>
+          )}
         </button>
 
         {/* Divider */}

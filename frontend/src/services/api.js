@@ -106,4 +106,10 @@ export const analyticsAPI = {
   getDashboard: () => api.get('/analytics/dashboard'),
 };
 
+export const alertsAPI = {
+  getExpired: () => api.get('/alerts/expired'),
+  getExpiring: (days) => api.get('/alerts/expiring', { params: { days } }),
+  getSummary: () => api.get('/alerts/summary'),
+};
+
 export default api;

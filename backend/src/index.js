@@ -23,6 +23,7 @@ const dispatchRoutes = require('./modules/dispatch/routes');
 const movementsRoutes = require('./modules/movements/routes');
 const analyticsRoutes = require('./modules/analytics/routes');
 const suppliersRoutes = require('./modules/suppliers/routes');
+const alertsRoutes = require('./modules/alerts/routes');
 
 // Importar middlewares
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -106,6 +107,7 @@ app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/movements', movementsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/suppliers', suppliersRoutes);
+app.use('/api/alerts', alertsRoutes);
 
 // Middleware de manejo de errores
 app.use(notFound);

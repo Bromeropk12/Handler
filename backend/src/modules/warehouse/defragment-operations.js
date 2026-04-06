@@ -54,9 +54,9 @@ const defragmentShelf = async (req, res, next) => {
         ds.position_x,
         ds.position_y,
         ds.position_z,
-        ds.width,
-        ds.height,
-        ds.depth,
+        COALESCE(ds.width, 1) as width,
+        COALESCE(ds.height, 1) as height,
+        COALESCE(ds.depth, 1) as depth,
         gs.name AS name,
         gs.ghs_danger_class,
         gs.dimensions AS dimensions_enum
@@ -66,11 +66,34 @@ const defragmentShelf = async (req, res, next) => {
       ORDER BY ds.position_y ASC, ds.position_z ASC, ds.position_x ASC
     `, [id]);
 
+    // Si no hay muestras, no hay nada que desfragmentar
+    if (samplesResult.rows.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          shelf: {
+            id: shelf.id,
+            name: shelf.name,
+            grid_width: shelf.grid_width,
+            grid_height: shelf.grid_height,
+            shelf_depth: shelf.shelf_depth,
+          },
+          target: { width: target_width, height: target_height, depth: target_depth },
+          possible: true,
+          freeSpaceFound: true,
+          freeBlock: { x: 0, y: 0, z: 0 },
+          totalMoves: 0,
+          moves: [],
+          message: `El anaquel "${shelf.name}" está vacío. Hay espacio disponible en (Col 1, Nivel 1, Prof 1).`,
+        },
+      });
+    }
+
     // Asegurar que width/height/depth estén calculados desde el enum si no están guardados
     const samples = samplesResult.rows.map(s => {
       if (!s.width || !s.height || !s.depth) {
         const dims = parseDimensions(s.dimensions_enum);
-        return { ...s, width: dims.width, height: dims.height, depth: dims.depth };
+        return { ...s, width: s.width || dims.width, height: s.height || dims.height, depth: s.depth || dims.depth };
       }
       return s;
     });
