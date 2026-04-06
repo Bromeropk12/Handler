@@ -1,10 +1,16 @@
 const { query, transaction } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { v4: uuidv4 } = require('uuid');
+const { findAutoPlacement, parseDimensions } = require('../warehouse/validations');
 
 /**
  * Subdividir un Bulk Sample en Muestras Hijas (Dispensación)
  * Genera muestras dispensadas con QR único y ubicación automática SGA
+ * 
+ * Flujo:
+ * 1. Crea las muestras hijas sin ubicación (pendientes por ubicar)
+ * 2. Ejecuta algoritmo SGA para encontrar ubicación óptima
+ * 3. Asigna automáticamente la ubicación encontrada
  */
 const subdivideBulkSample = async (req, res, next) => {
   try {
@@ -16,7 +22,7 @@ const subdivideBulkSample = async (req, res, next) => {
 
     // Verificar que el bulk existe y tiene unidades disponibles
     const bulkCheck = await query(
-      'SELECT id, name, lot, available_units, weight_per_unit_grams, coa_file_path, dimensions, ghs_danger_class FROM global_samples WHERE id = $1', 
+      'SELECT id, name, lot, available_units, weight_per_unit_grams, coa_file_path, dimensions, ghs_danger_class, market_line_id FROM global_samples WHERE id = $1', 
       [global_sample_id]
     );
     
@@ -29,19 +35,19 @@ const subdivideBulkSample = async (req, res, next) => {
       throw new AppError(`Solo hay ${bulk.available_units} unidades disponibles. Solicitó ${number_of_units}.`, 400);
     }
 
+    // Parsear dimensiones del enum
+    const dimensions = parseDimensions(bulk.dimensions);
+    const width = dimensions.width;
+    const height = dimensions.height;
+
     const txQueries = [];
     const generatedSamples = [];
 
-    // Generar cada muestra dispensada
+    // Generar cada muestra dispensada (sin ubicación inicial)
     for (let i = 0; i < number_of_units; i++) {
       // Generar QR único
       const uniqueNumber = Math.floor(1000 + Math.random() * 9000);
       const qrCode = `HS-${bulk.lot}-${Date.now().toString().slice(-4)}${uniqueNumber}-${i + 1}`;
-      
-      // Parsear dimensiones del enum
-      const dimParts = bulk.dimensions.split('x');
-      const width = parseInt(dimParts[0]);
-      const height = parseInt(dimParts[1]);
 
       // QR data con metadata completa
       const qrData = {
@@ -50,7 +56,7 @@ const subdivideBulkSample = async (req, res, next) => {
         product_name: bulk.name,
         sub_sample_number: i + 1,
         weight_grams: weight_per_unit,
-        expiration_date: null, // Se obtiene del bulk
+        expiration_date: null,
         ghs_danger_class: bulk.ghs_danger_class
       };
 
@@ -60,8 +66,8 @@ const subdivideBulkSample = async (req, res, next) => {
         query: `
           INSERT INTO dispensed_samples (
             global_sample_id, qr_code, qr_data, weight_grams, status,
-            width, height
-          ) VALUES ($1, $2, $3, $4, 'stored', $5, $6)
+            width, height, shelf_id, position_x, position_y
+          ) VALUES ($1, $2, $3, $4, 'stored', $5, $6, NULL, NULL, NULL)
           RETURNING id
         `,
         params: [global_sample_id, qrCode, JSON.stringify(qrData), weight_per_unit, width, height]
@@ -90,16 +96,98 @@ const subdivideBulkSample = async (req, res, next) => {
       ]
     });
 
-    await transaction(txQueries);
+    // Ejecutar transacción para crear muestras
+    const txResult = await transaction(txQueries);
+    
+    // Extraer IDs de las muestras creadas
+    const sampleIds = txResult
+      .slice(0, number_of_units)
+      .map(result => result.rows[0].id);
+
+    // ==========================================
+    // ALGORITMO SGA AUTOMÁTICO DE UBICACIÓN
+    // ==========================================
+    
+    // Obtener anaqueles de la línea de mercado del bulk, ordenados por ocupación
+    const shelvesResult = await query(`
+      SELECT 
+        sh.*,
+        (SELECT COUNT(*) FROM dispensed_samples ds WHERE ds.shelf_id = sh.id AND ds.status = 'stored') as occupied_cells
+      FROM shelves sh
+      WHERE sh.market_line_id = $1
+      ORDER BY occupied_cells ASC
+    `, [bulk.market_line_id]);
+
+    if (shelvesResult.rows.length === 0) {
+      throw new AppError(`No hay anaqueles disponibles para la línea de mercado del bulk.`, 400);
+    }
+
+    const placements = [];
+    const failedPlacements = [];
+
+    // Para cada muestra, encontrar ubicación óptima con SGA
+    for (const sampleId of sampleIds) {
+      // Obtener datos de la muestra
+      const sampleData = await query(
+        'SELECT ds.*, gs.ghs_danger_class FROM dispensed_samples ds JOIN global_samples gs ON ds.global_sample_id = gs.id WHERE ds.id = $1',
+        [sampleId]
+      );
+
+      if (sampleData.rows.length === 0) continue;
+
+      const sample = sampleData.rows[0];
+      sample.width = width;
+      sample.height = height;
+
+      let placed = false;
+
+      // Intentar colocar en cada anaquel hasta encontrar uno con espacio
+      for (const shelf of shelvesResult.rows) {
+        try {
+          const autoPos = await findAutoPlacement(shelf, sample);
+
+          // Colocar en el anaquel encontrado
+          await query(`
+            UPDATE dispensed_samples
+            SET shelf_id = $1, position_x = $2, position_y = $3, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $4
+          `, [shelf.id, autoPos.x, autoPos.y, sampleId]);
+
+          placements.push({
+            sample_id: sampleId,
+            qr_code: sample.qr_code,
+            shelf_name: shelf.name,
+            position: { x: autoPos.x, y: autoPos.y },
+            dimensions: `${width}x${height}`
+          });
+
+          placed = true;
+          break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!placed) {
+        failedPlacements.push({
+          sample_id: sampleId,
+          qr_code: sample.qr_code,
+          error: 'No se encontró espacio compatible en ningún anaquel de la línea de mercado'
+        });
+      }
+    }
 
     res.json({
       success: true,
       message: `Se han dispensado exitosamente ${number_of_units} unidades de ${bulk.name} (Lote: ${bulk.lot}).`,
       data: {
         generated_samples: generatedSamples,
+        placements,
+        failed_placements: failedPlacements,
         bulk_name: bulk.name,
         bulk_lot: bulk.lot,
-        remaining_units: bulk.available_units - number_of_units
+        remaining_units: bulk.available_units - number_of_units,
+        sga_danger_class: bulk.ghs_danger_class
       }
     });
 
@@ -113,7 +201,7 @@ const subdivideBulkSample = async (req, res, next) => {
  */
 const getDispensedSamples = async (req, res, next) => {
   try {
-    const { global_sample_id, status } = req.query;
+    const { global_sample_id, status, shelf_id } = req.query;
 
     let whereConditions = [];
     let params = [];
@@ -128,6 +216,12 @@ const getDispensedSamples = async (req, res, next) => {
     if (status) {
       whereConditions.push(`ds.status = $${paramIndex}`);
       params.push(status);
+      paramIndex++;
+    }
+
+    if (shelf_id) {
+      whereConditions.push(`ds.shelf_id = $${paramIndex}`);
+      params.push(shelf_id);
       paramIndex++;
     }
 
@@ -164,7 +258,52 @@ const getDispensedSamples = async (req, res, next) => {
   }
 };
 
+/**
+ * Obtener muestras pendientes por ubicar (sin anaquel asignado)
+ */
+const getUnplacedSamples = async (req, res, next) => {
+  try {
+    const { market_line_id } = req.query;
+
+    let whereClause = "WHERE ds.shelf_id IS NULL AND ds.status = 'stored'";
+    let params = [];
+    let paramIndex = 1;
+
+    if (market_line_id) {
+      whereClause += ` AND gs.market_line_id = $${paramIndex}`;
+      params.push(market_line_id);
+      paramIndex++;
+    }
+
+    const result = await query(`
+      SELECT 
+        ds.*,
+        gs.name as product_name,
+        gs.lot,
+        gs.ghs_danger_class,
+        gs.dimensions,
+        ml.name as market_line_name
+      FROM dispensed_samples ds
+      JOIN global_samples gs ON ds.global_sample_id = gs.id
+      JOIN market_lines ml ON gs.market_line_id = ml.id
+      ${whereClause}
+      ORDER BY ds.created_at ASC
+    `, params);
+
+    res.json({
+      success: true,
+      data: {
+        samples: result.rows,
+        total: result.rows.length
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   subdivideBulkSample,
-  getDispensedSamples
+  getDispensedSamples,
+  getUnplacedSamples
 };

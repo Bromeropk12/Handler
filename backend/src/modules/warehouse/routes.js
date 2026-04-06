@@ -15,7 +15,8 @@ const {
   getShelfMap,
   placeSample,
   moveSample,
-  removeSample
+  removeSample,
+  autoPlaceSamples
 } = require('./controller');
 
 // Aplicar middleware de autenticación a todas las rutas
@@ -31,6 +32,7 @@ router.delete('/:id', authorize('admin'), deleteShelf);      // Eliminar anaquel
 // Operaciones del Mapa 2D
 router.get('/:id/map', getShelfMap);                          // Obtener mapa completo
 router.post('/:id/place-sample', authorize('operator'), placeSample);    // Colocar muestra
+router.post('/:id/auto-place', authorize('admin'), autoPlaceSamples);    // Auto-colocar múltiples
 router.put('/:id/move-sample', authorize('operator'), moveSample);       // Mover muestra
 router.delete('/:id/remove-sample', authorize('operator'), removeSample); // Quitar muestra
 

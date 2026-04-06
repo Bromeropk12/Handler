@@ -15,7 +15,8 @@ const {
   getShelfMap,
   placeSample,
   moveSample,
-  removeSample
+  removeSample,
+  autoPlaceSamples
 } = require('./map-operations');
 
 module.exports = {
@@ -27,5 +28,6 @@ module.exports = {
   getShelfMap,
   placeSample,
   moveSample,
-  removeSample
+  removeSample,
+  autoPlaceSamples
 };

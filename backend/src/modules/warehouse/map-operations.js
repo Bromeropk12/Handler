@@ -1,49 +1,49 @@
 /**
  * Map Operations Module
  * Operaciones del mapa 2D y gestión de posiciones
+ * 
+ * Grid 2D: X = Columna (horizontal), Y = Nivel (vertical)
  */
 
 const { query } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
-const { validatePlacement, parseDimensions } = require('./validations');
+const { validatePlacement, parseDimensions, findAutoPlacement } = require('./validations');
 
 /**
  * Genera matriz 2D del grid con las muestras colocadas
+ * matrix[y][x] donde y = nivel (fila), x = columna
  */
 function generateGridMatrix(shelf, samples) {
-  // matrix[level][pos_z][pos_x]
-  // level: 0 to grid_height - 1
-  // z: 0 to shelf_depth - 1
-  // x: 0 to grid_width - 1
-  const matrix = Array(shelf.grid_height || 10).fill(null).map(() =>
-    Array(shelf.shelf_depth || 10).fill(null).map(() =>
-      Array(shelf.grid_width || 10).fill(null)
-    )
-  );
+  const rows = shelf.grid_height || 10;
+  const cols = shelf.grid_width || 10;
+  
+  // Crear matriz vacía
+  const matrix = Array(rows).fill(null).map(() => Array(cols).fill(null));
 
+  // Llenar con muestras
   samples.forEach(sample => {
-    // sample.height es la ocupación de profundidad (Z)
-    // sample.width es la ocupación horizontal (X)
-    for (let z = 0; z < (sample.height || 1); z++) {
-      for (let x = 0; x < (sample.width || 1); x++) {
-        const level = sample.position_y;
-        const posZ = sample.position_z + z;
-        const posX = sample.position_x + x;
+    const startX = sample.position_x;
+    const startY = sample.position_y;
+    const width = sample.width || 1;
+    const height = sample.height || 1;
 
-        if (level < shelf.grid_height && posZ < shelf.shelf_depth && posX < shelf.grid_width) {
-          matrix[level][posZ][posX] = {
-            sample_id: sample.id,
-            is_main_cell: (x === 0 && z === 0),
-            ...(x === 0 && z === 0 ? {
-              name: sample.global_sample_name,
-              lot: sample.lot,
-              weight_grams: sample.weight_grams,
-              ghs_danger_class: sample.ghs_danger_class,
-              expiration_date: sample.expiration_date,
-              qr_code: sample.qr_code
-            } : {})
-          };
-        }
+    for (let y = startY; y < startY + height && y < rows; y++) {
+      for (let x = startX; x < startX + width && x < cols; x++) {
+        matrix[y][x] = {
+          sample_id: sample.id,
+          is_main_cell: (x === startX && y === startY),
+          ...(x === startX && y === startY ? {
+            name: sample.global_sample_name,
+            lot: sample.lot,
+            weight_grams: sample.weight_grams,
+            ghs_danger_class: sample.ghs_danger_class,
+            expiration_date: sample.expiration_date,
+            qr_code: sample.qr_code,
+            status: sample.status,
+            width,
+            height
+          } : {})
+        };
       }
     }
   });
@@ -75,8 +75,7 @@ const getShelfMap = async (req, res, next) => {
       FROM dispensed_samples ds
       JOIN global_samples gs ON ds.global_sample_id = gs.id
       WHERE ds.shelf_id = $1 AND ds.status = 'stored'
-      ORDER BY ds.position_y, ds.position_z, ds.position_x
-
+      ORDER BY ds.position_y DESC, ds.position_x ASC
     `, [id]);
 
     res.json({
@@ -94,13 +93,12 @@ const getShelfMap = async (req, res, next) => {
 };
 
 /**
- * Colocar muestra en posición específica
+ * Colocar muestra en posición específica o auto-asignar
  */
 const placeSample = async (req, res, next) => {
   try {
     const { id } = req.params; // shelf_id
-    let { sample_id, position_x, position_y, position_z } = req.body;
-    const { findAutoPlacement } = require('./validations');
+    let { sample_id, position_x, position_y } = req.body;
 
     if (!sample_id) {
       throw new AppError('Se requiere: sample_id', 400);
@@ -112,7 +110,7 @@ const placeSample = async (req, res, next) => {
       throw new AppError('Anaquel no encontrado', 404);
     }
 
-    // Verificar que la muestra existe y no está colocada
+    // Verificar que la muestra existe
     const sample = await query(`
       SELECT ds.*, gs.ghs_danger_class, gs.dimensions
       FROM dispensed_samples ds
@@ -131,26 +129,23 @@ const placeSample = async (req, res, next) => {
     sampleData.width = dimensions.width;
     sampleData.height = dimensions.height;
 
-    // Si faltan coordenadas, intentar auto-asignar
+    // Si faltan coordenadas, auto-asignar con algoritmo SGA
     if (position_x === undefined || position_y === undefined) {
       const autoPos = await findAutoPlacement(shelf.rows[0], sampleData);
       position_x = autoPos.x;
       position_y = autoPos.y;
-      position_z = autoPos.z;
-    } else if (position_z === undefined) {
-      position_z = 0;
     }
 
-    // Validar posicionamiento (ya lo valida findAutoPlacement, pero para los manuales)
-    await validatePlacement(shelf.rows[0], sampleData, position_x, position_y, position_z);
+    // Validar posicionamiento
+    await validatePlacement(shelf.rows[0], sampleData, position_x, position_y);
 
     // Actualizar posición de la muestra
     await query(`
       UPDATE dispensed_samples
-      SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4,
-          width = $5, height = $6, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $7
-    `, [id, position_x, position_y, position_z, sampleData.width, sampleData.height, sample_id]);
+      SET shelf_id = $1, position_x = $2, position_y = $3,
+          width = $4, height = $5, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $6
+    `, [id, position_x, position_y, sampleData.width, sampleData.height, sample_id]);
 
     // Log del movimiento
     await query(`
@@ -189,7 +184,7 @@ const placeSample = async (req, res, next) => {
 const moveSample = async (req, res, next) => {
   try {
     const { id } = req.params; // shelf_id
-    const { sample_id, new_position_x, new_position_y, new_position_z = 0 } = req.body;
+    const { sample_id, new_position_x, new_position_y } = req.body;
 
     // Verificar que la muestra está en este anaquel
     const sample = await query(`
@@ -210,14 +205,14 @@ const moveSample = async (req, res, next) => {
 
     // Validar nueva posición
     const shelf = await query('SELECT * FROM shelves WHERE id = $1', [id]);
-    await validatePlacement(shelf.rows[0], sampleData, new_position_x, new_position_y, new_position_z);
+    await validatePlacement(shelf.rows[0], sampleData, new_position_x, new_position_y);
 
     // Actualizar posición
     await query(`
       UPDATE dispensed_samples
-      SET position_x = $1, position_y = $2, position_z = $3, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4
-    `, [new_position_x, new_position_y, new_position_z, sample_id]);
+      SET position_x = $1, position_y = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+    `, [new_position_x, new_position_y, sample_id]);
 
     // Log del movimiento
     await query(`
@@ -230,8 +225,8 @@ const moveSample = async (req, res, next) => {
       JSON.stringify({
         type: 'sample_movement',
         shelf_id: id,
-        from_position: { x: sampleData.position_x, y: sampleData.position_y, z: sampleData.position_z },
-        to_position: { x: new_position_x, y: new_position_y, z: new_position_z }
+        from_position: { x: sampleData.position_x, y: sampleData.position_y },
+        to_position: { x: new_position_x, y: new_position_y }
       })
     ]);
 
@@ -240,7 +235,7 @@ const moveSample = async (req, res, next) => {
       message: 'Muestra movida exitosamente',
       data: {
         sample_id,
-        new_position: { x: new_position_x, y: new_position_y, z: new_position_z }
+        new_position: { x: new_position_x, y: new_position_y }
       }
     });
 
@@ -270,14 +265,13 @@ const removeSample = async (req, res, next) => {
 
     const oldPosition = {
       x: sample.rows[0].position_x,
-      y: sample.rows[0].position_y,
-      z: sample.rows[0].position_z
+      y: sample.rows[0].position_y
     };
 
-    // Quitar del anaquel (poner status como 'stored' sin posición)
+    // Quitar del anaquel
     await query(`
       UPDATE dispensed_samples
-      SET shelf_id = NULL, position_x = NULL, position_y = NULL, position_z = NULL,
+      SET shelf_id = NULL, position_x = NULL, position_y = NULL,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `, [sample_id]);
@@ -311,10 +305,93 @@ const removeSample = async (req, res, next) => {
   }
 };
 
+/**
+ * Auto-colocar múltiples muestras con algoritmo SGA
+ * Recibe un array de sample_ids y coloca cada una automáticamente
+ */
+const autoPlaceSamples = async (req, res, next) => {
+  try {
+    const { id } = req.params; // shelf_id
+    const { sample_ids } = req.body;
+
+    if (!sample_ids || !Array.isArray(sample_ids) || sample_ids.length === 0) {
+      throw new AppError('Se requiere un array de sample_ids', 400);
+    }
+
+    // Verificar que el anaquel existe
+    const shelf = await query('SELECT * FROM shelves WHERE id = $1', [id]);
+    if (shelf.rows.length === 0) {
+      throw new AppError('Anaquel no encontrado', 404);
+    }
+
+    const placements = [];
+
+    for (const sampleId of sample_ids) {
+      // Obtener datos de la muestra
+      const sample = await query(`
+        SELECT ds.*, gs.ghs_danger_class, gs.dimensions
+        FROM dispensed_samples ds
+        JOIN global_samples gs ON ds.global_sample_id = gs.id
+        WHERE ds.id = $1 AND ds.status = 'stored' AND ds.shelf_id IS NULL
+      `, [sampleId]);
+
+      if (sample.rows.length === 0) {
+        placements.push({
+          sample_id: sampleId,
+          success: false,
+          error: 'Muestra no encontrada o ya colocada'
+        });
+        continue;
+      }
+
+      const sampleData = sample.rows[0];
+      const dimensions = parseDimensions(sampleData.dimensions);
+      sampleData.width = dimensions.width;
+      sampleData.height = dimensions.height;
+
+      try {
+        // Encontrar posición automática
+        const autoPos = await findAutoPlacement(shelf.rows[0], sampleData);
+
+        // Colocar en la BD
+        await query(`
+          UPDATE dispensed_samples
+          SET shelf_id = $1, position_x = $2, position_y = $3,
+              width = $4, height = $5, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $6
+        `, [id, autoPos.x, autoPos.y, sampleData.width, sampleData.height, sampleId]);
+
+        placements.push({
+          sample_id: sampleId,
+          success: true,
+          position: { x: autoPos.x, y: autoPos.y },
+          dimensions: `${sampleData.width}x${sampleData.height}`
+        });
+      } catch (e) {
+        placements.push({
+          sample_id: sampleId,
+          success: false,
+          error: e.message
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Colocación automática completada: ${placements.filter(p => p.success).length}/${sample_ids.length} exitosas`,
+      data: { placements }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getShelfMap,
   placeSample,
   moveSample,
   removeSample,
+  autoPlaceSamples,
   generateGridMatrix
 };

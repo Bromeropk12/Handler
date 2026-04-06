@@ -1,12 +1,12 @@
 const express = require('express');
-const { subdivideBulkSample, getDispensedSamples } = require('./controller');
+const { subdivideBulkSample, getDispensedSamples, getUnplacedSamples } = require('./controller');
 const { verifyToken, requireAdmin } = require('../auth/controller');
 
 const router = express.Router();
 
 /**
  * POST /api/dispensing/subdivide
- * Subdividir un Bulk Sample en Muestras Hijas
+ * Subdividir un Bulk Sample en Muestras Hijas con ubicación SGA automática
  * Solo admin puede realizar esta acción
  */
 router.post('/subdivide', verifyToken, requireAdmin, subdivideBulkSample);
@@ -16,5 +16,11 @@ router.post('/subdivide', verifyToken, requireAdmin, subdivideBulkSample);
  * Obtener muestras dispensadas con filtros opcionales
  */
 router.get('/', verifyToken, getDispensedSamples);
+
+/**
+ * GET /api/dispensing/unplaced
+ * Obtener muestras pendientes por ubicar (sin anaquel)
+ */
+router.get('/unplaced', verifyToken, getUnplacedSamples);
 
 module.exports = router;

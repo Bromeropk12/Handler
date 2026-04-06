@@ -9,7 +9,7 @@ import {
 const routeTitles = {
   '/': { title: 'Dashboard', subtitle: 'Resumen general del sistema' },
   '/samples': { title: 'Muestras Globales', subtitle: 'Gestión de materias primas (Bulk)' },
-  '/warehouse': { title: 'Almacén', subtitle: 'Mapa 2D y organización de anaqueles' },
+  '/warehouse': { title: 'Almacén', subtitle: 'Mapa 3D y organización de anaqueles' },
   '/dispensing': { title: 'Dispensación', subtitle: 'Subdivisión de muestras con QR' },
   '/dispatch': { title: 'Despachos', subtitle: 'Proceso de despacho validado FEFO' },
   '/movements': { title: 'Movimientos', subtitle: 'Trazabilidad y log de operaciones' },
