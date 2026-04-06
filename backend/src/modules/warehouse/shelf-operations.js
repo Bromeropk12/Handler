@@ -30,19 +30,20 @@ const createShelf = async (req, res, next) => {
       throw new AppError('Ya existe un anaquel con este nombre en la línea de mercado', 409);
     }
 
-    // Crear anaquel
+    // Crear anaquel 3D
     const result = await query(`
       INSERT INTO shelves (
-        market_line_id, name, provider, grid_width, grid_height
+        market_line_id, name, provider, grid_width, grid_height, shelf_depth
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `, [
       data.market_line_id,
       data.name,
       data.provider || null,
       data.grid_width || 10,
-      data.grid_height || 10
+      data.grid_height || 10,
+      data.shelf_depth || 10
     ]);
 
     const shelf = result.rows[0];
@@ -58,7 +59,7 @@ const createShelf = async (req, res, next) => {
       JSON.stringify({
         type: 'shelf_creation',
         market_line_id: data.market_line_id,
-        grid_size: `${shelf.grid_width}x${shelf.grid_height}`
+        grid_size: `${shelf.grid_width}x${shelf.grid_height}x${shelf.shelf_depth}`
       })
     ]);
 
@@ -73,6 +74,7 @@ const createShelf = async (req, res, next) => {
           provider: shelf.provider,
           grid_width: shelf.grid_width,
           grid_height: shelf.grid_height,
+          shelf_depth: shelf.shelf_depth,
           total_capacity: shelf.total_capacity,
           created_at: shelf.created_at
         }
@@ -243,7 +245,7 @@ const updateShelf = async (req, res, next) => {
     }
 
     // No permitir cambiar grid si tiene muestras colocadas
-    if ((data.grid_width || data.grid_height) && existing.rows[0].total_capacity > 0) {
+    if ((data.grid_width || data.grid_height || data.shelf_depth) && existing.rows[0].total_capacity > 0) {
       const occupiedCells = await query(`
         SELECT COUNT(*) as occupied
         FROM dispensed_samples
@@ -260,7 +262,7 @@ const updateShelf = async (req, res, next) => {
     const params = [];
     let paramIndex = 1;
 
-    const allowedFields = ['name', 'provider', 'grid_width', 'grid_height'];
+    const allowedFields = ['name', 'provider', 'grid_width', 'grid_height', 'shelf_depth'];
 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {

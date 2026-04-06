@@ -7,11 +7,16 @@ import {
   ClockIcon,
   CubeIcon,
   ChevronUpIcon,
-  ChevronDownIcon
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ArrowsRightLeftIcon,
+  InformationCircleIcon
 } from '@heroicons/react/24/outline';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import * as THREE from 'three';
+import DefragmentationTool from './DefragmentationTool';
 
 // Mesh individual para cada caja, permitiendo animación limpia
 const SampleMesh = ({ cell, x, z, offsetX, offsetZ, isSelected, isDimmed, onHover, onClick, status }) => {
@@ -34,7 +39,7 @@ const SampleMesh = ({ cell, x, z, offsetX, offsetZ, isSelected, isDimmed, onHove
   });
 
   const width = cell.width || 1;
-  const depth = cell.height || 1;
+  const depth = cell.depth || cell.height || 1;
   
   // Posición real geométrica
   const px = offsetX + x + width / 2;
@@ -94,74 +99,79 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   
   // 3D Specific State
   const [selectedLevel, setSelectedLevel] = useState(0);
+  const [selectedDepth, setSelectedDepth] = useState(0);
   
   const [selectedCell, setSelectedCell] = useState(null);
   const [hoveredCell, setHoveredCell] = useState(null);
   const [showExpired, setShowExpired] = useState(true);
   const [showWarnings, setShowWarnings] = useState(true);
+  const [showDefragTool, setShowDefragTool] = useState(false);
+
+  const fetchMapData = async () => {
+    if (!selectedShelf) return;
+    try {
+      setLoading(true);
+      const response = await warehouseAPI.getShelfMap(selectedShelf.id);
+      setMapData(response.data.data);
+    } catch (_err) {
+      setError('Error al cargar el mapa del anaquel');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchMapData = async () => {
-      if (!selectedShelf) return;
-      try {
-        setLoading(true);
-        const response = await warehouseAPI.getShelfMap(selectedShelf.id);
-        setMapData(response.data.data);
-      } catch (_err) {
-        setError('Error al cargar el mapa del anaquel');
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchMapData();
   }, [selectedShelf]);
 
-  // Construimos matriz 3D en el Frontend (Level x Z x X)
+  // Construimos matriz 3D en el Frontend (Y x Z x X) desde grid_matrix_3d del backend
   const gridMatrix3D = useMemo(() => {
     if (!mapData) return null;
+    // Usar la matriz 3D del backend si está disponible, sino construir manualmente
+    if (mapData.grid_matrix_3d) return mapData.grid_matrix_3d;
+    
     const levels = mapData.shelf.grid_height || 10;
     const depth = mapData.shelf.shelf_depth || 10;
     const cols = mapData.shelf.grid_width || 10;
 
-    const matrix3D = Array(levels).fill(null).map(() =>
-      Array(depth).fill(null).map(() =>
-        Array(cols).fill(null)
-      )
+    const matrix = Array(levels).fill(null).map(() =>
+      Array(depth).fill(null).map(() => Array(cols).fill(null))
     );
 
     mapData.samples.forEach(sample => {
-      // sample.height = Profundidad ocupada (Z)
-      // sample.width  = Ancho ocupado (X)
-      // sample.position_y = Nivel
-      for (let z = 0; z < (sample.height || 1); z++) {
-        for (let x = 0; x < (sample.width || 1); x++) {
-          const level = sample.position_y;
-          const posZ = sample.position_z + z;
-          const posX = sample.position_x + x;
+      const startX = sample.position_x;
+      const startY = sample.position_y;
+      const startZ = sample.position_z || 0;
+      const width = sample.width || 1;
+      const height = sample.height || 1;
+      const sampleDepth = sample.depth || 1;
 
-          if (level < levels && posZ < depth && posX < cols) {
-            matrix3D[level][posZ][posX] = {
+      for (let y = startY; y < startY + height && y < levels; y++) {
+        for (let z = startZ; z < startZ + sampleDepth && z < depth; z++) {
+          for (let x = startX; x < startX + width && x < cols; x++) {
+            matrix[y][z][x] = {
               sample_id: sample.id,
-              is_main_cell: x === 0 && z === 0,
-              ...(x === 0 && z === 0 ? {
+              is_main_cell: x === startX && y === startY && z === startZ,
+              ...(x === startX && y === startY && z === startZ ? {
                 name: sample.global_sample_name,
                 lot: sample.lot,
                 weight_grams: sample.weight_grams,
                 ghs_danger_class: sample.ghs_danger_class,
                 expiration_date: sample.expiration_date,
                 qr_code: sample.qr_code,
-                position_y: level,
-                position_z: sample.position_z,
                 position_x: sample.position_x,
-                width: sample.width,
-                height: sample.height // Profundidad
+                position_y: sample.position_y,
+                position_z: sample.position_z || 0,
+                width,
+                height,
+                depth: sampleDepth
               } : {}),
             };
           }
         }
       }
     });
-    return matrix3D;
+    return matrix;
   }, [mapData]);
 
   const getCellStatus = cell => {
@@ -212,13 +222,13 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
     return exp >= now && exp < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   }).length;
 
-  const currentLevelGrid = gridMatrix3D[selectedLevel] || [];
   const totalLevels = mapData.shelf.grid_height || 10;
+  const totalDepth = mapData.shelf.shelf_depth || 10;
+  const totalCols = mapData.shelf.grid_width || 10;
   
-  // Z Depth: 0 es frente, MAX es fondo. Vamos a renderizar de Fondo a Frente, es decir, revertiremos las rows o iteraremos de MAX a 0.
-  // Normalmente top-down visualiza Z como el eje Vertical de arriba a abajo.
-  // Si Arriba = Fondo, entonces Z_Max está en top y Z_0 en bottom.
-
+  // gridMatrix3D[y][z][x] - obtener el nivel y profundidad actuales
+  const currentDepthGrid = (gridMatrix3D[selectedLevel] || [])[selectedDepth] || [];
+  
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
@@ -231,7 +241,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
             </h2>
             <p className="text-sm text-gray-400">
               {selectedShelf?.provider && `${selectedShelf.provider} · `}
-              {totalLevels} Niveles · {mapData.shelf.shelf_depth || 10} Fondo · {mapData.shelf.grid_width} Ancho
+              {totalCols} Columnas × {totalLevels} Niveles × {totalDepth} Profundidad
             </p>
           </div>
         </div>
@@ -322,14 +332,72 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
               <ChevronDownIcon className="w-6 h-6" />
             </button>
           </div>
+
+          <div className="mt-6 border-t border-gray-700/30 pt-4 w-full">
+            <div className="text-center mb-3">
+              <h3 className="font-semibold text-gray-200 text-xs">Eje Z</h3>
+              <p className="text-[10px] text-gray-500">Profundidad</p>
+            </div>
+            <div className="flex items-center justify-between gap-1 mb-2">
+              <button 
+                onClick={() => setSelectedDepth(Math.max(0, selectedDepth - 1))}
+                disabled={selectedDepth === 0}
+                className="p-1.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:text-gray-400"
+              >
+                <ChevronLeftIcon className="w-4 h-4" />
+              </button>
+              <div className="flex-1 flex gap-1 justify-center flex-wrap">
+                {Array.from({ length: totalDepth }).map((_, i) => {
+                  const isSelected = i === selectedDepth;
+                  const itemsInDepth = mapData.samples.filter(s => (s.position_z || 0) === i).length;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedDepth(i)}
+                      className={`
+                        w-6 h-6 text-[9px] rounded transition-all duration-200
+                        ${isSelected 
+                          ? 'bg-primary-500/30 text-primary-300 font-bold border border-primary-500/50' 
+                          : 'text-gray-500 hover:text-gray-300 hover:bg-surface-400/50 border border-transparent'}
+                      `}
+                      title={`Profundidad ${i + 1}${itemsInDepth > 0 ? ` (${itemsInDepth} muestras)` : ''}`}
+                    >
+                      {i + 1}
+                    </button>
+                  );
+                })}
+              </div>
+              <button 
+                onClick={() => setSelectedDepth(Math.min(totalDepth - 1, selectedDepth + 1))}
+                disabled={selectedDepth === totalDepth - 1}
+                className="p-1.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:text-gray-400"
+              >
+                <ChevronRightIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-gray-700/30 pt-4 w-full">
+            <button
+               onClick={() => setShowDefragTool(!showDefragTool)}
+               className={`w-full py-3 rounded-xl flex flex-col items-center justify-center gap-2 transition-all duration-300 border ${
+                 showDefragTool 
+                   ? 'bg-primary-500/10 border-primary-500/50 text-primary-400' 
+                   : 'bg-surface-500/30 border-gray-700/50 text-gray-400 hover:bg-surface-500/50 hover:text-white'
+               }`}
+            >
+              <ArrowsRightLeftIcon className="w-6 h-6" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Optimizar</span>
+            </button>
+          </div>
         </div>
 
         {/* Top-Down Grid (Ejes X y Z) */}
-        <div className="col-span-10 card p-6 min-h-[500px] flex flex-col">
+        <div className={showDefragTool ? 'col-span-6 card p-6' : 'col-span-10 card p-6 animate-all duration-300'}>
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="font-semibold text-gray-200">Vista Isométrica 3D</h3>
-              <p className="text-xs text-gray-500">Nivel actual: Nivel {selectedLevel + 1}</p>
+              <p className="text-xs text-gray-500">Nivel actual: Nivel {selectedLevel + 1} · Profundidad: {selectedDepth + 1}</p>
             </div>
             
             <div className="flex items-center gap-4 bg-surface-500/30 px-4 py-2 rounded-lg">
@@ -373,60 +441,57 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
               />
               
               <group position={[0, -0.5, 0]}>
-                {/* Panel Base del Anaquel */}
+                {/* Panel Base del Anaquel: X=width, Z=depth */}
                 <mesh position={[0, -0.1, 0]}>
-                  <boxGeometry args={[mapData.shelf.grid_width || 10, 0.2, mapData.shelf.shelf_depth || 10]} />
+                  <boxGeometry args={[totalCols, 0.2, totalDepth]} />
                   <meshStandardMaterial color="#1f222e" roughness={0.9} metalness={0.1} />
                 </mesh>
                 
                 {/* Pared de Fondo (Back wall) */}
-                <mesh position={[0, 0.4, -(mapData.shelf.shelf_depth || 10) / 2 - 0.1]}>
-                  <boxGeometry args={[mapData.shelf.grid_width || 10, 1.2, 0.2]} />
+                <mesh position={[0, 0.4, -totalDepth / 2 - 0.1]}>
+                  <boxGeometry args={[totalCols, 1.2, 0.2]} />
                   <meshStandardMaterial color="#111827" metalness={0.8} roughness={0.4} />
                 </mesh>
 
                 {/* Borde Frontal Iluminado (Frente) */}
-                <mesh position={[0, 0, (mapData.shelf.shelf_depth || 10) / 2 + 0.05]}>
-                  <boxGeometry args={[mapData.shelf.grid_width || 10, 0.05, 0.1]} />
+                <mesh position={[0, 0, totalDepth / 2 + 0.05]}>
+                  <boxGeometry args={[totalCols, 0.05, 0.1]} />
                   <meshStandardMaterial color="#0ea5e9" emissive="#0ea5e9" emissiveIntensity={0.5} />
                 </mesh>
 
                 {/* Cuadricula Visual para Guía de Coordenadas */}
                 <gridHelper 
-                  args={[Math.max(mapData.shelf.grid_width || 10, mapData.shelf.shelf_depth || 10), Math.max(mapData.shelf.grid_width || 10, mapData.shelf.shelf_depth || 10), '#3b4252', '#2e3440']} 
+                  args={[Math.max(totalCols, totalDepth), Math.max(totalCols, totalDepth), '#3b4252', '#2e3440']} 
                   position={[0, 0.01, 0]} 
                 />
 
-                {/* Renderizar Cajas / Muestras */}
-                {currentLevelGrid.map((row, z) => 
-                  row.map((cell, x) => {
-                    if (!cell || !cell.is_main_cell) return null;
-                    const isFocusingOne = Boolean(selectedCell || hoveredCell);
-                    const isSelected = selectedCell?.x === x && selectedCell?.z === z && selectedCell?.level === selectedLevel;
-                    const isVisible = shouldShowCell(cell);
-                    // Se oscurece si hay foco activo y esta caja no es ni el hover ni la seleccionada, O si el filtro de búsqueda/estado la oculta
-                    const isDimmed = !isVisible || (isFocusingOne && !isSelected && !(hoveredCell?.x === x && hoveredCell?.z === z));
-                    
-                    const offsetX = -(mapData.shelf.grid_width || 10) / 2;
-                    const offsetZ = -(mapData.shelf.shelf_depth || 10) / 2;
+                {/* Renderizar Cajas / Muestras - currentDepthGrid[x] */}
+                {currentDepthGrid.map((cell, x) => {
+                  if (!cell || !cell.is_main_cell) return null;
+                  const isFocusingOne = Boolean(selectedCell || hoveredCell);
+                  const isSelected = selectedCell?.x === x && selectedCell?.level === selectedLevel && selectedCell?.z === selectedDepth;
+                  const isVisible = shouldShowCell(cell);
+                  const isDimmed = !isVisible || (isFocusingOne && !isSelected && !(hoveredCell?.x === x && hoveredCell?.z === selectedDepth));
+                  
+                  const offsetX = -totalCols / 2;
+                  const offsetZ = -totalDepth / 2;
 
-                    return (
-                      <SampleMesh
-                        key={`${x}-${z}`}
-                        cell={cell}
-                        x={x}
-                        z={z}
-                        offsetX={offsetX}
-                        offsetZ={offsetZ}
-                        isSelected={isSelected}
-                        isDimmed={isDimmed}
-                        status={getCellStatus(cell)}
-                        onHover={(cellData) => setHoveredCell(cellData ? { x, z, level: selectedLevel, cell: cellData } : null)}
-                        onClick={() => setSelectedCell(isSelected ? null : { x, z, level: selectedLevel, cell })}
-                      />
-                    );
-                  })
-                )}
+                  return (
+                    <SampleMesh
+                      key={`${x}-${selectedDepth}`}
+                      cell={cell}
+                      x={x}
+                      z={selectedDepth}
+                      offsetX={offsetX}
+                      offsetZ={offsetZ}
+                      isSelected={isSelected}
+                      isDimmed={isDimmed}
+                      status={getCellStatus(cell)}
+                      onHover={(cellData) => setHoveredCell(cellData ? { x, z: selectedDepth, level: selectedLevel, cell: cellData } : null)}
+                      onClick={() => setSelectedCell(isSelected ? null : { x, z: selectedDepth, level: selectedLevel, cell })}
+                    />
+                  );
+                })}
               </group>
             </Canvas>
             
@@ -457,6 +522,29 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
             ))}
           </div>
         </div>
+
+        {/* Panel lateral de Desfragmentación */}
+        {showDefragTool && (
+          <div className="col-span-4 animate-slide-in-right h-full">
+            <DefragmentationTool 
+              shelfId={selectedShelf.id}
+              onMovementConfirmed={fetchMapData}
+              onFinished={() => setShowDefragTool(false)}
+            />
+            
+            <div className="mt-5 card p-4 bg-info-500/5 border-info-500/10">
+              <div className="flex items-start gap-3">
+                <InformationCircleIcon className="w-5 h-5 text-info-400 shrink-0" />
+                <div>
+                  <h5 className="text-xs font-bold text-info-400 uppercase mb-1 tracking-wider">Modo Desfragmentación</h5>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Siga el plan de movimientos para crear espacio contiguo. El modelo 3D se actualizará automáticamente después de cada confirmación.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
 

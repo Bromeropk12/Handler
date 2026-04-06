@@ -35,10 +35,11 @@ const subdivideBulkSample = async (req, res, next) => {
       throw new AppError(`Solo hay ${bulk.available_units} unidades disponibles. Solicitó ${number_of_units}.`, 400);
     }
 
-    // Parsear dimensiones del enum
+    // Parsear dimensiones del enum 3D
     const dimensions = parseDimensions(bulk.dimensions);
     const width = dimensions.width;
     const height = dimensions.height;
+    const depth = dimensions.depth;
 
     const txQueries = [];
     const generatedSamples = [];
@@ -66,11 +67,11 @@ const subdivideBulkSample = async (req, res, next) => {
         query: `
           INSERT INTO dispensed_samples (
             global_sample_id, qr_code, qr_data, weight_grams, status,
-            width, height, shelf_id, position_x, position_y
-          ) VALUES ($1, $2, $3, $4, 'stored', $5, $6, NULL, NULL, NULL)
+            width, height, depth, shelf_id, position_x, position_y, position_z
+          ) VALUES ($1, $2, $3, $4, 'stored', $5, $6, $7, NULL, NULL, NULL, NULL)
           RETURNING id
         `,
-        params: [global_sample_id, qrCode, JSON.stringify(qrData), weight_per_unit, width, height]
+        params: [global_sample_id, qrCode, JSON.stringify(qrData), weight_per_unit, width, height, depth]
       });
     }
 
@@ -138,6 +139,7 @@ const subdivideBulkSample = async (req, res, next) => {
       const sample = sampleData.rows[0];
       sample.width = width;
       sample.height = height;
+      sample.depth = depth;
 
       let placed = false;
 
@@ -149,16 +151,16 @@ const subdivideBulkSample = async (req, res, next) => {
           // Colocar en el anaquel encontrado
           await query(`
             UPDATE dispensed_samples
-            SET shelf_id = $1, position_x = $2, position_y = $3, updated_at = CURRENT_TIMESTAMP
-            WHERE id = $4
-          `, [shelf.id, autoPos.x, autoPos.y, sampleId]);
+            SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $5
+          `, [shelf.id, autoPos.x, autoPos.y, autoPos.z, sampleId]);
 
           placements.push({
             sample_id: sampleId,
             qr_code: sample.qr_code,
             shelf_name: shelf.name,
-            position: { x: autoPos.x, y: autoPos.y },
-            dimensions: `${width}x${height}`
+            position: { x: autoPos.x, y: autoPos.y, z: autoPos.z },
+            dimensions: `${width}x${height}x${depth}`
           });
 
           placed = true;

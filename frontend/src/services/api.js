@@ -76,6 +76,8 @@ export const warehouseAPI = {
   placeSample: apiCircuitBreaker.wrap('warehouse/place', (id, data) => api.post(`/warehouse/${id}/place-sample`, data)),
   moveSample: apiCircuitBreaker.wrap('warehouse/move', (id, data) => api.put(`/warehouse/${id}/move-sample`, data)),
   removeSample: apiCircuitBreaker.wrap('warehouse/remove', (id, data) => api.delete(`/warehouse/${id}/remove-sample`, data)),
+  defragment: (id, data) => api.post(`/warehouse/${id}/defragment`, data),
+  confirmDefragMove: (id, data) => api.post(`/warehouse/${id}/defragment/confirm`, data),
 };
 
 export const suppliersAPI = {

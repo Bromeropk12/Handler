@@ -1,14 +1,14 @@
 /**
- * Warehouse Validations Module
+ * Warehouse Validations Module - 3D
  * Validaciones para anaqueles y compatibilidad SGA
  * 
- * Grid 2D: X = Columna (horizontal), Y = Nivel (vertical)
- * Las muestras ocupan width x height celdas contiguas
+ * Grid 3D: X = Columna (horizontal), Y = Nivel (vertical), Z = Profundidad
+ * Las muestras ocupan width × height × depth celdas contiguas
  */
 
 const { query } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
-const { areCompatible, getMinimumDistance } = require('../../utils/sga-compatibility');
+const { areCompatible } = require('../../utils/sga-compatibility');
 
 // Validaciones para datos de anaquel
 const validateShelfData = (data) => {
@@ -27,94 +27,129 @@ const validateShelfData = (data) => {
   if (data.grid_height && (data.grid_height < 1 || data.grid_height > 50)) {
     throw new AppError('El alto del grid debe estar entre 1 y 50', 400);
   }
+
+  if (data.shelf_depth && (data.shelf_depth < 1 || data.shelf_depth > 50)) {
+    throw new AppError('La profundidad del grid debe estar entre 1 y 50', 400);
+  }
 };
 
 /**
- * Convierte dimensiones enum a valores numéricos
- * '1x1' -> {width: 1, height: 1}
- * '1x2' -> {width: 1, height: 2} (1 columna, 2 niveles)
- * '2x1' -> {width: 2, height: 1} (2 columnas, 1 nivel)
- * '2x2' -> {width: 2, height: 2} (2 columnas, 2 niveles)
+ * Convierte dimensiones enum 3D a valores numéricos
+ * Formato: Ancho(X) × Alto(Y) × Profundidad(Z)
+ * 
+ * '1x1x1' -> {width: 1, height: 1, depth: 1}
+ * '1x2x1' -> {width: 1, height: 2, depth: 1}
+ * '2x1x1' -> {width: 2, height: 1, depth: 1}
+ * '2x2x1' -> {width: 2, height: 2, depth: 1}
+ * '1x1x2' -> {width: 1, height: 1, depth: 2}
+ * '1x2x2' -> {width: 1, height: 2, depth: 2}
+ * '2x1x2' -> {width: 2, height: 1, depth: 2}
+ * '2x2x2' -> {width: 2, height: 2, depth: 2}
+ * 
+ * Soporte retroactivo para formato 2D:
+ * '1x1' -> {width: 1, height: 1, depth: 1}
+ * '1x2' -> {width: 1, height: 2, depth: 1}
+ * '2x1' -> {width: 2, height: 1, depth: 1}
+ * '2x2' -> {width: 2, height: 2, depth: 1}
  */
 function parseDimensions(dimensionsEnum) {
-  const mapping = {
-    '1x1': { width: 1, height: 1 },
-    '1x2': { width: 1, height: 2 },
-    '2x1': { width: 2, height: 1 },
-    '2x2': { width: 2, height: 2 }
+  const mapping3D = {
+    '1x1x1': { width: 1, height: 1, depth: 1 },
+    '1x2x1': { width: 1, height: 2, depth: 1 },
+    '2x1x1': { width: 2, height: 1, depth: 1 },
+    '2x2x1': { width: 2, height: 2, depth: 1 },
+    '1x1x2': { width: 1, height: 1, depth: 2 },
+    '1x2x2': { width: 1, height: 2, depth: 2 },
+    '2x1x2': { width: 2, height: 1, depth: 2 },
+    '2x2x2': { width: 2, height: 2, depth: 2 }
   };
-  return mapping[dimensionsEnum] || { width: 1, height: 1 };
+
+  const mapping2D = {
+    '1x1': { width: 1, height: 1, depth: 1 },
+    '1x2': { width: 1, height: 2, depth: 1 },
+    '2x1': { width: 2, height: 1, depth: 1 },
+    '2x2': { width: 2, height: 2, depth: 1 }
+  };
+
+  return mapping3D[dimensionsEnum] || mapping2D[dimensionsEnum] || { width: 1, height: 1, depth: 1 };
 }
 
 /**
- * Verifica si dos rectángulos 2D se superponen
- * rect = {x, y, w, h} donde x=columna, y=nivel
+ * Verifica si dos cajas 3D se superponen
+ * box = {x, y, z, w, h, d} donde x=columna, y=nivel, z=profundidad
  */
-function rectanglesOverlap(rect1, rect2) {
-  return !(rect1.x + rect1.w <= rect2.x ||
-           rect2.x + rect2.w <= rect1.x ||
-           rect1.y + rect1.h <= rect2.y ||
-           rect2.y + rect2.h <= rect1.y);
+function boxesOverlap(box1, box2) {
+  return !(box1.x + box1.w <= box2.x ||
+           box2.x + box2.w <= box1.x ||
+           box1.y + box1.h <= box2.y ||
+           box2.y + box2.h <= box1.y ||
+           box1.z + box1.d <= box2.z ||
+           box2.z + box2.d <= box1.z);
 }
 
 /**
- * Obtiene muestras vecinas adyacentes para validación SGA
- * Vecinos son muestras en el mismo anaquel cuyo centro está a distancia <= 2
+ * Obtiene muestras vecinas adyacentes para validación SGA en 3D
  */
-async function getNeighbors(shelfId, x, y, width, height) {
-  // Buscar muestras cuyas celdas estén dentro de un radio de 2 celdas
+async function getNeighbors(shelfId, x, y, z, width, height, depth) {
   const adjacentSamples = await query(`
-    SELECT ds.id, ds.position_x, ds.position_y, ds.width, ds.height, gs.ghs_danger_class
+    SELECT ds.id, ds.position_x, ds.position_y, ds.position_z, ds.width, ds.height, ds.depth, gs.ghs_danger_class
     FROM dispensed_samples ds
     JOIN global_samples gs ON ds.global_sample_id = gs.id
     WHERE ds.shelf_id = $1 AND ds.status = 'stored'
-      AND ds.position_x BETWEEN $2 - 3 AND $2 + $3 + 2
-      AND ds.position_y BETWEEN $4 - 3 AND $4 + $5 + 2
-  `, [shelfId, x, width, y, height]);
+      AND ds.position_x BETWEEN $2 - 4 AND $2 + $3 + 3
+      AND ds.position_y BETWEEN $4 - 4 AND $4 + $5 + 3
+      AND ds.position_z BETWEEN $6 - 4 AND $6 + $7 + 3
+  `, [shelfId, x, width, y, height, z, depth]);
 
-  // Filtrar solo las que realmente están adyacentes (distancia Manhattan <= 2)
   return adjacentSamples.rows.filter(s => {
-    const dist = Math.abs(s.position_x - x) + Math.abs(s.position_y - y);
-    return dist <= 3 && dist > 0; // Excluir la misma posición
+    const dist = Math.abs(s.position_x - x) + Math.abs(s.position_y - y) + Math.abs(s.position_z - z);
+    return dist <= 3 && dist > 0;
   });
 }
 
 /**
- * Valida el posicionamiento de una muestra en un anaquel
- * Verifica límites del grid, overlap y compatibilidad SGA
+ * Valida el posicionamiento de una muestra en un anaquel 3D
  */
-async function validatePlacement(shelf, sample, position_x, position_y) {
-  // Verificar límites del grid 2D
-  if (position_x < 0 || position_y < 0) {
+async function validatePlacement(shelf, sample, position_x, position_y, position_z) {
+  const gridWidth = shelf.grid_width || 10;
+  const gridHeight = shelf.grid_height || 10;
+  const shelfDepth = shelf.shelf_depth || 10;
+  const sampleWidth = sample.width || 1;
+  const sampleHeight = sample.height || 1;
+  const sampleDepth = sample.depth || 1;
+
+  if (position_x < 0 || position_y < 0 || position_z < 0) {
     throw new AppError('Las posiciones no pueden ser negativas', 400);
   }
 
-  if (position_y + sample.height > shelf.grid_height) {
-    throw new AppError(`El nivel excede el límite del anaquel (máx: ${shelf.grid_height - sample.height})`, 400);
+  if (position_y + sampleHeight > gridHeight) {
+    throw new AppError(`El nivel excede el límite del anaquel (máx: ${gridHeight - sampleHeight})`, 400);
   }
 
-  if (position_x + sample.width > shelf.grid_width) {
-    throw new AppError(`La muestra excede el límite horizontal del anaquel (máx: ${shelf.grid_width - sample.width})`, 400);
+  if (position_x + sampleWidth > gridWidth) {
+    throw new AppError(`La muestra excede el límite horizontal del anaquel (máx: ${gridWidth - sampleWidth})`, 400);
   }
 
-  // Verificar overlap con otras muestras
+  if (position_z + sampleDepth > shelfDepth) {
+    throw new AppError(`La muestra excede la profundidad del anaquel (máx: ${shelfDepth - sampleDepth})`, 400);
+  }
+
   const occupiedCells = await query(`
-    SELECT position_x, position_y, width, height
+    SELECT position_x, position_y, position_z, width, height, depth
     FROM dispensed_samples
     WHERE shelf_id = $1 AND status = 'stored' AND id != $2
   `, [shelf.id, sample.id || null]);
 
   for (const occupied of occupiedCells.rows) {
-    if (rectanglesOverlap(
-      { x: position_x, y: position_y, w: sample.width, h: sample.height },
-      { x: occupied.position_x, y: occupied.position_y, w: occupied.width, h: occupied.height }
+    if (boxesOverlap(
+      { x: position_x, y: position_y, z: position_z, w: sampleWidth, h: sampleHeight, d: sampleDepth },
+      { x: occupied.position_x, y: occupied.position_y, z: occupied.position_z, w: occupied.width || 1, h: occupied.height || 1, d: occupied.depth || 1 }
     )) {
       throw new AppError('La posición se superpone con otra muestra', 400);
     }
   }
 
-  // Verificar compatibilidad SGA con vecinos adyacentes
-  const neighbors = await getNeighbors(shelf.id, position_x, position_y, sample.width, sample.height);
+  const neighbors = await getNeighbors(shelf.id, position_x, position_y, position_z, sampleWidth, sampleHeight, sampleDepth);
   for (const neighbor of neighbors) {
     if (!areCompatible(sample.ghs_danger_class, neighbor.ghs_danger_class)) {
       throw new AppError(
@@ -126,82 +161,46 @@ async function validatePlacement(shelf, sample, position_x, position_y) {
 }
 
 /**
- * Encuentra la mejor posición disponible para una muestra en un anaquel
- * 
- * Algoritmo:
- * 1. Recorre el grid nivel por nivel (de abajo hacia arriba)
- * 2. Dentro de cada nivel, recorre de izquierda a derecha
- * 3. Para cada posición posible, verifica:
- *    a. No hay overlap con muestras existentes
- *    b. Es compatible SGA con vecinos adyacentes
- * 4. Retorna la primera posición válida encontrada
- * 
- * @param {object} shelf - Datos del anaquel (id, grid_width, grid_height)
- * @param {object} sample - Datos de la muestra (width, height, ghs_danger_class, id)
- * @returns {object} {x, y} - Coordenadas de la posición encontrada
+ * Encuentra la mejor posición disponible para una muestra en un anaquel 3D
  */
 async function findAutoPlacement(shelf, sample) {
-  // Obtener todas las muestras ocupadas en el anaquel
   const occupiedResult = await query(`
-    SELECT position_x, position_y, width, height
-    FROM dispensed_samples
-    WHERE shelf_id = $1 AND status = 'stored'
+    SELECT position_x, position_y, position_z, width, height, depth, gs.ghs_danger_class
+    FROM dispensed_samples ds
+    JOIN global_samples gs ON ds.global_sample_id = gs.id
+    WHERE ds.shelf_id = $1 AND ds.status = 'stored'
   `, [shelf.id]);
   const occupied = occupiedResult.rows;
 
-  const levels = shelf.grid_height || 10;
-  const cols = shelf.grid_width || 10;
+  const gridWidth = shelf.grid_width || 10;
+  const gridHeight = shelf.grid_height || 10;
+  const shelfDepth = shelf.shelf_depth || 10;
+  const sampleWidth = sample.width || 1;
+  const sampleHeight = sample.height || 1;
+  const sampleDepth = sample.depth || 1;
 
-  // Recorrer nivel por nivel (de abajo hacia arriba)
-  for (let y = 0; y < levels; y++) {
-    // Dentro de cada nivel, de izquierda a derecha
-    for (let x = 0; x <= cols - sample.width; x++) {
-      
-      // Verificar overlap
-      let collides = false;
-      for (const occ of occupied) {
-        if (rectanglesOverlap(
-          { x, y, w: sample.width, h: sample.height },
-          { x: occ.position_x, y: occ.position_y, w: occ.width, h: occ.height }
-        )) {
-          collides = true;
-          break;
+  for (let y = 0; y < gridHeight; y++) {
+    for (let x = 0; x <= gridWidth - sampleWidth; x++) {
+      for (let z = 0; z <= shelfDepth - sampleDepth; z++) {
+        
+        let collides = false;
+        for (const occ of occupied) {
+          if (boxesOverlap(
+            { x, y, z, w: sampleWidth, h: sampleHeight, d: sampleDepth },
+            { x: occ.position_x, y: occ.position_y, z: occ.position_z, w: occ.width || 1, h: occ.height || 1, d: occ.depth || 1 }
+          )) {
+            collides = true;
+            break;
+          }
         }
-      }
 
-      if (collides) continue;
-
-      // Si no choca físicamente, verificar compatibilidad SGA
-      // Obtener vecinos en esta posición potencial
-      const neighbors = occupied
-        .filter(occ => {
-          const dist = Math.abs(occ.position_x - x) + Math.abs(occ.position_y - y);
-          return dist <= 3 && dist > 0;
-        })
-        .map(occ => ({
-          id: occ.position_x, // placeholder
-          ghs_danger_class: occ.ghs_danger_class || 'Sin Riesgo',
-          position_x: occ.position_x,
-          position_y: occ.position_y
-        }));
-
-      // Para verificación SGA real, necesitamos las clases de peligro de las ocupadas
-      // Hacemos una query adicional solo si hay vecinos cercanos
-      if (neighbors.length > 0) {
-        const realNeighbors = await query(`
-          SELECT ds.id, gs.ghs_danger_class, ds.position_x, ds.position_y
-          FROM dispensed_samples ds
-          JOIN global_samples gs ON ds.global_sample_id = gs.id
-          WHERE ds.shelf_id = $1 AND ds.status = 'stored'
-            AND ds.position_x BETWEEN $2 - 3 AND $2 + $3 + 2
-            AND ds.position_y BETWEEN $4 - 3 AND $4 + $5 + 2
-        `, [shelf.id, x, sample.width, y, sample.height]);
+        if (collides) continue;
 
         let sgaConflict = false;
-        for (const neighbor of realNeighbors.rows) {
-          const dist = Math.abs(neighbor.position_x - x) + Math.abs(neighbor.position_y - y);
+        for (const occ of occupied) {
+          const dist = Math.abs(occ.position_x - x) + Math.abs(occ.position_y - y) + Math.abs(occ.position_z - z);
           if (dist <= 3 && dist > 0) {
-            if (!areCompatible(sample.ghs_danger_class, neighbor.ghs_danger_class)) {
+            if (!areCompatible(sample.ghs_danger_class, occ.ghs_danger_class || 'Sin Riesgo')) {
               sgaConflict = true;
               break;
             }
@@ -209,52 +208,40 @@ async function findAutoPlacement(shelf, sample) {
         }
 
         if (sgaConflict) continue;
-      }
 
-      // Posición válida encontrada
-      return { x, y };
+        return { x, y, z };
+      }
     }
   }
 
   throw new AppError(
-    `No hay espacio disponible en el anaquel "${shelf.name}" para una muestra de dimensiones ${sample.width}x${sample.height}`, 
+    `No hay espacio disponible en el anaquel "${shelf.name}" para una muestra de dimensiones ${sampleWidth}x${sampleHeight}x${sampleDepth}`, 
     400
   );
 }
 
 /**
- * Calcula el porcentaje de ocupación de un anaquel
- * 
- * @param {object} shelf - Datos del anaquel
- * @param {number} occupiedCells - Celdas ocupadas
- * @returns {number} Porcentaje de ocupación (0-100)
+ * Calcula el porcentaje de ocupación de un anaquel 3D
  */
-function calculateOccupancy(shelf, occupiedCells) {
-  const totalCells = (shelf.grid_width || 10) * (shelf.grid_height || 10);
+function calculateOccupancy(occupiedCells, shelf) {
+  const totalCells = (shelf.grid_width || 10) * (shelf.grid_height || 10) * (shelf.shelf_depth || 10);
   return Math.round((occupiedCells / totalCells) * 100);
 }
 
 /**
  * Verifica si hay espacio suficiente para una muestra en un anaquel
- * (sin verificar compatibilidad SGA, solo espacio físico)
- * 
- * @param {object} shelf - Datos del anaquel
- * @param {object} sample - Dimensiones de la muestra {width, height}
- * @returns {boolean} true si hay espacio físico
  */
 function hasPhysicalSpace(shelf, sample) {
-  // Si la muestra es más grande que el anaquel, no cabe
-  if (sample.width > shelf.grid_width || sample.height > shelf.grid_height) {
+  if (sample.width > shelf.grid_width || sample.height > shelf.grid_height || sample.depth > shelf.shelf_depth) {
     return false;
   }
-  // Hay al menos una celda del tamaño necesario
   return true;
 }
 
 module.exports = {
   validateShelfData,
   parseDimensions,
-  rectanglesOverlap,
+  boxesOverlap,
   validatePlacement,
   getNeighbors,
   findAutoPlacement,

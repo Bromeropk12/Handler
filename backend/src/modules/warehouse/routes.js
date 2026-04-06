@@ -16,7 +16,9 @@ const {
   placeSample,
   moveSample,
   removeSample,
-  autoPlaceSamples
+  autoPlaceSamples,
+  defragmentShelf,
+  confirmDefragMove
 } = require('./controller');
 
 // Aplicar middleware de autenticación a todas las rutas
@@ -35,5 +37,9 @@ router.post('/:id/place-sample', authorize('operator'), placeSample);    // Colo
 router.post('/:id/auto-place', authorize('admin'), autoPlaceSamples);    // Auto-colocar múltiples
 router.put('/:id/move-sample', authorize('operator'), moveSample);       // Mover muestra
 router.delete('/:id/remove-sample', authorize('operator'), removeSample); // Quitar muestra
+
+// Desfragmentación
+router.post('/:id/defragment', authorize('admin'), defragmentShelf);              // Calcular plan de desfragmentación
+router.post('/:id/defragment/confirm', authorize('admin'), confirmDefragMove);    // Confirmar y ejecutar un movimiento
 
 module.exports = router;

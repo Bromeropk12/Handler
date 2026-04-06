@@ -19,6 +19,11 @@ const {
   autoPlaceSamples
 } = require('./map-operations');
 
+const {
+  defragmentShelf,
+  confirmDefragMove
+} = require('./defragment-operations');
+
 module.exports = {
   createShelf,
   getShelves,
@@ -29,5 +34,7 @@ module.exports = {
   placeSample,
   moveSample,
   removeSample,
-  autoPlaceSamples
+  autoPlaceSamples,
+  defragmentShelf,
+  confirmDefragMove
 };
