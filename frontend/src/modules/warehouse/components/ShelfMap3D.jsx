@@ -229,22 +229,27 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
 
   const currentDepthGrid = useMemo(() => (gridMatrix3D?.[selectedLevel] || [])[selectedDepth] || [], [gridMatrix3D, selectedLevel, selectedDepth]);
 
-  // Estadísticas del nivel actual
-  const levelStats = useMemo(() => {
-    if (!mapData || !currentDepthGrid.length) return { occupied: 0, free: 0, expired: 0, warning: 0, occupancyPercent: 0 };
-    let occupied = 0, expired = 0, warning = 0;
+  // Estadísticas del ANAQUEL COMPLETO (no solo del nivel actual)
+  const shelfStats = useMemo(() => {
+    if (!mapData) return { occupied: 0, free: 0, expired: 0, warning: 0, occupancyPercent: 0, totalCapacity: 0 };
+    const totalCapacity = mapData.shelf.total_capacity || (mapData.shelf.grid_width || 10) * (mapData.shelf.grid_height || 10) * (mapData.shelf.shelf_depth || 10);
+    const totalSamples = mapData.samples.length;
+    let expired = 0, warning = 0;
     const now = new Date();
-    currentDepthGrid.forEach(cell => {
-      if (cell?.is_main_cell) {
-        occupied++;
-        const exp = new Date(cell.expiration_date);
-        if (exp < now) expired++;
-        else if (exp < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) warning++;
-      }
+    mapData.samples.forEach(s => {
+      const exp = new Date(s.expiration_date);
+      if (exp < now) expired++;
+      else if (exp < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) warning++;
     });
-    const totalCols = mapData.shelf.grid_width || 10;
-    return { occupied, free: totalCols - occupied, expired, warning, occupancyPercent: Math.round((occupied / totalCols) * 100) };
-  }, [mapData, currentDepthGrid]);
+    return {
+      occupied: totalSamples,
+      free: Math.max(0, totalCapacity - totalSamples),
+      expired,
+      warning,
+      occupancyPercent: totalCapacity > 0 ? Math.round((totalSamples / totalCapacity) * 100) : 0,
+      totalCapacity
+    };
+  }, [mapData]);
 
   const getCellStatus = cell => {
     if (!cell) return 'empty';
@@ -432,14 +437,14 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
             <h3 className="font-semibold text-gray-200 text-sm flex items-center gap-1.5 mb-3"><ChartBarIcon className="w-4 h-4 text-blue-400" />Estadísticas</h3>
             <div className="space-y-3">
               <div>
-                <div className="flex items-center justify-between text-xs mb-1"><span className="text-gray-400">Ocupación</span><span className="text-primary-400 font-mono">{levelStats.occupancyPercent}%</span></div>
-                <div className="w-full bg-gray-800 rounded-full h-2"><div className="bg-primary-500 h-full rounded-full transition-all duration-500" style={{ width: `${levelStats.occupancyPercent}%` }}></div></div>
+                <div className="flex items-center justify-between text-xs mb-1"><span className="text-gray-400">Ocupación</span><span className="text-primary-400 font-mono">{shelfStats.occupancyPercent}%</span></div>
+                <div className="w-full bg-gray-800 rounded-full h-2"><div className="bg-primary-500 h-full rounded-full transition-all duration-500" style={{ width: `${shelfStats.occupancyPercent}%` }}></div></div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-gray-800/50 rounded-lg p-2 text-center"><p className="text-lg font-bold text-blue-400">{levelStats.occupied}</p><p className="text-[10px] text-gray-500 uppercase">Ocupadas</p></div>
-                <div className="bg-gray-800/50 rounded-lg p-2 text-center"><p className="text-lg font-bold text-gray-400">{levelStats.free}</p><p className="text-[10px] text-gray-500 uppercase">Libres</p></div>
-                {levelStats.warning > 0 && <div className="bg-gray-800/50 rounded-lg p-2 text-center"><p className="text-lg font-bold text-yellow-400">{levelStats.warning}</p><p className="text-[10px] text-gray-500 uppercase">Alertas</p></div>}
-                {levelStats.expired > 0 && <div className="bg-gray-800/50 rounded-lg p-2 text-center"><p className="text-lg font-bold text-red-400">{levelStats.expired}</p><p className="text-[10px] text-gray-500 uppercase">Vencidas</p></div>}
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center"><p className="text-lg font-bold text-blue-400">{shelfStats.occupied}</p><p className="text-[10px] text-gray-500 uppercase">Ocupadas</p></div>
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center"><p className="text-lg font-bold text-gray-400">{shelfStats.free}</p><p className="text-[10px] text-gray-500 uppercase">Libres</p></div>
+                {shelfStats.warning > 0 && <div className="bg-gray-800/50 rounded-lg p-2 text-center"><p className="text-lg font-bold text-yellow-400">{shelfStats.warning}</p><p className="text-[10px] text-gray-500 uppercase">Alertas</p></div>}
+                {shelfStats.expired > 0 && <div className="bg-gray-800/50 rounded-lg p-2 text-center"><p className="text-lg font-bold text-red-400">{shelfStats.expired}</p><p className="text-[10px] text-gray-500 uppercase">Vencidas</p></div>}
               </div>
             </div>
           </div>

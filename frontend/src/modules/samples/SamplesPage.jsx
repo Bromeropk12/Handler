@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import DataTable from '../../components/DataTable';
 import Badge from '../../components/Badge';
 import Modal from '../../components/Modal';
-import { samplesAPI } from '../../services/api';
+import { samplesAPI, warehouseAPI } from '../../services/api';
 import {
   PlusIcon,
   BeakerIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
+  CubeIcon,
 } from '@heroicons/react/24/outline';
 
 const SamplesPage = () => {
@@ -16,13 +17,39 @@ const SamplesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedSample, setSelectedSample] = useState(null);
+  const [marketLines, setMarketLines] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [shelves, setShelves] = useState([]);
+  const [formData, setFormData] = useState({
+    name: '',
+    supplier_id: '',
+    lot: '',
+    expiration_date: '',
+    manufacture_date: '',
+    ghs_danger_class: '',
+    market_line_id: '',
+    dimensions: '1x1x1',
+    weight_per_unit_grams: '',
+    shelf_id: '',
+    position_x: '',
+    position_y: '',
+    position_z: ''
+  });
 
   useEffect(() => {
-    const fetchSamples = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await samplesAPI.getBulkSamples();
-        setSamples(response.data?.data?.samples || []);
+        const [samplesResp, mlResp, suppResp, shelvesResp] = await Promise.all([
+          samplesAPI.getBulkSamples(),
+          samplesAPI.getMarketLines(),
+          samplesAPI.getSuppliers(),
+          warehouseAPI.getShelves({ limit: 200 })
+        ]);
+        setSamples(samplesResp.data?.data?.bulkSamples || samplesResp.data?.data?.samples || []);
+        setMarketLines(mlResp.data?.data?.marketLines || []);
+        setSuppliers(suppResp.data?.data?.suppliers || []);
+        setShelves(shelvesResp.data?.data?.shelves || []);
       } catch (_err) {
         setSamples([]);
       } finally {
@@ -30,8 +57,39 @@ const SamplesPage = () => {
       }
     };
 
-    fetchSamples();
+    fetchData();
   }, []);
+
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleCreateSample = async () => {
+    // Validaciones
+    if (!formData.name || !formData.supplier_id || !formData.lot || !formData.expiration_date || !formData.manufacture_date || !formData.ghs_danger_class || !formData.market_line_id || !formData.weight_per_unit_grams) {
+      alert('Todos los campos obligatorios deben ser completados');
+      return;
+    }
+    if (new Date(formData.manufacture_date) > new Date(formData.expiration_date)) {
+      alert('La fecha de manufactura no puede ser posterior a la fecha de vencimiento');
+      return;
+    }
+    try {
+      await samplesAPI.createBulkSample(formData);
+      setShowCreateModal(false);
+      setFormData({
+        name: '', supplier_id: '', lot: '', expiration_date: '',
+        manufacture_date: '', ghs_danger_class: '', market_line_id: '',
+        dimensions: '1x1x1', weight_per_unit_grams: '',
+        shelf_id: '', position_x: '', position_y: '', position_z: ''
+      });
+      // Recargar datos
+      const samplesResp = await samplesAPI.getBulkSamples();
+      setSamples(samplesResp.data?.data?.bulkSamples || samplesResp.data?.data?.samples || []);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error al crear la muestra');
+    }
+  };
 
   const getSGABadge = (sgaClass) => {
     const map = {
@@ -165,7 +223,7 @@ const SamplesPage = () => {
             <button onClick={() => setShowCreateModal(false)} className="btn-secondary">
               Cancelar
             </button>
-            <button className="btn-primary">
+            <button onClick={handleCreateSample} className="btn-primary">
               Crear Muestra
             </button>
           </>
@@ -175,31 +233,29 @@ const SamplesPage = () => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">Nombre del Producto</label>
-              <input className="input" placeholder="Ej: Vitamina C" />
+              <input className="input" placeholder="Ej: Vitamina C" value={formData.name} onChange={e => handleInputChange('name', e.target.value)} />
             </div>
             <div>
               <label className="label">Lote</label>
-              <input className="input" placeholder="Ej: LOT-2026-001" />
+              <input className="input" placeholder="Ej: LOT-2026-001" value={formData.lot} onChange={e => handleInputChange('lot', e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">Proveedor</label>
-              <select className="select">
+              <select className="select" value={formData.supplier_id} onChange={e => handleInputChange('supplier_id', e.target.value)}>
                 <option value="">Seleccione...</option>
-                <option>BASF</option>
-                <option>Dow Chemical</option>
-                <option>Merck</option>
+                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div>
               <label className="label">Clase de Peligro SGA</label>
-              <select className="select">
+              <select className="select" value={formData.ghs_danger_class} onChange={e => handleInputChange('ghs_danger_class', e.target.value)}>
                 <option value="">Seleccione...</option>
                 <option>Sin Riesgo</option>
                 <option>Inflamable</option>
                 <option>Corrosivo</option>
-                <option>Tóxico</option>
+                <option>Toxico</option>
                 <option>Comburente</option>
                 <option>Explosivo</option>
               </select>
@@ -207,36 +263,68 @@ const SamplesPage = () => {
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="label">Cantidad (g/ml)</label>
-              <input type="number" className="input" placeholder="500" />
+              <label className="label">Peso por Unidad (g/ml)</label>
+              <input type="number" className="input" placeholder="500" value={formData.weight_per_unit_grams} onChange={e => handleInputChange('weight_per_unit_grams', e.target.value)} />
             </div>
             <div>
               <label className="label">Fecha Manufactura</label>
-              <input type="date" className="input" />
+              <input type="date" className="input" value={formData.manufacture_date} onChange={e => handleInputChange('manufacture_date', e.target.value)} />
             </div>
             <div>
               <label className="label">Fecha Vencimiento</label>
-              <input type="date" className="input" />
+              <input type="date" className="input" value={formData.expiration_date} onChange={e => handleInputChange('expiration_date', e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">Línea de Mercado</label>
-              <select className="select">
+              <select className="select" value={formData.market_line_id} onChange={e => handleInputChange('market_line_id', e.target.value)}>
                 <option value="">Seleccione...</option>
-                <option>Cosmética</option>
-                <option>Farmacéutica</option>
-                <option>Industrial</option>
+                {marketLines.map(ml => <option key={ml.id} value={ml.id}>{ml.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="label">Dimensiones (Ancho × Profundidad)</label>
-              <select className="select">
-                <option value="1x1">1×1</option>
-                <option value="1x2">1×2</option>
-                <option value="2x1">2×1</option>
-                <option value="2x2">2×2</option>
+              <label className="label">Dimensiones (Ancho × Alto × Profundidad)</label>
+              <select className="select" value={formData.dimensions} onChange={e => handleInputChange('dimensions', e.target.value)}>
+                <option value="1x1x1">1×1×1</option>
+                <option value="1x2x1">1×2×1</option>
+                <option value="2x1x1">2×1×1</option>
+                <option value="2x2x1">2×2×1</option>
+                <option value="1x1x2">1×1×2</option>
+                <option value="1x2x2">1×2×2</option>
+                <option value="2x1x2">2×1×2</option>
+                <option value="2x2x2">2×2×2</option>
               </select>
+            </div>
+          </div>
+          {/* Ubicación en Anaquel */}
+          <div className="border-t border-gray-700/50 pt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CubeIcon className="w-4 h-4 text-primary-400" />
+              <h4 className="text-sm font-medium text-gray-300">Ubicación en Anaquel (Opcional)</h4>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Anaquel</label>
+                <select className="select" value={formData.shelf_id} onChange={e => handleInputChange('shelf_id', e.target.value)}>
+                  <option value="">Sin ubicación (pendiente)</option>
+                  {shelves.map(s => <option key={s.id} value={s.id}>{s.name} ({s.market_line_name})</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="label text-[10px]">Col (X)</label>
+                  <input type="number" className="input text-sm" placeholder="0" min="0" value={formData.position_x} onChange={e => handleInputChange('position_x', e.target.value)} />
+                </div>
+                <div>
+                  <label className="label text-[10px]">Nivel (Y)</label>
+                  <input type="number" className="input text-sm" placeholder="0" min="0" value={formData.position_y} onChange={e => handleInputChange('position_y', e.target.value)} />
+                </div>
+                <div>
+                  <label className="label text-[10px]">Prof (Z)</label>
+                  <input type="number" className="input text-sm" placeholder="0" min="0" value={formData.position_z} onChange={e => handleInputChange('position_z', e.target.value)} />
+                </div>
+              </div>
             </div>
           </div>
         </div>

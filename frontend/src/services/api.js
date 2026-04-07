@@ -112,4 +112,19 @@ export const alertsAPI = {
   getSummary: () => api.get('/alerts/summary'),
 };
 
+export const marketLinesAPI = {
+  getAll: () => api.get('/market-lines'),
+  getById: (id) => api.get(`/market-lines/${id}`),
+  create: (data) => api.post('/market-lines', data),
+  update: (id, data) => api.put(`/market-lines/${id}`, data),
+  delete: (id) => api.delete(`/market-lines/${id}`),
+};
+
+export const shelfSuppliersAPI = {
+  getByShelf: (shelfId) => api.get(`/shelf-suppliers/shelf/${shelfId}`),
+  add: (data) => api.post('/shelf-suppliers', data),
+  update: (id, data) => api.put(`/shelf-suppliers/${id}`, data),
+  remove: (id) => api.delete(`/shelf-suppliers/${id}`),
+};
+
 export default api;

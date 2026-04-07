@@ -24,6 +24,8 @@ const movementsRoutes = require('./modules/movements/routes');
 const analyticsRoutes = require('./modules/analytics/routes');
 const suppliersRoutes = require('./modules/suppliers/routes');
 const alertsRoutes = require('./modules/alerts/routes');
+const marketLinesRoutes = require('./modules/market-lines/routes');
+const shelfSuppliersRoutes = require('./modules/shelf-suppliers/routes');
 
 // Importar middlewares
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -75,9 +77,34 @@ app.use(helmet({
   },
 }));
 
+// CORS: Permitir localhost y IPs de red local (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+const allowedOrigins = [
+  config.frontendUrl, // localhost:3000
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
+// Agregar IPs de red local si están configuradas
+if (process.env.ALLOWED_ORIGINS) {
+  allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()));
+}
+
 app.use(cors({
-  origin: config.frontendUrl, // Should match frontend localhost:3000
-  credentials: true, // IMPORTANT for cookies
+  origin: function (origin, callback) {
+    // Permitir requests sin origin (como mobile apps o curl)
+    if (!origin) return callback(null, true);
+    
+    // Verificar si es localhost o IP de red local
+    const isLocalhost = origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
+    const isPrivateIP = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(origin);
+    
+    if (isLocalhost || isPrivateIP || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Origen no permitido por CORS'));
+  },
+  credentials: true,
 }));
 
 app.use(limiter);
@@ -108,15 +135,19 @@ app.use('/api/movements', movementsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/alerts', alertsRoutes);
+app.use('/api/market-lines', marketLinesRoutes);
+app.use('/api/shelf-suppliers', shelfSuppliersRoutes);
 
 // Middleware de manejo de errores
 app.use(notFound);
 app.use(errorHandler(loggerInstance));
 
-// Iniciar servidor
-app.listen(PORT, () => {
-  loggerInstance.info(`Handler TrackSamples Backend corriendo en puerto ${PORT}`);
+// Iniciar servidor en 0.0.0.0 para aceptar conexiones de red local
+const HOST = process.env.HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => {
+  loggerInstance.info(`Handler TrackSamples Backend corriendo en ${HOST}:${PORT}`);
   loggerInstance.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  loggerInstance.info(`CORS: Aceptando localhost y IPs de red local (192.168.x.x, 10.x.x.x, 172.16-31.x.x)`);
 });
 
 // Manejo de señales de terminación

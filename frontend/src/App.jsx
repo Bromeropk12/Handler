@@ -6,10 +6,12 @@ import LoginPage from './modules/auth/LoginPage';
 import DashboardPage from './modules/dashboard/DashboardPage';
 import SamplesPage from './modules/samples/SamplesPage';
 import WarehousePage from './modules/warehouse/WarehousePage';
+import ShelfManagement from './modules/warehouse/ShelfManagement';
 import DispensingPage from './modules/dispensing/DispensingPage';
 import DispatchPage from './modules/dispatch/DispatchPage';
 import MovementsPage from './modules/movements/MovementsPage';
 import SuppliersPage from './modules/suppliers/SuppliersPage';
+import MarketLinesPage from './modules/market-lines/MarketLinesPage';
 import LoadingSpinner from './components/LoadingSpinner';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -55,10 +57,12 @@ const AppContent = () => {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/samples" element={<SamplesPage />} />
         <Route path="/warehouse" element={<WarehousePage />} />
+        <Route path="/shelves" element={<ShelfManagement />} />
         <Route path="/dispensing" element={<DispensingPage />} />
         <Route path="/dispatch" element={<DispatchPage />} />
         <Route path="/movements" element={<MovementsPage />} />
         <Route path="/suppliers" element={<SuppliersPage />} />
+        <Route path="/market-lines" element={<MarketLinesPage />} />
       </Route>
 
       {/* Fallback */}

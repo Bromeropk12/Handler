@@ -11,6 +11,8 @@ import {
   ArrowRightOnRectangleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  Squares2X2Icon,
+  CubeIcon,
 } from '@heroicons/react/24/outline';
 
 const navItems = [
@@ -31,6 +33,11 @@ const navItems = [
     icon: BuildingStorefrontIcon,
   },
   {
+    label: 'Anaqueles',
+    path: '/shelves',
+    icon: CubeIcon,
+  },
+  {
     label: 'Dispensación',
     path: '/dispensing',
     icon: EyeDropperIcon,
@@ -48,7 +55,12 @@ const navItems = [
   {
     label: 'Proveedores',
     path: '/suppliers',
-    icon: BuildingStorefrontIcon,
+    icon: Squares2X2Icon,
+  },
+  {
+    label: 'Líneas de Mercado',
+    path: '/market-lines',
+    icon: Squares2X2Icon,
   },
 ];
 

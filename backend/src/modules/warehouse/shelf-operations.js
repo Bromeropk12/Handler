@@ -1,14 +1,14 @@
 /**
  * Shelf Operations Module
- * Operaciones CRUD para gestión de anaqueles
+ * Operaciones CRUD para gestión de anaqueles con soporte de proveedores múltiples
  */
 
-const { query } = require('../../services/database');
+const { query, transaction } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { validateShelfData } = require('./validations');
 
 /**
- * Crear nuevo anaquel
+ * Crear nuevo anaquel con proveedores
  */
 const createShelf = async (req, res, next) => {
   try {
@@ -30,53 +30,95 @@ const createShelf = async (req, res, next) => {
       throw new AppError('Ya existe un anaquel con este nombre en la línea de mercado', 409);
     }
 
-    // Crear anaquel 3D
-    const result = await query(`
-      INSERT INTO shelves (
-        market_line_id, name, provider, grid_width, grid_height, shelf_depth
-      )
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
-    `, [
-      data.market_line_id,
-      data.name,
-      data.provider || null,
-      data.grid_width || 10,
-      data.grid_height || 10,
-      data.shelf_depth || 10
-    ]);
+    // Verificar proveedores si se proporcionan
+    const supplierIds = data.supplier_ids || [];
+    if (supplierIds.length > 0) {
+      const suppliers = await query('SELECT id FROM suppliers WHERE id = ANY($1)', [supplierIds]);
+      if (suppliers.rows.length !== supplierIds.length) {
+        throw new AppError('Uno o más proveedores no existen', 404);
+      }
+    }
 
-    const shelf = result.rows[0];
+    const txQueries = [];
+
+    // Crear anaquel 3D
+    txQueries.push({
+      query: `
+        INSERT INTO shelves (
+          market_line_id, name, grid_width, grid_height, shelf_depth, shelf_type
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+      `,
+      params: [
+        data.market_line_id,
+        data.name,
+        data.grid_width || 10,
+        data.grid_height || 10,
+        data.shelf_depth || 10,
+        data.shelf_type || 'storage'
+      ]
+    });
+
+    // Vincular proveedores
+    if (supplierIds.length > 0) {
+      const shelfIdIndex = txQueries.length; // Se resolverá después
+      supplierIds.forEach((supplierId, index) => {
+        txQueries.push({
+          query: `
+            INSERT INTO shelf_suppliers (shelf_id, supplier_id, is_primary)
+            VALUES ((SELECT id FROM shelves WHERE name = $1 AND market_line_id = $2), $3, $4)
+          `,
+          params: [data.name, data.market_line_id, supplierId, index === 0]
+        });
+      });
+    }
 
     // Log del movimiento
-    await query(`
-      INSERT INTO movements (sample_id, action_type, user_id, details)
-      VALUES ($1, $2, $3, $4)
-    `, [
-      shelf.id,
-      'created',
-      req.user.id,
-      JSON.stringify({
-        type: 'shelf_creation',
-        market_line_id: data.market_line_id,
-        grid_size: `${shelf.grid_width}x${shelf.grid_height}x${shelf.shelf_depth}`
-      })
-    ]);
+    txQueries.push({
+      query: `
+        INSERT INTO movements (sample_id, action_type, user_id, details)
+        VALUES ($1, $2, $3, $4)
+      `,
+      params: [
+        null, // Se actualizará después
+        'created',
+        req.user.id,
+        JSON.stringify({
+          type: 'shelf_creation',
+          market_line_id: data.market_line_id,
+          grid_size: `${data.grid_width || 10}x${data.grid_height || 10}x${data.shelf_depth || 10}`,
+          supplier_count: supplierIds.length
+        })
+      ]
+    });
+
+    // Ejecutar transacción
+    const results = await transaction(txQueries);
+    const shelf = results[0].rows[0];
+
+    // Actualizar el movement con el shelf_id
+    await query(
+      'UPDATE movements SET sample_id = $1 WHERE sample_id IS NULL AND action_type = $2 AND user_id = $3 ORDER BY timestamp DESC LIMIT 1',
+      [shelf.id, 'created', req.user.id]
+    );
+
+    // Obtener proveedores vinculados
+    const suppliersResult = await query(`
+      SELECT ss.*, s.name as supplier_name
+      FROM shelf_suppliers ss
+      JOIN suppliers s ON ss.supplier_id = s.id
+      WHERE ss.shelf_id = $1
+      ORDER BY ss.is_primary DESC, s.name ASC
+    `, [shelf.id]);
 
     res.status(201).json({
       success: true,
       message: 'Anaquel creado exitosamente',
       data: {
         shelf: {
-          id: shelf.id,
-          market_line_id: shelf.market_line_id,
-          name: shelf.name,
-          provider: shelf.provider,
-          grid_width: shelf.grid_width,
-          grid_height: shelf.grid_height,
-          shelf_depth: shelf.shelf_depth,
-          total_capacity: shelf.total_capacity,
-          created_at: shelf.created_at
+          ...shelf,
+          suppliers: suppliersResult.rows
         }
       }
     });
@@ -134,13 +176,13 @@ const getShelves = async (req, res, next) => {
       JOIN market_lines ml ON s.market_line_id = ml.id
       LEFT JOIN (
         SELECT
-          shelf_id,
+          ds.shelf_id,
           COUNT(*) as occupied_count,
-          COUNT(CASE WHEN expiration_date < CURRENT_DATE THEN 1 END) as expired_count
+          COUNT(CASE WHEN gs.expiration_date < CURRENT_DATE THEN 1 END) as expired_count
         FROM dispensed_samples ds
         JOIN global_samples gs ON ds.global_sample_id = gs.id
         WHERE ds.status = 'stored'
-        GROUP BY shelf_id
+        GROUP BY ds.shelf_id
       ) stats ON s.id = stats.shelf_id
       ${whereClause}
       ORDER BY ml.name, s.name
@@ -202,14 +244,14 @@ const getShelfById = async (req, res, next) => {
       JOIN market_lines ml ON s.market_line_id = ml.id
       LEFT JOIN (
         SELECT
-          shelf_id,
+          ds.shelf_id,
           COUNT(*) as occupied_count,
-          COUNT(CASE WHEN expiration_date < CURRENT_DATE THEN 1 END) as expired_count,
-          COUNT(CASE WHEN expiration_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days' THEN 1 END) as near_expiry_count
+          COUNT(CASE WHEN gs.expiration_date < CURRENT_DATE THEN 1 END) as expired_count,
+          COUNT(CASE WHEN gs.expiration_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days' THEN 1 END) as near_expiry_count
         FROM dispensed_samples ds
         JOIN global_samples gs ON ds.global_sample_id = gs.id
         WHERE ds.status = 'stored'
-        GROUP BY shelf_id
+        GROUP BY ds.shelf_id
       ) stats ON s.id = stats.shelf_id
       WHERE s.id = $1
     `, [id]);
