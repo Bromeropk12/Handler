@@ -165,7 +165,7 @@ async function validatePlacement(shelf, sample, position_x, position_y, position
  */
 async function findAutoPlacement(shelf, sample) {
   const occupiedResult = await query(`
-    SELECT position_x, position_y, position_z, width, height, depth, gs.ghs_danger_class
+    SELECT ds.position_x, ds.position_y, ds.position_z, ds.width, ds.height, ds.depth, gs.ghs_danger_class
     FROM dispensed_samples ds
     JOIN global_samples gs ON ds.global_sample_id = gs.id
     WHERE ds.shelf_id = $1 AND ds.status = 'stored'

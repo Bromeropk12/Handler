@@ -12,7 +12,7 @@ CREATE TYPE dimensions AS ENUM (
   '1x1x1', '1x2x1', '2x1x1', '2x2x1',
   '1x1x2', '1x2x2', '2x1x2', '2x2x2'
 );
-CREATE TYPE action_type AS ENUM ('created', 'dispensed', 'stored', 'moved', 'dispatched', 'expired', 'password_reset');
+CREATE TYPE action_type AS ENUM ('created', 'dispensed', 'stored', 'moved', 'dispatched', 'expired', 'password_reset', 'updated', 'deleted');
 CREATE TYPE user_role AS ENUM ('admin', 'operator', 'analyst');
 
 -- Users table
@@ -55,10 +55,20 @@ CREATE TABLE shelves (
     grid_width INTEGER NOT NULL DEFAULT 10 CHECK (grid_width > 0 AND grid_width <= 50),      -- X: Columnas
     grid_height INTEGER NOT NULL DEFAULT 10 CHECK (grid_height > 0 AND grid_height <= 50),    -- Y: Niveles
     shelf_depth INTEGER NOT NULL DEFAULT 10 CHECK (shelf_depth > 0 AND shelf_depth <= 50),    -- Z: Profundidad
+    shelf_type VARCHAR(50) DEFAULT 'storage' CHECK (shelf_type IN ('storage', 'bulk_temporary')),
     total_capacity INTEGER GENERATED ALWAYS AS (grid_width * grid_height * shelf_depth) STORED,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(market_line_id, name)
+);
+
+-- Shelf Suppliers (Relación muchos a muchos para anaqueles y proveedores permitidos)
+CREATE TABLE shelf_suppliers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    shelf_id UUID NOT NULL REFERENCES shelves(id) ON DELETE CASCADE,
+    supplier_id UUID NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+    is_primary BOOLEAN DEFAULT false,
+    UNIQUE(shelf_id, supplier_id)
 );
 
 -- Global samples table (Muestras Bulk)
@@ -76,6 +86,13 @@ CREATE TABLE global_samples (
     total_units INTEGER NOT NULL DEFAULT 0 CHECK (total_units >= 0),
     available_units INTEGER NOT NULL DEFAULT 0 CHECK (available_units >= 0),
     weight_per_unit_grams DECIMAL(10,2) NOT NULL CHECK (weight_per_unit_grams > 0),
+    shelf_id UUID REFERENCES shelves(id),
+    position_x INTEGER,
+    position_y INTEGER,
+    position_z INTEGER DEFAULT 0,
+    width INTEGER DEFAULT 1,
+    height INTEGER DEFAULT 1,
+    depth INTEGER DEFAULT 1,
     coa_file_path VARCHAR(500), -- Ruta al archivo CoA PDF del bulk (puede ser ruta UNC de red)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -120,6 +137,8 @@ CREATE TABLE movements (
 CREATE INDEX idx_global_samples_market_line ON global_samples(market_line_id);
 CREATE INDEX idx_global_samples_lot ON global_samples(lot);
 CREATE INDEX idx_global_samples_supplier ON global_samples(supplier_id);
+CREATE INDEX idx_global_samples_shelf ON global_samples(shelf_id);
+CREATE INDEX idx_global_samples_position ON global_samples(shelf_id, position_x, position_y, position_z);
 CREATE INDEX idx_dispensed_samples_global_sample ON dispensed_samples(global_sample_id);
 CREATE INDEX idx_dispensed_samples_qr ON dispensed_samples(qr_code);
 CREATE INDEX idx_dispensed_samples_shelf ON dispensed_samples(shelf_id);

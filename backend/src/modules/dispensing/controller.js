@@ -15,25 +15,27 @@ const { findAutoPlacement, parseDimensions } = require('../warehouse/validations
 const subdivideBulkSample = async (req, res, next) => {
   try {
     const { global_sample_id, number_of_units, weight_per_unit } = req.body;
-    
+
     if (!global_sample_id) throw new AppError('El ID del Bulk Sample es requerido', 400);
     if (!number_of_units || number_of_units <= 0) throw new AppError('El número de unidades debe ser mayor a 0', 400);
-    if (!weight_per_unit || weight_per_unit <= 0) throw new AppError('El peso por unidad debe ser mayor a 0', 400);
 
     // Verificar que el bulk existe y tiene unidades disponibles
     const bulkCheck = await query(
-      'SELECT id, name, lot, available_units, weight_per_unit_grams, coa_file_path, dimensions, ghs_danger_class, market_line_id FROM global_samples WHERE id = $1', 
+      'SELECT id, name, lot, available_units, weight_per_unit_grams, coa_file_path, dimensions, ghs_danger_class, market_line_id FROM global_samples WHERE id = $1',
       [global_sample_id]
     );
-    
+
     if (bulkCheck.rows.length === 0) throw new AppError('Muestra global no encontrada', 404);
-    
+
     const bulk = bulkCheck.rows[0];
 
-    // Verificar que hay suficientes unidades disponibles
-    if (bulk.available_units < number_of_units) {
-      throw new AppError(`Solo hay ${bulk.available_units} unidades disponibles. Solicitó ${number_of_units}.`, 400);
+    // Usar weight_per_unit del request o del bulk
+    const finalWeightPerUnit = weight_per_unit || bulk.weight_per_unit_grams;
+    if (!finalWeightPerUnit || finalWeightPerUnit <= 0) {
+      throw new AppError('El peso por unidad debe ser mayor a 0. Defínelo en la muestra global o envíalo en el request.', 400);
     }
+
+    // El Bulk no requiere unidades existentes para subdividirse, ya que la dispensación CREA las unidades.
 
     // Parsear dimensiones del enum 3D
     const dimensions = parseDimensions(bulk.dimensions);
@@ -56,13 +58,13 @@ const subdivideBulkSample = async (req, res, next) => {
         lot: bulk.lot,
         product_name: bulk.name,
         sub_sample_number: i + 1,
-        weight_grams: weight_per_unit,
+        weight_grams: finalWeightPerUnit,
         expiration_date: null,
         ghs_danger_class: bulk.ghs_danger_class
       };
 
       generatedSamples.push({ qr_code: qrCode, qr_data: qrData });
-      
+
       txQueries.push({
         query: `
           INSERT INTO dispensed_samples (
@@ -71,13 +73,13 @@ const subdivideBulkSample = async (req, res, next) => {
           ) VALUES ($1, $2, $3, $4, 'stored', $5, $6, $7, NULL, NULL, NULL, NULL)
           RETURNING id
         `,
-        params: [global_sample_id, qrCode, JSON.stringify(qrData), weight_per_unit, width, height, depth]
+        params: [global_sample_id, qrCode, JSON.stringify(qrData), finalWeightPerUnit, width, height, depth]
       });
     }
 
-    // Actualizar contador de unidades disponibles del bulk
+    // Actualizar contadores: total_units sube (historial total), available_units sube (hijos listos para despacho)
     txQueries.push({
-      query: 'UPDATE global_samples SET available_units = available_units - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      query: 'UPDATE global_samples SET available_units = available_units + $1, total_units = total_units + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
       params: [number_of_units, global_sample_id]
     });
 
@@ -85,21 +87,21 @@ const subdivideBulkSample = async (req, res, next) => {
     txQueries.push({
       query: `INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)`,
       params: [
-        global_sample_id, 
-        'dispensed', 
+        global_sample_id,
+        'dispensed',
         req.user.id,
-        JSON.stringify({ 
-          type: 'subdivision', 
+        JSON.stringify({
+          type: 'subdivision',
           units_generated: number_of_units,
-          weight_per_unit,
-          total_weight: number_of_units * weight_per_unit
+          weight_per_unit: finalWeightPerUnit,
+          total_weight: number_of_units * finalWeightPerUnit
         })
       ]
     });
 
     // Ejecutar transacción para crear muestras
     const txResult = await transaction(txQueries);
-    
+
     // Extraer IDs de las muestras creadas
     const sampleIds = txResult
       .slice(0, number_of_units)
@@ -107,9 +109,10 @@ const subdivideBulkSample = async (req, res, next) => {
 
     // ==========================================
     // ALGORITMO SGA AUTOMÁTICO DE UBICACIÓN
+    // Agrupa todas las muestras hijas en el mismo anaquel
     // ==========================================
-    
-    // Obtener anaqueles de la línea de mercado del bulk, ordenados por ocupación
+
+    // Obtener anaqueles de la línea de mercado del bulk, ordenados por menor ocupación
     const shelvesResult = await query(`
       SELECT 
         sh.*,
@@ -126,25 +129,24 @@ const subdivideBulkSample = async (req, res, next) => {
     const placements = [];
     const failedPlacements = [];
 
-    // Para cada muestra, encontrar ubicación óptima con SGA
-    for (const sampleId of sampleIds) {
-      // Obtener datos de la muestra
-      const sampleData = await query(
-        'SELECT ds.*, gs.ghs_danger_class FROM dispensed_samples ds JOIN global_samples gs ON ds.global_sample_id = gs.id WHERE ds.id = $1',
-        [sampleId]
-      );
+    // Datos de la muestra para colocación
+    const sampleTemplate = {
+      width,
+      height,
+      depth,
+      ghs_danger_class: bulk.ghs_danger_class
+    };
 
-      if (sampleData.rows.length === 0) continue;
+    // Intentar colocar TODAS las muestras en un mismo anaquel (agrupadas)
+    let allPlaced = false;
+    for (const shelf of shelvesResult.rows) {
+      const shelfPlacements = [];
+      let shelfSuccess = true;
 
-      const sample = sampleData.rows[0];
-      sample.width = width;
-      sample.height = height;
-      sample.depth = depth;
+      for (let i = 0; i < sampleIds.length; i++) {
+        const sampleId = sampleIds[i];
+        const sample = { ...sampleTemplate, id: sampleId };
 
-      let placed = false;
-
-      // Intentar colocar en cada anaquel hasta encontrar uno con espacio
-      for (const shelf of shelvesResult.rows) {
         try {
           const autoPos = await findAutoPlacement(shelf, sample);
 
@@ -155,27 +157,71 @@ const subdivideBulkSample = async (req, res, next) => {
             WHERE id = $5
           `, [shelf.id, autoPos.x, autoPos.y, autoPos.z, sampleId]);
 
-          placements.push({
+          shelfPlacements.push({
             sample_id: sampleId,
-            qr_code: sample.qr_code,
+            qr_code: generatedSamples[i].qr_code,
             shelf_name: shelf.name,
             position: { x: autoPos.x, y: autoPos.y, z: autoPos.z },
             dimensions: `${width}x${height}x${depth}`
           });
-
-          placed = true;
-          break;
         } catch (e) {
-          continue;
+          // Este anaquel no puede con todas; revertir las ya posicionadas en este anaquel
+          for (const placed of shelfPlacements) {
+            await query(`
+              UPDATE dispensed_samples
+              SET shelf_id = NULL, position_x = NULL, position_y = NULL, position_z = NULL
+              WHERE id = $1
+            `, [placed.sample_id]);
+          }
+          shelfSuccess = false;
+          break;
         }
       }
 
-      if (!placed) {
-        failedPlacements.push({
-          sample_id: sampleId,
-          qr_code: sample.qr_code,
-          error: 'No se encontró espacio compatible en ningún anaquel de la línea de mercado'
-        });
+      if (shelfSuccess) {
+        placements.push(...shelfPlacements);
+        allPlaced = true;
+        break;
+      }
+    }
+
+    // Si no caben todas juntas, colocar individualmente como fallback
+    if (!allPlaced) {
+      for (let i = 0; i < sampleIds.length; i++) {
+        const sampleId = sampleIds[i];
+        const sample = { ...sampleTemplate, id: sampleId };
+        let placed = false;
+
+        for (const shelf of shelvesResult.rows) {
+          try {
+            const autoPos = await findAutoPlacement(shelf, sample);
+            await query(`
+              UPDATE dispensed_samples
+              SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4, updated_at = CURRENT_TIMESTAMP
+              WHERE id = $5
+            `, [shelf.id, autoPos.x, autoPos.y, autoPos.z, sampleId]);
+
+            placements.push({
+              sample_id: sampleId,
+              qr_code: generatedSamples[i].qr_code,
+              shelf_name: shelf.name,
+              position: { x: autoPos.x, y: autoPos.y, z: autoPos.z },
+              dimensions: `${width}x${height}x${depth}`
+            });
+            placed = true;
+            break;
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!placed) {
+          failedPlacements.push({
+            sample_id: sampleId,
+            qr_code: generatedSamples[i].qr_code,
+            error: 'No se encontró espacio compatible en ningún anaquel de la línea de mercado'
+          });
+        }
       }
     }
 

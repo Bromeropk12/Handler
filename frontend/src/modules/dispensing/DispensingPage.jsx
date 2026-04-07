@@ -10,6 +10,7 @@ const DispensingPage = () => {
   
   const [selectedSample, setSelectedSample] = useState(null);
   const [unitsToGenerate, setUnitsToGenerate] = useState(1);
+  const [weightPerUnit, setWeightPerUnit] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successData, setSuccessData] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -21,10 +22,11 @@ const DispensingPage = () => {
   const loadSamples = async () => {
     try {
       setLoading(true);
-      // Fetch only samples that have available_units and total_units = 0 to specifically show ones that haven't been dispensed yet 
-      // or fetch all to allow adding more units. We'll fetch all available global samples.
+      // Fetch all available global samples
       const response = await samplesAPI.getBulkSamples({ limit: 100 });
-      setGlobalSamples(response.data.data.samples || []);
+      // El backend devuelve bulkSamples, no samples
+      const samples = response.data?.data?.bulkSamples || response.data?.data?.samples || [];
+      setGlobalSamples(samples);
     } catch (err) {
       console.error('Error loading global samples:', err);
       alert('Error cargando muestras globales. Continúe con precaución.');
@@ -33,14 +35,27 @@ const DispensingPage = () => {
     }
   };
 
-  const filteredSamples = globalSamples.filter(s => 
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    s.lot.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filtrado mejorado: busca por nombre, lote, proveedor o clase SGA
+  const filteredSamples = globalSamples.filter(s => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase().trim();
+    return (
+      (s.name || '').toLowerCase().includes(term) || 
+      (s.lot || '').toLowerCase().includes(term) ||
+      (s.supplier_name || '').toLowerCase().includes(term) ||
+      (s.ghs_danger_class || '').toLowerCase().includes(term)
+    );
+  });
 
   const handleDispense = (e) => {
     e.preventDefault();
     if (!selectedSample || unitsToGenerate <= 0) return;
+    
+    // Validar peso de cada frasco
+    if (!weightPerUnit || parseFloat(weightPerUnit) <= 0) {
+      alert('Debes ingresar un Peso por Unidad (en gramos) válido mayor a 0 para las muestras hijas.');
+      return;
+    }
     setShowConfirmModal(true);
   };
 
@@ -48,17 +63,19 @@ const DispensingPage = () => {
     try {
       setShowConfirmModal(false);
       setIsSubmitting(true);
+      // Enviar weight_per_unit personalizado
       const resp = await dispensingAPI.dispense({
         global_sample_id: selectedSample.id,
-        number_of_units: unitsToGenerate
+        number_of_units: parseInt(unitsToGenerate),
+        weight_per_unit: parseFloat(weightPerUnit)
       });
       
-      setSuccessData(resp.data.data.generated_qr_codes);
+      setSuccessData(resp.data.data.generated_samples || []);
       
       // Update local state temporarily so the user sees the new unit count
       setGlobalSamples(prev => prev.map(s => {
          if (s.id === selectedSample.id) {
-           return { ...s, total_units: s.total_units + parseInt(unitsToGenerate), available_units: s.available_units + parseInt(unitsToGenerate) };
+           return { ...s, total_units: (s.total_units || 0) + parseInt(unitsToGenerate), available_units: (s.available_units || 0) + parseInt(unitsToGenerate) };
          }
          return s;
       }));
@@ -75,10 +92,10 @@ const DispensingPage = () => {
     
     // Abrir ventana para imprimir los QRs y luego resetear todo
     const printWindow = window.open('', '_blank');
-    const qrHTML = successData.map(qr => `
+    const qrHTML = successData.map(item => `
       <div style="border: 2px dashed #000; padding: 10px; margin: 10px; width: 250px; text-align: center; display: inline-block;">
         <h3 style="margin: 0; font-size: 14px;">Handler S.A.S</h2>
-        <div style="font-weight: bold; font-family: monospace; font-size: 18px; margin: 10px 0;">${qr}</div>
+        <div style="font-weight: bold; font-family: monospace; font-size: 18px; margin: 10px 0;">${item.qr_code}</div>
         <div style="font-size: 12px;">${selectedSample.name} - Lote: ${selectedSample.lot}</div>
       </div>
     `).join('');
@@ -107,6 +124,14 @@ const DispensingPage = () => {
     setSuccessData(null);
     setSelectedSample(null);
     setUnitsToGenerate(1);
+    setWeightPerUnit('');
+  };
+
+  const handleSelectSample = (sample) => {
+    if (successData) return;
+    setSelectedSample(sample);
+    setUnitsToGenerate(1);
+    setWeightPerUnit(sample.weight_per_unit_grams || '');
   };
 
   return (
@@ -147,7 +172,7 @@ const DispensingPage = () => {
               filteredSamples.map(sample => (
                 <div 
                   key={sample.id} 
-                  onClick={() => !successData && setSelectedSample(sample)}
+                  onClick={() => handleSelectSample(sample)}
                   className={`p-4 rounded-xl border cursor-pointer transition-colors ${
                     selectedSample?.id === sample.id 
                     ? 'bg-blue-500/20 border-blue-500' 
@@ -208,22 +233,59 @@ const DispensingPage = () => {
             ) : (
               // PANTALLA DE FORMULARIO
               <form onSubmit={handleDispense} className="space-y-6 mt-4">
-                <div className="p-4 bg-surface-900 border border-white/5 rounded-xl">
+                <div className="p-4 bg-surface-900 border border-white/5 rounded-xl space-y-3">
                   <h3 className="text-sm text-gray-400 mb-1">Muestra Seleccionada:</h3>
                   <p className="text-white font-medium text-lg">{selectedSample.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">Actualmente cuenta con {selectedSample.total_units} unidades registradas en su histórico.</p>
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/10">
+                    <div>
+                      <p className="text-xs text-gray-500">Lote</p>
+                      <p className="text-sm font-mono text-gray-300">{selectedSample.lot}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Clase SGA</p>
+                      <p className="text-sm text-gray-300">{selectedSample.ghs_danger_class || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Uds. Disponibles</p>
+                      <p className="text-sm font-bold text-green-400">{selectedSample.available_units ?? 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Peso por Unidad</p>
+                      <p className="text-sm font-mono text-gray-300">{selectedSample.weight_per_unit_grams ? `${selectedSample.weight_per_unit_grams}g` : 'No definido'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">CoA</p>
+                      <p className="text-sm text-gray-300">
+                        {selectedSample.coa_file_path ? <span className="text-green-400 cursor-help" title="Con certificado">✓ Adjunto</span> : <span className="text-yellow-500">⚠ Falta</span>}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Cantidad de Frascos / Unidades a Dispensar</label>
-                  <div className="flex gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Cantidad a Dispensar</label>
                     <input 
                       type="number" 
                       min="1"
-                      className="flex-1 bg-surface-900 border border-white/10 rounded-lg p-4 font-mono text-2xl text-center text-white focus:border-brand-red focus:outline-none"
+                      className="flex-1 w-full bg-surface-900 border border-white/10 rounded-lg p-4 font-mono text-2xl text-center text-white focus:border-brand-red focus:outline-none"
                       value={unitsToGenerate}
                       onChange={(e) => setUnitsToGenerate(e.target.value)}
                     />
+                    <p className="text-xs text-gray-500 mt-2">Uds totales actuales: {selectedSample.total_units || 0}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Gramos por Unidad (g)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      min="0.1"
+                      placeholder="Ej. 60"
+                      className="flex-1 w-full bg-surface-900 border border-brand-red/30 rounded-lg p-4 font-mono text-2xl text-center text-white focus:border-brand-red focus:outline-none"
+                      value={weightPerUnit}
+                      onChange={(e) => setWeightPerUnit(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500 mt-2">Peso exacto de cada frasco hijo.</p>
                   </div>
                 </div>
 
@@ -231,7 +293,7 @@ const DispensingPage = () => {
                   <button 
                     type="submit" 
                     disabled={isSubmitting || unitsToGenerate <= 0}
-                    className="w-full flex justify-center items-center gap-2 py-4 bg-brand-red hover:bg-red-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg shadow-brand-red/20 transition-all"
+                    className="w-full flex justify-center items-center gap-2 py-4 bg-brand-red hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-brand-red/20 transition-all"
                   >
                     <PlusCircle size={20} />
                     {isSubmitting ? 'Procesando...' : `Generar ${unitsToGenerate} Códigos QR`}
@@ -279,9 +341,9 @@ const DispensingPage = () => {
               Validación de Creación
             </h3>
             <p className="text-sm text-gray-400 leading-relaxed">
-              ¿Está seguro que desea generar <strong>{unitsToGenerate}</strong> nuevas unidades hijas (subdivisiones físicas) para la muestra global <strong>{selectedSample?.name}</strong>?
+              ¿Está seguro que desea generar <strong>{unitsToGenerate}</strong> nuevas unidades hijas de <strong>{weightPerUnit}g</strong> cada una, para la muestra global <strong>{selectedSample?.name}</strong>?
               <br /><br />
-              Esta acción registrará los nuevos contenedores en estado "disponible" localmente en la base de datos y permitirá la impresión de sus respectivas etiquetas QR.
+              Esta acción registrará los nuevos contenedores en estado "disponible" localmente en la base de datos y permitirá la impresión de sus respectivas etiquetas QR. El remanente de gramos no es tracking estricto.
             </p>
           </div>
         </div>

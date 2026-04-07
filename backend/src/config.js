@@ -19,7 +19,7 @@ const optionalEnvVars = {
   COA_BASE_DIR: 'C:/Handler/CoA',
   BCRYPT_ROUNDS: 12,
   RATE_LIMIT_WINDOW: 15,
-  RATE_LIMIT_MAX_REQUESTS: 100
+  RATE_LIMIT_MAX_REQUESTS: 5000
 };
 
 /**

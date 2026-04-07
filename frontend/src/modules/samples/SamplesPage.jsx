@@ -9,6 +9,7 @@ import {
   MagnifyingGlassIcon,
   FunnelIcon,
   CubeIcon,
+  DocumentArrowDownIcon,
 } from '@heroicons/react/24/outline';
 
 const SamplesPage = () => {
@@ -20,6 +21,13 @@ const SamplesPage = () => {
   const [marketLines, setMarketLines] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [shelves, setShelves] = useState([]);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filters, setFilters] = useState({
+    market_line_id: '',
+    ghs_danger_class: '',
+    status: ''
+  });
+  const [coaFile, setCoaFile] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     supplier_id: '',
@@ -75,8 +83,9 @@ const SamplesPage = () => {
       return;
     }
     try {
-      await samplesAPI.createBulkSample(formData);
+      await samplesAPI.createBulkSample(formData, coaFile);
       setShowCreateModal(false);
+      setCoaFile(null);
       setFormData({
         name: '', supplier_id: '', lot: '', expiration_date: '',
         manufacture_date: '', ghs_danger_class: '', market_line_id: '',
@@ -131,9 +140,23 @@ const SamplesPage = () => {
       render: val => <span className="text-gray-300">{val || 'Sin asignar'}</span>,
     },
     {
-      key: 'quantity_grams',
-      label: 'Cantidad',
-      render: val => <span className="text-gray-300 font-mono text-xs">{val ? `${val}g` : 'N/A'}</span>,
+      key: 'weight_per_unit_grams',
+      label: 'Peso/Unidad',
+      render: (val, row) => <span className="text-gray-300 font-mono text-xs">{val || row.weight_per_unit_grams ? `${row.weight_per_unit_grams}g` : 'N/A'}</span>,
+    },
+    {
+      key: 'available_units',
+      label: 'Uds. Disponibles',
+      render: (val, row) => {
+        const available = val ?? row.available_units ?? 0;
+        const total = row.total_units ?? 0;
+        return (
+          <div className="text-right">
+            <span className="text-green-400 font-mono font-bold">{available}</span>
+            <span className="text-xs text-gray-500 block">/ {total} total</span>
+          </div>
+        );
+      },
     },
     {
       key: 'ghs_danger_class',
@@ -153,13 +176,34 @@ const SamplesPage = () => {
   ];
 
   const filteredSamples = samples.filter(s => {
-    if (!searchTerm) return true;
+    if (!searchTerm && !filters.market_line_id && !filters.ghs_danger_class && !filters.status) return true;
+    
     const term = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = (
       (s.name || s.product_name || '').toLowerCase().includes(term) ||
       (s.lot || '').toLowerCase().includes(term) ||
       (s.supplier_name || '').toLowerCase().includes(term)
     );
+    
+    const matchesMarketLine = !filters.market_line_id || s.market_line_id === filters.market_line_id;
+    const matchesDangerClass = !filters.ghs_danger_class || s.ghs_danger_class === filters.ghs_danger_class;
+    
+    let matchesStatus = true;
+    if (filters.status === 'available') {
+      matchesStatus = s.available_units > 0;
+    } else if (filters.status === 'empty') {
+      matchesStatus = s.available_units === 0;
+    } else if (filters.status === 'expired') {
+      const expDate = new Date(s.expiration_date);
+      matchesStatus = expDate < new Date();
+    } else if (filters.status === 'warning') {
+      const expDate = new Date(s.expiration_date);
+      const now = new Date();
+      const daysUntil = Math.floor((expDate - now) / (1000 * 60 * 60 * 24));
+      matchesStatus = daysUntil >= 0 && daysUntil <= 30;
+    }
+    
+    return matchesSearch && matchesMarketLine && matchesDangerClass && matchesStatus;
   });
 
   return (
@@ -194,10 +238,24 @@ const SamplesPage = () => {
               className="input-with-icon input-sm"
             />
           </div>
-          <button className="btn-ghost">
+          <button 
+            onClick={() => setShowFilterModal(true)}
+            className={`btn-ghost ${filters.market_line_id || filters.ghs_danger_class || filters.status ? 'text-blue-400' : ''}`}
+          >
             <FunnelIcon className="w-4 h-4 mr-2" />
             Filtros
+            {(filters.market_line_id || filters.ghs_danger_class || filters.status) && (
+              <span className="ml-1 w-2 h-2 bg-blue-400 rounded-full inline-block"></span>
+            )}
           </button>
+          {(filters.market_line_id || filters.ghs_danger_class || filters.status) && (
+            <button 
+              onClick={() => setFilters({ market_line_id: '', ghs_danger_class: '', status: '' })}
+              className="text-xs text-gray-400 hover:text-white"
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
       </div>
 
@@ -284,16 +342,16 @@ const SamplesPage = () => {
               </select>
             </div>
             <div>
-              <label className="label">Dimensiones (Ancho × Alto × Profundidad)</label>
+              <label className="label">Tamaño de la Muestra</label>
               <select className="select" value={formData.dimensions} onChange={e => handleInputChange('dimensions', e.target.value)}>
-                <option value="1x1x1">1×1×1</option>
-                <option value="1x2x1">1×2×1</option>
-                <option value="2x1x1">2×1×1</option>
-                <option value="2x2x1">2×2×1</option>
-                <option value="1x1x2">1×1×2</option>
-                <option value="1x2x2">1×2×2</option>
-                <option value="2x1x2">2×1×2</option>
-                <option value="2x2x2">2×2×2</option>
+                <option value="1x1x1">Pequeño (1 unidad)</option>
+                <option value="1x2x1">Alto (2 niveles)</option>
+                <option value="2x1x1">Ancho (2 columnas)</option>
+                <option value="2x2x1">Grande (2×2)</option>
+                <option value="1x1x2">Profundo (2 profundidad)</option>
+                <option value="1x2x2">Alto + Profundo</option>
+                <option value="2x1x2">Ancho + Profundo</option>
+                <option value="2x2x2">Máximo (2×2×2)</option>
               </select>
             </div>
           </div>
@@ -327,6 +385,25 @@ const SamplesPage = () => {
               </div>
             </div>
           </div>
+          {/* Certificado de Análisis (CoA) */}
+          <div className="border-t border-gray-700/50 pt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <DocumentArrowDownIcon className="w-4 h-4 text-green-400" />
+              <h4 className="text-sm font-medium text-gray-300">Certificado de Análisis (CoA)</h4>
+            </div>
+            <div>
+              <label className="label">Archivo PDF del CoA (Opcional)</label>
+              <input
+                type="file"
+                accept=".pdf"
+                onChange={e => setCoaFile(e.target.files[0] || null)}
+                className="w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20 cursor-pointer"
+              />
+              {coaFile && (
+                <p className="text-xs text-green-400 mt-1">✓ {coaFile.name} seleccionado</p>
+              )}
+            </div>
+          </div>
         </div>
       </Modal>
 
@@ -335,6 +412,7 @@ const SamplesPage = () => {
         isOpen={!!selectedSample}
         onClose={() => setSelectedSample(null)}
         title="Detalle de Muestra"
+        size="lg"
         footer={
           <button onClick={() => setSelectedSample(null)} className="btn-secondary">
             Cerrar
@@ -361,16 +439,117 @@ const SamplesPage = () => {
                 {getSGABadge(selectedSample.ghs_danger_class)}
               </div>
               <div>
-                <p className="text-xs text-gray-500">Cantidad</p>
-                <p className="text-sm font-medium text-gray-200">{selectedSample.quantity_grams}g</p>
+                <p className="text-xs text-gray-500">Peso por Unidad</p>
+                <p className="text-sm font-medium text-gray-200">{selectedSample.weight_per_unit_grams ? `${selectedSample.weight_per_unit_grams}g` : 'N/A'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Estado</p>
-                {getStatusBadge(selectedSample)}
+                <p className="text-xs text-gray-500">Dimensiones</p>
+                <p className="text-sm font-medium text-gray-200">{selectedSample.dimensions || 'N/A'}</p>
               </div>
+              <div>
+                <p className="text-xs text-gray-500">Unidades Disponibles</p>
+                <p className="text-sm font-medium text-green-400">{selectedSample.available_units ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Unidades Totales</p>
+                <p className="text-sm font-medium text-gray-200">{selectedSample.total_units ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Fecha de Manufactura</p>
+                <p className="text-sm font-medium text-gray-200">{selectedSample.manufacture_date ? new Date(selectedSample.manufacture_date).toLocaleDateString() : 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Fecha de Vencimiento</p>
+                <p className="text-sm font-medium text-gray-200">{selectedSample.expiration_date ? new Date(selectedSample.expiration_date).toLocaleDateString() : 'N/A'}</p>
+              </div>
+            </div>
+            <div className="border-t border-gray-700 pt-4">
+              <p className="text-xs text-gray-500 mb-2">Estado</p>
+              {getStatusBadge(selectedSample)}
+            </div>
+            {/* Certificado CoA */}
+            <div className="border-t border-gray-700 pt-4">
+              <p className="text-xs text-gray-500 mb-2">Certificado de Análisis (CoA)</p>
+              {selectedSample.coa_file_path ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-green-400 font-medium">✓ CoA adjunto</span>
+                  <a
+                    href={`${process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001'}/${selectedSample.coa_file_path}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-500/10 text-blue-400 text-xs font-medium rounded-lg hover:bg-blue-500/20 transition-colors"
+                  >
+                    <DocumentArrowDownIcon className="w-3.5 h-3.5" />
+                    Ver / Descargar PDF
+                  </a>
+                </div>
+              ) : (
+                <span className="text-sm text-yellow-500">⚠ Sin CoA adjunto</span>
+              )}
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Filter Modal */}
+      <Modal
+        isOpen={showFilterModal}
+        onClose={() => setShowFilterModal(false)}
+        title="Filtrar Muestras"
+        footer={
+          <>
+            <button onClick={() => setFilters({ market_line_id: '', ghs_danger_class: '', status: '' })} className="btn-secondary">
+              Limpiar
+            </button>
+            <button onClick={() => setShowFilterModal(false)} className="btn-primary">
+              Aplicar Filtros
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="label">Línea de Mercado</label>
+            <select 
+              className="select" 
+              value={filters.market_line_id} 
+              onChange={e => setFilters(prev => ({ ...prev, market_line_id: e.target.value }))}
+            >
+              <option value="">Todas</option>
+              {marketLines.map(ml => <option key={ml.id} value={ml.id}>{ml.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Clase de Peligro SGA</label>
+            <select 
+              className="select" 
+              value={filters.ghs_danger_class} 
+              onChange={e => setFilters(prev => ({ ...prev, ghs_danger_class: e.target.value }))}
+            >
+              <option value="">Todas</option>
+              <option>Sin Riesgo</option>
+              <option>Inflamable</option>
+              <option>Corrosivo</option>
+              <option>Toxico</option>
+              <option>Comburente</option>
+              <option>Explosivo</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Estado</label>
+            <select 
+              className="select" 
+              value={filters.status} 
+              onChange={e => setFilters(prev => ({ ...prev, status: e.target.value }))}
+            >
+              <option value="">Todos</option>
+              <option value="available">Con unidades disponibles</option>
+              <option value="empty">Sin unidades disponibles</option>
+              <option value="expired">Vencidas</option>
+              <option value="warning">Por vencer (30 días)</option>
+            </select>
+          </div>
+        </div>
       </Modal>
     </div>
   );

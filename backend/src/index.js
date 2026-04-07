@@ -112,6 +112,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(require('cookie-parser')());
 
+// Servir archivos estáticos (CoA PDFs, uploads)
+const path = require('path');
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
 // Middleware de logging
 app.use(logger(loggerInstance));
 

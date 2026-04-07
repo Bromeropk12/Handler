@@ -24,9 +24,15 @@ const validateBulkSampleData = (data) => {
     throw new AppError('La fecha de manufactura no puede ser posterior a la fecha de vencimiento', 400);
   }
 
-  const validDimensions = ['1x1', '1x2', '2x1', '2x2'];
+  // Dimensiones válidas en formato 3D (Ancho×Alto×Profundidad)
+  const validDimensions = ['1x1x1', '1x2x1', '2x1x1', '2x2x1', '1x1x2', '1x2x2', '2x1x2', '2x2x2'];
+  // También aceptar formato 2D legacy y convertirlo
+  const legacyDimensions = { '1x1': '1x1x1', '1x2': '1x2x1', '2x1': '2x1x1', '2x2': '2x2x1' };
+  if (legacyDimensions[data.dimensions]) {
+    data.dimensions = legacyDimensions[data.dimensions];
+  }
   if (!validDimensions.includes(data.dimensions)) {
-    throw new AppError('Dimensiones inválidas. Deben ser: 1x1, 1x2, 2x1 o 2x2', 400);
+    throw new AppError('Dimensiones inválidas. Seleccione un tamaño válido', 400);
   }
 
   const validDangerClasses = ['Sin Riesgo', 'Inflamable', 'Corrosivo', 'Toxico', 'Comburente', 'Explosivo'];
@@ -53,7 +59,7 @@ const createBulkSample = async (req, res, next) => {
       const fileName = `${data.lot}_${Date.now()}.pdf`;
       const fullPath = path.join(coaDir, fileName);
       await fs.rename(req.file.path, fullPath);
-      coaFilePath = path.relative(process.cwd(), fullPath);
+      coaFilePath = path.relative(process.cwd(), fullPath).replace(/\\/g, '/');
     }
 
     validateBulkSampleData(data);
@@ -84,13 +90,13 @@ const createBulkSample = async (req, res, next) => {
           ghs_danger_class, market_line_id, dimensions,
           total_units, available_units, weight_per_unit_grams, coa_file_path
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING *
       `,
       params: [
         data.name, data.supplier_id, data.lot, data.expiration_date, data.manufacture_date,
         data.ghs_danger_class, data.market_line_id, data.dimensions,
-        0, 0, // Inician en 0 hasta que sean Dispensados (subdivididos)
+        0, 0, // total_units, available_units - Inician en 0 hasta que sean Dispensados
         data.weight_per_unit_grams, coaFilePath
       ]
     }];
@@ -174,7 +180,7 @@ const getBulkSamples = async (req, res, next) => {
         END as status
       FROM global_samples gs
       JOIN market_lines ml ON gs.market_line_id = ml.id
-      JOIN suppliers sup ON gs.supplier_id = sup.id
+      LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
       ${whereClause}
       ORDER BY gs.created_at DESC
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
@@ -268,9 +274,15 @@ const updateBulkSample = async (req, res, next) => {
 
     const currentSample = existing.rows[0];
 
-    // No permitir actualizar si ya se ha dispensado
-    if (currentSample.available_units > 0) {
-      throw new AppError('No se puede actualizar una muestra que ya ha sido dispensada', 400);
+    // Permitir actualizar CoA y ciertos campos incluso después de dispensar
+    // Solo bloquear cambios estructurales (dimensiones, línea de mercado) si ya hay dispensaciones
+    const hasDispensedChildren = currentSample.total_units > 0;
+    const structuralFields = ['dimensions', 'market_line_id'];
+    if (hasDispensedChildren) {
+      const attemptingStructuralChange = structuralFields.some(f => data[f] !== undefined && data[f] !== currentSample[f]);
+      if (attemptingStructuralChange) {
+        throw new AppError('No se pueden cambiar dimensiones o línea de mercado de una muestra que ya tiene unidades dispensadas', 400);
+      }
     }
 
     // Validar datos si se proporcionan

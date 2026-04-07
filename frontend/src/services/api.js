@@ -59,8 +59,37 @@ export const authAPI = {
 export const samplesAPI = {
   getBulkSamples: params => api.get('/samples', { params }),
   getBulkSample: id => api.get(`/samples/${id}`),
-  createBulkSample: data => api.post('/samples', data),
+  createBulkSample: (data, coaFile) => {
+    const formData = new FormData();
+    // Agregar todos los campos de texto
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        formData.append(key, value);
+      }
+    });
+    // Agregar archivo CoA si existe
+    if (coaFile) {
+      formData.append('coa_file', coaFile);
+    }
+    return api.post('/samples', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
   updateBulkSample: (id, data) => api.put(`/samples/${id}`, data),
+  updateBulkSampleWithCoA: (id, data, coaFile) => {
+    const formData = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        formData.append(key, value);
+      }
+    });
+    if (coaFile) {
+      formData.append('coa_file', coaFile);
+    }
+    return api.put(`/samples/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
   deleteBulkSample: id => api.delete(`/samples/${id}`),
   getMarketLines: () => api.get('/samples/market-lines'),
   getSuppliers: () => api.get('/samples/suppliers'),

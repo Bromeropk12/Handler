@@ -1,95 +1,87 @@
 require('dotenv').config();
 const { pool } = require('../src/services/database');
+const fs = require('fs');
+const path = require('path');
 
 async function migrate() {
-  console.log('Starting execution of database migrations...');
+  console.log('🔄 Iniciando motor de migraciones dinámico...');
 
   try {
-    // 1. Create suppliers table
+    // 1. Crear tabla de control de migraciones si no existe
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS suppliers (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id SERIAL PRIMARY KEY,
         name VARCHAR(255) UNIQUE NOT NULL,
-        market_lines TEXT[],
-        phone VARCHAR(50),
-        email VARCHAR(255),
-        address TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        executed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    console.log('✅ Created suppliers table');
+    console.log('✅ Tabla schema_migrations verificada');
 
-    // 2. Modify global_samples: add supplier_id, new unit fields
-    await pool.query(`
-      ALTER TABLE global_samples
-      ADD COLUMN IF NOT EXISTS supplier_id UUID REFERENCES suppliers(id),
-      ADD COLUMN IF NOT EXISTS total_units INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS available_units INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS weight_per_unit_grams DECIMAL(10,2);
-    `);
-    console.log('✅ Updated global_samples columns');
+    // 2. Obtener migraciones ya ejecutadas
+    const executedResult = await pool.query('SELECT name FROM schema_migrations');
+    const executedMigrations = new Set(executedResult.rows.map(r => r.name));
 
-    // 3. Migrate text providers to suppliers table
-    const distinctProviders = await pool.query(`SELECT DISTINCT provider FROM global_samples WHERE provider IS NOT NULL AND provider != ''`);
-    for (const row of distinctProviders.rows) {
-      if (row.provider) {
-        const check = await pool.query(`SELECT id FROM suppliers WHERE name = $1`, [row.provider]);
-        let sId;
-        if (check.rows.length === 0) {
-          const insertSupp = await pool.query(`INSERT INTO suppliers (name) VALUES ($1) RETURNING id`, [row.provider]);
-          sId = insertSupp.rows[0].id;
-        } else {
-          sId = check.rows[0].id;
-        }
-        await pool.query(`UPDATE global_samples SET supplier_id = $1 WHERE provider = $2 AND supplier_id IS NULL`, [sId, row.provider]);
+    // 3. Leer archivos de migración
+    const scriptsDir = path.join(__dirname, '../../database/scripts');
+    const files = fs.readdirSync(scriptsDir);
+
+    // Filtrar solo los que empiecen por "migration-" y terminen en ".sql", y ordenar
+    const migrationFiles = files
+      .filter(f => f.startsWith('migration-') && f.endsWith('.sql'))
+      .sort();
+
+    if (migrationFiles.length === 0) {
+      console.log('ℹ️  No se encontraron archivos de migración.');
+      return;
+    }
+
+    // 4. Ejecutar las migraciones pendientes
+    let appliedCount = 0;
+    for (const file of migrationFiles) {
+      if (executedMigrations.has(file)) {
+        console.log(`⏩ Saltando ${file} (ya ejecutada)`);
+        continue;
+      }
+
+      console.log(`\n⚙️  Ejecutando migración: ${file}...`);
+      const filePath = path.join(scriptsDir, file);
+      const sql = fs.readFileSync(filePath, 'utf8');
+
+      // Iniciar transacción explícita
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        
+        // Ejecutar los comandos del script
+        await client.query(sql);
+        
+        // Registrar la migración como ejecutada
+        await client.query(
+          'INSERT INTO schema_migrations (name) VALUES ($1)',
+          [file]
+        );
+        
+        await client.query('COMMIT');
+        console.log(`✅ Migración ${file} completada con éxito.`);
+        appliedCount++;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(`❌ Error ejecutando migración ${file}:`, err.message);
+        throw err; // Detener el proceso si una falla
+      } finally {
+        client.release();
       }
     }
-    console.log('✅ Migrated text providers to suppliers table');
 
-    // 4. Add position_z to dispensed_samples if not exists
-    await pool.query(`
-      ALTER TABLE dispensed_samples
-      ADD COLUMN IF NOT EXISTS position_z INTEGER DEFAULT 0;
-    `);
-    console.log('✅ Added position_z to dispensed_samples');
-
-    // 5. Insert initial suppliers if not exist
-    const initialSuppliers = [
-      ['BASF', ['Cosmética', 'Industrial', 'Farmacéutica']],
-      ['JRS', ['Cosmética']],
-      ['THOR', ['Cosmética', 'Industrial']],
-      ['JRF', ['Farmacéutica']],
-      ['SUDEEP', ['Farmacéutica']],
-      ['GIVAUDAN', ['Farmacéutica']],
-      ['MEGGLE', ['Farmacéutica']]
-    ];
-
-    for (const [name, marketLines] of initialSuppliers) {
-      const check = await pool.query(`SELECT id FROM suppliers WHERE name = $1`, [name]);
-      if (check.rows.length === 0) {
-        await pool.query(`INSERT INTO suppliers (name, market_lines) VALUES ($1, $2)`, [name, marketLines]);
-        console.log(`  ✅ Inserted supplier: ${name}`);
-      }
+    if (appliedCount === 0) {
+      console.log('\n✅ La base de datos ya está al día. No hay migraciones nuevas.');
+    } else {
+      console.log(`\n🎉 Se aplicaron ${appliedCount} nuevas migraciones exitosamente.`);
     }
 
-    // 6. Add password_reset to action_type enum if not exists
-    try {
-      await pool.query(`ALTER TYPE action_type ADD VALUE 'password_reset'`);
-      console.log('✅ Added password_reset to action_type');
-    } catch (e) {
-      // Value may already exist
-      console.log('ℹ️  password_reset already exists in action_type');
-    }
-
-    // 7. Create indexes for performance
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_global_samples_supplier ON global_samples(supplier_id)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dispensed_samples_position_3d ON dispensed_samples(shelf_id, position_x, position_y, position_z)`);
-    console.log('✅ Created performance indexes');
-
-    console.log('🎉 Migrations completed successfully!');
   } catch (err) {
-    console.error('❌ Migration failed:', err);
+    console.error('❌ Proceso de migración fallido (FATAL):', err);
+    process.exit(1);
   } finally {
     await pool.end();
     process.exit(0);

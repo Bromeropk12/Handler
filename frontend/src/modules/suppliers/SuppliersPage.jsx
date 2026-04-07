@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, MapPin, Phone, Mail, Box } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, MapPin, Phone, Mail, Box, Check } from 'lucide-react';
 import { suppliersAPI } from '../../services/api';
+
+const MARKET_LINES = ['Cosmética', 'Industrial', 'Farmacéutica'];
 
 const SuppliersPage = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -11,7 +13,7 @@ const SuppliersPage = () => {
 
   const [formData, setFormData] = useState({
     name: '',
-    market_lines: '',
+    market_lines: [],
     phone: '',
     email: '',
     address: ''
@@ -38,19 +40,30 @@ const SuppliersPage = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleMarketLineToggle = (line) => {
+    setFormData(prev => {
+      const currentLines = Array.isArray(prev.market_lines) ? prev.market_lines : [];
+      const newLines = currentLines.includes(line)
+        ? currentLines.filter(l => l !== line)
+        : [...currentLines, line];
+      return { ...prev, market_lines: newLines };
+    });
+  };
+
   const handleOpenModal = (supplier = null) => {
     if (supplier) {
       setEditingSupplier(supplier);
+      const ml = supplier.market_lines;
       setFormData({
         name: supplier.name,
-        market_lines: supplier.market_lines || '',
+        market_lines: Array.isArray(ml) ? ml : (ml ? ml.split(',').map(s => s.trim()) : []),
         phone: supplier.phone || '',
         email: supplier.email || '',
         address: supplier.address || ''
       });
     } else {
       setEditingSupplier(null);
-      setFormData({ name: '', market_lines: '', phone: '', email: '', address: '' });
+      setFormData({ name: '', market_lines: [], phone: '', email: '', address: '' });
     }
     setIsModalOpen(true);
   };
@@ -58,10 +71,14 @@ const SuppliersPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const dataToSend = {
+        ...formData,
+        market_lines: Array.isArray(formData.market_lines) ? formData.market_lines : []
+      };
       if (editingSupplier) {
-        await suppliersAPI.updateSupplier(editingSupplier.id, formData);
+        await suppliersAPI.updateSupplier(editingSupplier.id, dataToSend);
       } else {
-        await suppliersAPI.createSupplier(formData);
+        await suppliersAPI.createSupplier(dataToSend);
       }
       setIsModalOpen(false);
       loadSuppliers();
@@ -84,6 +101,12 @@ const SuppliersPage = () => {
   const currentSuppliers = suppliers.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const formatMarketLines = (lines) => {
+    if (Array.isArray(lines)) return lines.join(', ');
+    if (typeof lines === 'string') return lines;
+    return 'N/A';
+  };
 
   return (
     <div className="space-y-6">
@@ -132,7 +155,7 @@ const SuppliersPage = () => {
                   </div>
                   <div>
                     <h3 className="font-medium text-white truncate max-w-[200px]">{supplier.name}</h3>
-                    <span className="text-xs text-gray-400">{supplier.market_lines || 'N/A'}</span>
+                    <span className="text-xs text-gray-400">{formatMarketLines(supplier.market_lines)}</span>
                   </div>
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -181,19 +204,45 @@ const SuppliersPage = () => {
                 <label className="block text-sm text-gray-400 mb-1">Razón Social *</label>
                 <input required type="text" name="name" value={formData.name} onChange={handleInputChange} className="w-full bg-surface-900 border border-white/10 rounded-lg p-3 text-white focus:border-brand-red" placeholder="Ej. Química ABC" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Líneas de Mercado</label>
-                  <input type="text" name="market_lines" value={formData.market_lines} onChange={handleInputChange} className="w-full bg-surface-900 border border-white/10 rounded-lg p-3 text-white focus:border-brand-red" placeholder="Ej. Aseo, Cosméticos" />
+              
+              {/* Checklist de Líneas de Mercado */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Líneas de Mercado</label>
+                <div className="grid grid-cols-1 gap-2 bg-surface-900 border border-white/10 rounded-lg p-3">
+                  {MARKET_LINES.map(line => {
+                    const isSelected = Array.isArray(formData.market_lines) && formData.market_lines.includes(line);
+                    return (
+                      <button
+                        key={line}
+                        type="button"
+                        onClick={() => handleMarketLineToggle(line)}
+                        className={`flex items-center gap-3 p-2.5 rounded-lg transition-all text-left ${
+                          isSelected 
+                            ? 'bg-brand-red/20 border border-brand-red/40 text-white' 
+                            : 'bg-transparent border border-transparent text-gray-400 hover:bg-surface-800'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 rounded flex items-center justify-center border-2 transition-all ${
+                          isSelected ? 'bg-brand-red border-brand-red' : 'border-gray-600'
+                        }`}>
+                          {isSelected && <Check size={14} className="text-white" />}
+                        </div>
+                        <span className="text-sm font-medium">{line}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Teléfono</label>
                   <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-surface-900 border border-white/10 rounded-lg p-3 text-white focus:border-brand-red" placeholder="+57 300 000 0000" />
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Correo Electrónico</label>
-                <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-surface-900 border border-white/10 rounded-lg p-3 text-white focus:border-brand-red" placeholder="contacto@ejemplo.com" />
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Correo Electrónico</label>
+                  <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-surface-900 border border-white/10 rounded-lg p-3 text-white focus:border-brand-red" placeholder="contacto@ejemplo.com" />
+                </div>
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Dirección</label>
@@ -205,7 +254,7 @@ const SuppliersPage = () => {
                   Cancelar
                 </button>
                 <button type="submit" className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-lg font-medium shadow-lg shadow-brand-red/20 transition-all">
-                  Guardar
+                  {editingSupplier ? 'Actualizar' : 'Guardar'}
                 </button>
               </div>
             </form>
