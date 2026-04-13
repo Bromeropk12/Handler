@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Box, AlertTriangle, FileText, CheckCircle2, QrCode, Camera, History, Calendar, LayoutGrid, ArrowRight, ArrowLeft, Printer, Download, Eye } from 'lucide-react';
-import { dispatchAPI } from '../../services/api';
+import { Search, Box, AlertTriangle, FileText, CheckCircle2, QrCode, Camera, History, Calendar, LayoutGrid, ArrowRight, ArrowLeft, Printer, Download, Eye, Upload } from 'lucide-react';
+import { dispatchAPI, samplesAPI } from '../../services/api';
 import { Html5Qrcode } from 'html5-qrcode';
 import Modal from '../../components/Modal';
+import DispatchLabelPrint from './components/DispatchLabelPrint';
 
+const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
 // ==========================================
 // Stepper de 4 Pasos para Despacho
 // ==========================================
@@ -31,6 +33,7 @@ const DispatchPage = () => {
   const [pendingScanCode, setPendingScanCode] = useState('');
   const [cameraError, setCameraError] = useState(null);
   const [selectedRecommendation, setSelectedRecommendation] = useState(null);
+  const [showLabelPreview, setShowLabelPreview] = useState(false);
 
   const html5QrCodeRef = useRef(null);
 
@@ -148,7 +151,8 @@ const DispatchPage = () => {
         product_name: resp.data.data.product_name,
         lot: resp.data.data.lot,
         expiration_date: new Date(resp.data.data.expiration_date).toISOString().split('T')[0],
-        coa_file_path: resp.data.data.coa_file_path,
+        manufacture_date: selectedRecommendation?.manufacture_date ? new Date(selectedRecommendation.manufacture_date).toISOString().split('T')[0] : '',
+        coa_file_path: resp.data.data.coa_file_path || selectedRecommendation?.coa_file_path,
         shelf_name: resp.data.data.shelf_name,
         dispatched_by: resp.data.data.dispatched_by,
         dispatched_at: resp.data.data.dispatched_at,
@@ -225,6 +229,7 @@ const DispatchPage = () => {
     setDispatchMessage('');
     setLabelData(null);
     setSelectedRecommendation(null);
+    setShowLabelPreview(false);
   };
 
   // ── Renderizar Stepper Header ──
@@ -428,6 +433,27 @@ const DispatchPage = () => {
     );
   };
 
+  // ── Modificar CoA ──
+  const handleCoAUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !selectedRecommendation?.global_sample_id) return;
+    
+    try {
+      setLoading(true);
+      await samplesAPI.updateBulkSampleWithCoA(selectedRecommendation.global_sample_id, {}, file);
+      alert('Certificado de Análisis (CoA) adjuntado exitosamente al lote.');
+      
+      // Actualizamos solo el path
+      const resp = await samplesAPI.getBulkSample(selectedRecommendation.global_sample_id);
+      setLabelData(prev => ({ ...prev, coa_file_path: resp.data.data.coa_file_path }));
+    } catch (err) {
+      alert('Error al subir el CoA: ' + err.message);
+    } finally {
+      setLoading(false);
+      e.target.value = ''; // clean input
+    }
+  };
+
   // ── PASO 4: Documentación ──
   const renderStep4 = () => (
     <div className="space-y-6 animate-fade-in">
@@ -438,32 +464,86 @@ const DispatchPage = () => {
         <h2 className="text-xl font-bold text-white mb-1">Despacho Exitoso</h2>
         <p className="text-sm text-gray-400">{dispatchMessage}</p>
       </div>
+      
       {labelData && (
-        <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-6 space-y-4">
-          <h3 className="font-medium text-white flex items-center gap-2"><FileText size={18} className="text-primary-400" />Etiqueta de Despacho</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div><p className="text-xs text-gray-400">Producto</p><p className="text-sm font-medium text-white">{labelData.product_name}</p></div>
-            <div><p className="text-xs text-gray-400">Lote</p><p className="text-sm font-mono text-white">{labelData.lot}</p></div>
-            <div><p className="text-xs text-gray-400">Vencimiento</p><p className="text-sm text-white">{labelData.expiration_date}</p></div>
-            <div><p className="text-xs text-gray-400">Despachado por</p><p className="text-sm text-white">{labelData.dispatched_by}</p></div>
-          </div>
-          <div className="pt-4 flex flex-col gap-3">
-            <button onClick={printLabel} className="w-full py-3 bg-white text-black font-semibold rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
-              <Printer size={16} /> Imprimir Etiqueta
-            </button>
-            {labelData.coa_file_path && (
-              <button onClick={downloadCoA} className="w-full py-3 bg-gray-800 border border-gray-700 text-white font-medium rounded-xl hover:border-gray-600 transition-colors flex items-center justify-center gap-2">
-                <Download size={16} /> Descargar CoA (PDF)
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Panel Etiqueta */}
+          <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-6 space-y-4">
+            <h3 className="font-medium text-white flex items-center gap-2"><Printer size={18} className="text-primary-400" />Etiqueta (Editables)</h3>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Producto</label>
+                <div className="w-full bg-gray-800 rounded-lg p-2 text-sm text-gray-300 pointer-events-none">{labelData.product_name}</div>
+              </div>
+              <div>
+                <label className="text-xs text-brand-red mb-1 block font-medium">Lote *</label>
+                <input type="text" value={labelData.lot} onChange={e => setLabelData(d => ({ ...d, lot: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:border-brand-red focus:outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-brand-red mb-1 block font-medium">F. Manufactura *</label>
+                  <input type="date" value={labelData.manufacture_date} onChange={e => setLabelData(d => ({ ...d, manufacture_date: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:border-brand-red focus:outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs text-brand-red mb-1 block font-medium">F. Vencimiento *</label>
+                  <input type="date" value={labelData.expiration_date} onChange={e => setLabelData(d => ({ ...d, expiration_date: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:border-brand-red focus:outline-none" />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <button onClick={() => setShowLabelPreview(true)} className="w-full py-3 bg-white text-black font-semibold rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
+                <Printer size={16} /> Ver e Imprimir Etiqueta (3x6)
               </button>
-            )}
+            </div>
+          </div>
+
+          {/* Panel CoA */}
+          <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-6 space-y-4">
+            <h3 className="font-medium text-white flex items-center gap-2"><FileText size={18} className="text-blue-400" />Certificado CoA</h3>
+            <p className="text-sm text-gray-400">Adjunte o revise el certificado de análisis asociado al lote de la muestra despachada.</p>
+            
+            <div className="p-4 border border-dashed border-gray-600 rounded-xl text-center space-y-2">
+              {labelData.coa_file_path ? (
+                <div className="flex flex-col items-center gap-2">
+                  <CheckCircle2 size={32} className="text-green-500" />
+                  <p className="text-sm text-green-400 font-medium">CoA Adjunto Correctamente</p>
+                  <a href={`${API_BASE}/${labelData.coa_file_path}`} target="_blank" rel="noreferrer"
+                    className="mt-2 py-2 px-4 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-700 flex items-center gap-2 transition-colors">
+                    <Eye size={16}/> Visualizar Documento
+                  </a>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 py-4">
+                  <AlertTriangle size={32} className="text-amber-500" />
+                  <p className="text-sm text-amber-500 font-medium">El lote no tiene un CoA asignado</p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2">
+              <label className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer">
+                <Upload size={16} />
+                {labelData.coa_file_path ? 'Actualizar / Reemplazar CoA' : 'Examinar / Subir CoA'}
+                <input type="file" accept="application/pdf" className="hidden" disabled={loading} onChange={handleCoAUpload} />
+              </label>
+            </div>
           </div>
         </div>
       )}
-      <button onClick={resetAll} className="w-full py-4 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg shadow-primary-500/20 transition-colors">
-        Nuevo Despacho
-      </button>
+      
+      <div className="pt-4">
+        <button onClick={resetAll} className="w-full py-4 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg shadow-primary-500/20 transition-colors">
+          Nuevo Despacho
+        </button>
+      </div>
     </div>
   );
+
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -535,6 +615,13 @@ const DispatchPage = () => {
           </div>
         </div>
       </Modal>
+
+      {showLabelPreview && (
+        <DispatchLabelPrint 
+          data={labelData} 
+          onClose={() => setShowLabelPreview(false)} 
+        />
+      )}
     </div>
   );
 };

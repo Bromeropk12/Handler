@@ -1,14 +1,26 @@
 const { query } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
+const path = require('path');
+const fs = require('fs').promises;
 
 const getSuppliers = async (req, res, next) => {
   try {
-    const result = await query('SELECT * FROM suppliers ORDER BY name ASC');
+    const result = await query(`
+      SELECT s.*,
+        (SELECT COUNT(*) FROM global_samples gs WHERE gs.supplier_id = s.id) as sample_count
+      FROM suppliers s
+      ORDER BY name ASC
+    `);
+
+    // Construir URL completa del logo para el frontend
+    const suppliers = result.rows.map(s => ({
+      ...s,
+      logo_url: s.logo_path ? `/${s.logo_path}` : null
+    }));
+
     res.json({
       success: true,
-      data: {
-        suppliers: result.rows
-      }
+      data: { suppliers }
     });
   } catch (error) {
     next(error);
@@ -83,9 +95,59 @@ const deleteSupplier = async (req, res, next) => {
   }
 };
 
+/**
+ * Upload logo PNG para un proveedor
+ * POST /api/suppliers/:id/logo
+ */
+const uploadSupplierLogo = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.file) {
+      throw new AppError('Se requiere un archivo PNG de logo', 400);
+    }
+
+    // Verificar que el proveedor existe
+    const supplier = await query('SELECT * FROM suppliers WHERE id = $1', [id]);
+    if (supplier.rows.length === 0) {
+      // Limpiar archivo subido
+      try { await fs.unlink(req.file.path); } catch (_) {}
+      throw new AppError('Proveedor no encontrado', 404);
+    }
+
+    // Si tenía un logo previo en uploads/, eliminarlo
+    const oldLogo = supplier.rows[0].logo_path;
+    if (oldLogo && oldLogo.startsWith('uploads/')) {
+      try {
+        await fs.unlink(path.join(process.cwd(), oldLogo));
+      } catch (_) {}
+    }
+
+    // Guardar ruta relativa
+    const relativePath = path.relative(process.cwd(), req.file.path).replace(/\\/g, '/');
+
+    await query(
+      'UPDATE suppliers SET logo_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [relativePath, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Logo actualizado exitosamente',
+      data: {
+        logo_path: relativePath,
+        logo_url: `/${relativePath}`
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getSuppliers,
   createSupplier,
   updateSupplier,
-  deleteSupplier
+  deleteSupplier,
+  uploadSupplierLogo
 };

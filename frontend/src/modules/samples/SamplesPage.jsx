@@ -8,9 +8,32 @@ import {
   BeakerIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
-  CubeIcon,
   DocumentArrowDownIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  ExclamationTriangleIcon,
+  ShieldExclamationIcon,
+  CheckCircleIcon,
+  DocumentCheckIcon,
+  CloudArrowUpIcon,
 } from '@heroicons/react/24/outline';
+
+const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
+
+// Mapeo de pictogramas GHS → archivos de imagen
+const GHS_PICTOGRAM_MAP = {
+  'Explosivo':                  { file: 'explos.webp',           label: 'Explosivo' },
+  'Inflamable':                 { file: 'flamme.webp',           label: 'Inflamable' },
+  'Comburente':                 { file: 'rondflam.webp',         label: 'Comburente' },
+  'Gas Bajo Presión':           { file: 'bottle.webp',           label: 'Gas Bajo Presión' },
+  'Corrosivo':                  { file: 'acid_red.webp',         label: 'Corrosivo' },
+  'Toxicidad Aguda':            { file: 'skull.webp',            label: 'Toxicidad Aguda' },
+  'Irritante':                  { file: 'exclam.webp',           label: 'Irritante' },
+  'Toxicidad Crónica':          { file: 'silhouete.webp',        label: 'Toxicidad Crónica' },
+  'Tóxico para Medio Ambiente': { file: 'Aquatic-pollut-red.png', label: 'Medio Ambiente' },
+};
+
+const ALL_PICTOGRAMS = Object.keys(GHS_PICTOGRAM_MAP);
 
 const SamplesPage = () => {
   const [samples, setSamples] = useState([]);
@@ -18,10 +41,12 @@ const SamplesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedSample, setSelectedSample] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [marketLines, setMarketLines] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [shelves, setShelves] = useState([]);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [filters, setFilters] = useState({
     market_line_id: '',
     ghs_danger_class: '',
@@ -37,44 +62,59 @@ const SamplesPage = () => {
     ghs_danger_class: '',
     market_line_id: '',
     dimensions: '1x1x1',
-    weight_per_unit_grams: '',
-    shelf_id: '',
-    position_x: '',
-    position_y: '',
-    position_z: ''
+    total_weight_grams: '',
+    ghs_pictograms: [],
+    signal_word: 'ATENCION',
   });
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [samplesResp, mlResp, suppResp, shelvesResp] = await Promise.all([
-          samplesAPI.getBulkSamples(),
-          samplesAPI.getMarketLines(),
-          samplesAPI.getSuppliers(),
-          warehouseAPI.getShelves({ limit: 200 })
-        ]);
-        setSamples(samplesResp.data?.data?.bulkSamples || samplesResp.data?.data?.samples || []);
-        setMarketLines(mlResp.data?.data?.marketLines || []);
-        setSuppliers(suppResp.data?.data?.suppliers || []);
-        setShelves(shelvesResp.data?.data?.shelves || []);
-      } catch (_err) {
-        setSamples([]);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const resetForm = () => {
+    setFormData({
+      name: '', supplier_id: '', lot: '', expiration_date: '',
+      manufacture_date: '', ghs_danger_class: '', market_line_id: '',
+      dimensions: '1x1x1', total_weight_grams: '',
+      ghs_pictograms: [], signal_word: 'ATENCION',
+    });
+    setCoaFile(null);
+  };
 
-    fetchData();
+  const loadSamples = async () => {
+    try {
+      setLoading(true);
+      const [samplesResp, mlResp, suppResp] = await Promise.all([
+        samplesAPI.getBulkSamples({ limit: 200 }),
+        samplesAPI.getMarketLines(),
+        samplesAPI.getSuppliers(),
+      ]);
+      setSamples(samplesResp.data?.data?.bulkSamples || []);
+      setMarketLines(mlResp.data?.data?.marketLines || []);
+      setSuppliers(suppResp.data?.data?.suppliers || []);
+    } catch (_err) {
+      setSamples([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSamples();
   }, []);
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const togglePictogram = (pictogram) => {
+    setFormData(prev => {
+      const current = prev.ghs_pictograms || [];
+      const newPictos = current.includes(pictogram)
+        ? current.filter(p => p !== pictogram)
+        : [...current, pictogram];
+      return { ...prev, ghs_pictograms: newPictos };
+    });
+  };
+
   const handleCreateSample = async () => {
-    // Validaciones
-    if (!formData.name || !formData.supplier_id || !formData.lot || !formData.expiration_date || !formData.manufacture_date || !formData.ghs_danger_class || !formData.market_line_id || !formData.weight_per_unit_grams) {
+    if (!formData.name || !formData.supplier_id || !formData.lot || !formData.expiration_date || !formData.manufacture_date || !formData.ghs_danger_class || !formData.market_line_id || !formData.total_weight_grams) {
       alert('Todos los campos obligatorios deben ser completados');
       return;
     }
@@ -85,19 +125,83 @@ const SamplesPage = () => {
     try {
       await samplesAPI.createBulkSample(formData, coaFile);
       setShowCreateModal(false);
-      setCoaFile(null);
-      setFormData({
-        name: '', supplier_id: '', lot: '', expiration_date: '',
-        manufacture_date: '', ghs_danger_class: '', market_line_id: '',
-        dimensions: '1x1x1', weight_per_unit_grams: '',
-        shelf_id: '', position_x: '', position_y: '', position_z: ''
-      });
-      // Recargar datos
-      const samplesResp = await samplesAPI.getBulkSamples();
-      setSamples(samplesResp.data?.data?.bulkSamples || samplesResp.data?.data?.samples || []);
+      resetForm();
+      loadSamples();
     } catch (err) {
-      alert(err.response?.data?.message || 'Error al crear la muestra');
+      alert(err.response?.data?.message || err.message || 'Error al crear la muestra');
     }
+  };
+
+  const handleUpdateSample = async () => {
+    if (!selectedSample) return;
+    try {
+      const dataToSend = { ...formData };
+      // No enviar campos no editables internamente por el sistema
+      delete dataToSend.total_units;
+      delete dataToSend.available_units;
+      
+      await samplesAPI.updateBulkSampleWithCoA(selectedSample.id, dataToSend, coaFile);
+      
+      setIsEditing(false);
+      setCoaFile(null); // Limpiar archivo tras subir
+      setSelectedSample(null);
+      loadSamples();
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || 'Error al actualizar la muestra');
+    }
+  };
+
+  const handleDeleteSample = async (sample) => {
+    try {
+      const resp = await samplesAPI.deleteBulkSample(sample.id, false);
+      // Si requiere confirmación
+      if (resp.data?.requires_confirmation) {
+        setDeleteTarget(sample);
+        setShowDeleteConfirm(true);
+        return;
+      }
+      setSelectedSample(null);
+      loadSamples();
+    } catch (err) {
+      if (err.data?.requires_confirmation) {
+        setDeleteTarget(sample);
+        setShowDeleteConfirm(true);
+        return;
+      }
+      alert(err.message || 'Error al eliminar');
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await samplesAPI.deleteBulkSample(deleteTarget.id, true);
+      setShowDeleteConfirm(false);
+      setDeleteTarget(null);
+      setSelectedSample(null);
+      loadSamples();
+    } catch (err) {
+      alert(err.message || 'Error al eliminar');
+    }
+  };
+
+  const openDetailModal = (sample) => {
+    setSelectedSample(sample);
+    setIsEditing(false);
+    // Prellenar form con datos actuales
+    setFormData({
+      name: sample.name || '',
+      supplier_id: sample.supplier_id || '',
+      lot: sample.lot || '',
+      expiration_date: sample.expiration_date ? sample.expiration_date.split('T')[0] : '',
+      manufacture_date: sample.manufacture_date ? sample.manufacture_date.split('T')[0] : '',
+      ghs_danger_class: sample.ghs_danger_class || '',
+      market_line_id: sample.market_line_id || '',
+      dimensions: sample.dimensions || '1x1x1',
+      total_weight_grams: sample.total_weight_grams || '',
+      ghs_pictograms: sample.ghs_pictograms || [],
+      signal_word: sample.signal_word || 'ATENCION',
+    });
   };
 
   const getSGABadge = (sgaClass) => {
@@ -106,6 +210,7 @@ const SamplesPage = () => {
       'Inflamable': 'warning',
       'Corrosivo': 'warning',
       'Tóxico': 'danger',
+      'Toxico': 'danger',
       'Comburente': 'info',
       'Explosivo': 'danger',
     };
@@ -113,14 +218,16 @@ const SamplesPage = () => {
   };
 
   const getStatusBadge = (sample) => {
+    if (sample.total_units === 0 || sample.status === 'pending') {
+      return <Badge variant="info" dot>Pendiente Dispensar</Badge>;
+    }
     if (!sample.expiration_date) return <Badge variant="neutral">Sin fecha</Badge>;
     const expDate = new Date(sample.expiration_date);
     const now = new Date();
     const daysUntil = Math.floor((expDate - now) / (1000 * 60 * 60 * 24));
-
     if (daysUntil < 0) return <Badge variant="danger" dot>Vencida</Badge>;
     if (daysUntil <= 30) return <Badge variant="warning" dot>Por vencer</Badge>;
-    return <Badge variant="success" dot>Activa</Badge>;
+    return <Badge variant="success" dot>Activa ({sample.available_units}/{sample.total_units})</Badge>;
   };
 
   const columns = [
@@ -140,15 +247,15 @@ const SamplesPage = () => {
       render: val => <span className="text-gray-300">{val || 'Sin asignar'}</span>,
     },
     {
-      key: 'weight_per_unit_grams',
-      label: 'Peso/Unidad',
-      render: (val, row) => <span className="text-gray-300 font-mono text-xs">{val || row.weight_per_unit_grams ? `${row.weight_per_unit_grams}g` : 'N/A'}</span>,
+      key: 'total_weight_grams',
+      label: 'Peso Total',
+      render: (val) => <span className="text-gray-300 font-mono text-xs">{val ? `${val}g` : 'N/A'}</span>,
     },
     {
       key: 'available_units',
-      label: 'Uds. Disponibles',
+      label: 'Uds. Hijas',
       render: (val, row) => {
-        const available = val ?? row.available_units ?? 0;
+        const available = val ?? 0;
         const total = row.total_units ?? 0;
         return (
           <div className="text-right">
@@ -164,9 +271,15 @@ const SamplesPage = () => {
       render: val => getSGABadge(val),
     },
     {
-      key: 'market_line_name',
-      label: 'Línea',
-      render: val => <span className="text-gray-400 text-xs">{val || 'N/A'}</span>,
+      key: 'signal_word',
+      label: 'Señal',
+      render: val => (
+        <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+          val === 'PELIGRO' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'
+        }`}>
+          {val || 'ATENCION'}
+        </span>
+      ),
     },
     {
       key: 'status',
@@ -189,22 +302,232 @@ const SamplesPage = () => {
     const matchesDangerClass = !filters.ghs_danger_class || s.ghs_danger_class === filters.ghs_danger_class;
     
     let matchesStatus = true;
-    if (filters.status === 'available') {
-      matchesStatus = s.available_units > 0;
-    } else if (filters.status === 'empty') {
-      matchesStatus = s.available_units === 0;
-    } else if (filters.status === 'expired') {
-      const expDate = new Date(s.expiration_date);
-      matchesStatus = expDate < new Date();
-    } else if (filters.status === 'warning') {
-      const expDate = new Date(s.expiration_date);
-      const now = new Date();
-      const daysUntil = Math.floor((expDate - now) / (1000 * 60 * 60 * 24));
-      matchesStatus = daysUntil >= 0 && daysUntil <= 30;
-    }
+    if (filters.status === 'pending') matchesStatus = s.total_units === 0;
+    else if (filters.status === 'dispensed') matchesStatus = s.total_units > 0;
+    else if (filters.status === 'expired') matchesStatus = new Date(s.expiration_date) < new Date();
     
     return matchesSearch && matchesMarketLine && matchesDangerClass && matchesStatus;
   });
+
+  // Componente reutilizable para el formulario de pictogramas
+  const PictogramChecklist = ({ selected, onToggle, disabled }) => (
+    <div className="grid grid-cols-3 gap-2">
+      {ALL_PICTOGRAMS.map(picto => {
+        const info = GHS_PICTOGRAM_MAP[picto];
+        const isSelected = (selected || []).includes(picto);
+        return (
+          <div
+            key={picto}
+            className={`flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-all ${isSelected ? 'bg-red-500/10 border-red-500/50' : 'bg-surface-900 border-white/5 opacity-40 grayscale'} ${disabled ? '' : 'cursor-pointer hover:opacity-100'}`}
+            onMouseDown={e => {
+              // Prevenir que el browser haga scroll automático al hacer focus en este elemento
+              e.preventDefault();
+              if (!disabled) onToggle(picto);
+            }}
+          >
+            <img
+              src={`/recursos/pictogramas/${info.file}`}
+              alt={picto}
+              className="w-8 h-8 object-contain pointer-events-none"
+            />
+            <span className={`text-[9px] leading-tight font-medium pointer-events-none ${isSelected ? 'text-red-300' : 'text-gray-500'}`}>
+              {info.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  // Componente de formulario completo (reutilizado en crear y editar)
+  const SampleForm = ({ isEdit = false }) => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label">Nombre del Producto *</label>
+          <input className="input" placeholder="Ej: Vitamina C" value={formData.name} onChange={e => handleInputChange('name', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Lote *</label>
+          <input className="input" placeholder="Ej: LOT-2026-001" value={formData.lot} onChange={e => handleInputChange('lot', e.target.value)}
+            readOnly={isEdit} style={isEdit ? { opacity: 0.6, cursor: 'not-allowed' } : {}} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label">Proveedor *</label>
+          <select className="select" value={formData.supplier_id} onChange={e => handleInputChange('supplier_id', e.target.value)}>
+            <option value="">Seleccione...</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Clase de Peligro SGA *</label>
+          <select className="select" value={formData.ghs_danger_class} onChange={e => handleInputChange('ghs_danger_class', e.target.value)}>
+            <option value="">Seleccione...</option>
+            <option>Sin Riesgo</option>
+            <option>Inflamable</option>
+            <option>Corrosivo</option>
+            <option>Toxico</option>
+            <option>Comburente</option>
+            <option>Explosivo</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Palabra de señal */}
+      <div>
+        <label className="label">Palabra de Señal *</label>
+        <div className="grid grid-cols-2 gap-3">
+          {['PELIGRO', 'ATENCION'].map(word => (
+            <button
+              key={word}
+              type="button"
+              onClick={() => handleInputChange('signal_word', word)}
+              className={`py-3 rounded-xl font-bold text-sm border-2 transition-all ${
+                formData.signal_word === word
+                  ? word === 'PELIGRO'
+                    ? 'bg-red-500/20 border-red-500 text-red-400'
+                    : 'bg-amber-500/20 border-amber-500 text-amber-400'
+                  : 'bg-surface-900 border-white/10 text-gray-500 hover:border-white/20'
+              }`}
+            >
+              {word === 'PELIGRO' ? '⚠ PELIGRO' : '⚡ ATENCIÓN'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Pictogramas GHS */}
+      <div className="border-t border-gray-700/50 pt-4">
+        <div className="flex items-center gap-2 mb-3">
+          <ShieldExclamationIcon className="w-4 h-4 text-red-400" />
+          <h4 className="text-sm font-medium text-gray-300">Pictogramas de Riesgo GHS</h4>
+          {formData.ghs_pictograms?.length > 0 && (
+            <span className="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-bold">
+              {formData.ghs_pictograms.length} seleccionados
+            </span>
+          )}
+        </div>
+        <PictogramChecklist
+          selected={formData.ghs_pictograms}
+          onToggle={togglePictogram}
+          disabled={false}
+        />
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="label">Peso Total del Bulk (g) *</label>
+          <input type="number" className="input" placeholder="5000" value={formData.total_weight_grams} onChange={e => handleInputChange('total_weight_grams', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Fecha Manufactura *</label>
+          <input type="date" className="input" value={formData.manufacture_date} onChange={e => handleInputChange('manufacture_date', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Fecha Vencimiento *</label>
+          <input type="date" className="input" value={formData.expiration_date} onChange={e => handleInputChange('expiration_date', e.target.value)} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label">Línea de Mercado *</label>
+          <select className="select" value={formData.market_line_id} onChange={e => handleInputChange('market_line_id', e.target.value)}>
+            <option value="">Seleccione...</option>
+            {marketLines.map(ml => <option key={ml.id} value={ml.id}>{ml.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Tamaño del Producto Bulk</label>
+          <select className="select" value={formData.dimensions} onChange={e => handleInputChange('dimensions', e.target.value)}>
+            <option value="1x1x1">Pequeño (1 unidad)</option>
+            <option value="1x2x1">Alto (2 niveles)</option>
+            <option value="2x1x1">Ancho (2 columnas)</option>
+            <option value="2x2x1">Grande (2×2)</option>
+            <option value="1x1x2">Profundo (2 profundidad)</option>
+            <option value="1x2x2">Alto + Profundo</option>
+            <option value="2x1x2">Ancho + Profundo</option>
+            <option value="2x2x2">Máximo (2×2×2)</option>
+          </select>
+        </div>
+      </div>
+
+      {/* CoA */}
+      <div className="border-t border-gray-700/50 pt-4">
+        <div className="flex items-center gap-2 mb-3">
+          <DocumentArrowDownIcon className="w-4 h-4 text-green-400" />
+          <h4 className="text-sm font-medium text-gray-300">Certificado de Análisis (CoA)</h4>
+        </div>
+        
+        {/* Mostrar CoA actual si existe y estamos editando */}
+        {isEdit && selectedSample?.coa_file_path && (
+          <div className="flex items-center gap-3 mb-4 p-3 bg-green-500/5 border border-green-500/10 rounded-xl">
+            <div className="shrink-0 w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
+              <DocumentCheckIcon className="w-4 h-4 text-green-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-green-400 font-bold uppercase tracking-wider">CoA Actual Adjunto</p>
+              <p className="text-[10px] text-gray-500 truncate">{selectedSample.coa_file_path}</p>
+            </div>
+            <a
+              href={`${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:3001'}/${selectedSample.coa_file_path}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 bg-blue-500/10 text-blue-400 text-xs font-bold rounded-lg hover:bg-blue-500/20 transition-colors shrink-0"
+            >
+              Ver PDF
+            </a>
+          </div>
+        )}
+
+        {/* Input para nuevo archivo (Usado en Nuevo y en Editar como actualización) */}
+        <div>
+          <label className="label">
+            {isEdit ? 'Actualizar / Cambiar Archivo CoA (PDF)' : 'Archivo PDF del CoA (Opcional)'}
+          </label>
+          <div className="relative group">
+            <input
+              type="file"
+              accept=".pdf"
+              onChange={e => setCoaFile(e.target.files[0] || null)}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+            />
+            <div className={`w-full p-4 rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 ${
+              coaFile 
+                ? 'bg-green-500/5 border-green-500/40' 
+                : 'bg-surface-900 border-white/10 group-hover:border-white/20'
+            }`}>
+              {coaFile ? (
+                <>
+                  <CheckCircleIcon className="w-8 h-8 text-green-400" />
+                  <p className="text-sm font-bold text-gray-100">{coaFile.name}</p>
+                  <p className="text-xs text-green-400">Archivo listo para subir</p>
+                </>
+              ) : (
+                <>
+                  <CloudArrowUpIcon className="w-8 h-8 text-gray-500 group-hover:text-gray-400" />
+                  <p className="text-sm font-medium text-gray-400 group-hover:text-gray-300">
+                    Click para examinar o arrastre un PDF aquí
+                  </p>
+                  <p className="text-[10px] text-gray-600 uppercase font-bold">PDF MÁX. 10MB</p>
+                </>
+              )}
+            </div>
+          </div>
+          {coaFile && (
+            <button 
+              type="button" 
+              onClick={() => setCoaFile(null)}
+              className="mt-2 text-xs text-red-400 hover:text-red-300 font-medium"
+            >
+              Quitar selección
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -216,10 +539,7 @@ const SamplesPage = () => {
             Gestión de materias primas (Bulk) con trazabilidad SGA
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="btn-primary"
-        >
+        <button onClick={() => { resetForm(); setShowCreateModal(true); }} className="btn-primary">
           <PlusIcon className="w-4 h-4 mr-2" />
           Nueva Muestra
         </button>
@@ -244,9 +564,6 @@ const SamplesPage = () => {
           >
             <FunnelIcon className="w-4 h-4 mr-2" />
             Filtros
-            {(filters.market_line_id || filters.ghs_danger_class || filters.status) && (
-              <span className="ml-1 w-2 h-2 bg-blue-400 rounded-full inline-block"></span>
-            )}
           </button>
           {(filters.market_line_id || filters.ghs_danger_class || filters.status) && (
             <button 
@@ -264,7 +581,7 @@ const SamplesPage = () => {
         columns={columns}
         data={filteredSamples}
         loading={loading}
-        onRowClick={row => setSelectedSample(row)}
+        onRowClick={row => openDetailModal(row)}
         emptyTitle="No hay muestras registradas"
         emptyDescription="Comience agregando su primera muestra global al sistema."
         emptyIcon={BeakerIcon}
@@ -278,157 +595,66 @@ const SamplesPage = () => {
         size="lg"
         footer={
           <>
-            <button onClick={() => setShowCreateModal(false)} className="btn-secondary">
-              Cancelar
-            </button>
-            <button onClick={handleCreateSample} className="btn-primary">
-              Crear Muestra
-            </button>
+            <button onClick={() => setShowCreateModal(false)} className="btn-secondary">Cancelar</button>
+            <button onClick={handleCreateSample} className="btn-primary">Crear Muestra</button>
           </>
         }
       >
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Nombre del Producto</label>
-              <input className="input" placeholder="Ej: Vitamina C" value={formData.name} onChange={e => handleInputChange('name', e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Lote</label>
-              <input className="input" placeholder="Ej: LOT-2026-001" value={formData.lot} onChange={e => handleInputChange('lot', e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Proveedor</label>
-              <select className="select" value={formData.supplier_id} onChange={e => handleInputChange('supplier_id', e.target.value)}>
-                <option value="">Seleccione...</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Clase de Peligro SGA</label>
-              <select className="select" value={formData.ghs_danger_class} onChange={e => handleInputChange('ghs_danger_class', e.target.value)}>
-                <option value="">Seleccione...</option>
-                <option>Sin Riesgo</option>
-                <option>Inflamable</option>
-                <option>Corrosivo</option>
-                <option>Toxico</option>
-                <option>Comburente</option>
-                <option>Explosivo</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="label">Peso por Unidad (g/ml)</label>
-              <input type="number" className="input" placeholder="500" value={formData.weight_per_unit_grams} onChange={e => handleInputChange('weight_per_unit_grams', e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Fecha Manufactura</label>
-              <input type="date" className="input" value={formData.manufacture_date} onChange={e => handleInputChange('manufacture_date', e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Fecha Vencimiento</label>
-              <input type="date" className="input" value={formData.expiration_date} onChange={e => handleInputChange('expiration_date', e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Línea de Mercado</label>
-              <select className="select" value={formData.market_line_id} onChange={e => handleInputChange('market_line_id', e.target.value)}>
-                <option value="">Seleccione...</option>
-                {marketLines.map(ml => <option key={ml.id} value={ml.id}>{ml.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Tamaño de la Muestra</label>
-              <select className="select" value={formData.dimensions} onChange={e => handleInputChange('dimensions', e.target.value)}>
-                <option value="1x1x1">Pequeño (1 unidad)</option>
-                <option value="1x2x1">Alto (2 niveles)</option>
-                <option value="2x1x1">Ancho (2 columnas)</option>
-                <option value="2x2x1">Grande (2×2)</option>
-                <option value="1x1x2">Profundo (2 profundidad)</option>
-                <option value="1x2x2">Alto + Profundo</option>
-                <option value="2x1x2">Ancho + Profundo</option>
-                <option value="2x2x2">Máximo (2×2×2)</option>
-              </select>
-            </div>
-          </div>
-          {/* Ubicación en Anaquel */}
-          <div className="border-t border-gray-700/50 pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <CubeIcon className="w-4 h-4 text-primary-400" />
-              <h4 className="text-sm font-medium text-gray-300">Ubicación en Anaquel (Opcional)</h4>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">Anaquel</label>
-                <select className="select" value={formData.shelf_id} onChange={e => handleInputChange('shelf_id', e.target.value)}>
-                  <option value="">Sin ubicación (pendiente)</option>
-                  {shelves.map(s => <option key={s.id} value={s.id}>{s.name} ({s.market_line_name})</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="label text-[10px]">Col (X)</label>
-                  <input type="number" className="input text-sm" placeholder="0" min="0" value={formData.position_x} onChange={e => handleInputChange('position_x', e.target.value)} />
-                </div>
-                <div>
-                  <label className="label text-[10px]">Nivel (Y)</label>
-                  <input type="number" className="input text-sm" placeholder="0" min="0" value={formData.position_y} onChange={e => handleInputChange('position_y', e.target.value)} />
-                </div>
-                <div>
-                  <label className="label text-[10px]">Prof (Z)</label>
-                  <input type="number" className="input text-sm" placeholder="0" min="0" value={formData.position_z} onChange={e => handleInputChange('position_z', e.target.value)} />
-                </div>
-              </div>
-            </div>
-          </div>
-          {/* Certificado de Análisis (CoA) */}
-          <div className="border-t border-gray-700/50 pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <DocumentArrowDownIcon className="w-4 h-4 text-green-400" />
-              <h4 className="text-sm font-medium text-gray-300">Certificado de Análisis (CoA)</h4>
-            </div>
-            <div>
-              <label className="label">Archivo PDF del CoA (Opcional)</label>
-              <input
-                type="file"
-                accept=".pdf"
-                onChange={e => setCoaFile(e.target.files[0] || null)}
-                className="w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20 cursor-pointer"
-              />
-              {coaFile && (
-                <p className="text-xs text-green-400 mt-1">✓ {coaFile.name} seleccionado</p>
-              )}
-            </div>
-          </div>
-        </div>
+        <SampleForm isEdit={false} />
       </Modal>
 
-      {/* Detail Modal */}
+      {/* Detail / Edit Modal */}
       <Modal
         isOpen={!!selectedSample}
-        onClose={() => setSelectedSample(null)}
-        title="Detalle de Muestra"
+        onClose={() => { setSelectedSample(null); setIsEditing(false); }}
+        title={isEditing ? "Editar Muestra Global" : "Detalle de Muestra Global"}
         size="lg"
         footer={
-          <button onClick={() => setSelectedSample(null)} className="btn-secondary">
-            Cerrar
-          </button>
+          <>
+            {isEditing ? (
+              <>
+                <button onClick={() => setIsEditing(false)} className="btn-secondary">Cancelar</button>
+                <button onClick={handleUpdateSample} className="btn-primary">
+                  <CheckCircleIcon className="w-4 h-4 mr-1" />Guardar Cambios
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => selectedSample && handleDeleteSample(selectedSample)}
+                  className="btn-ghost text-red-400 hover:text-red-300 mr-auto"
+                >
+                  <TrashIcon className="w-4 h-4 mr-1" />Eliminar
+                </button>
+                <button onClick={() => { setSelectedSample(null); setIsEditing(false); }} className="btn-secondary">Cerrar</button>
+                <button onClick={() => setIsEditing(true)} className="btn-primary">
+                  <PencilSquareIcon className="w-4 h-4 mr-1" />Editar
+                </button>
+              </>
+            )}
+          </>
         }
       >
-        {selectedSample && (
+        {selectedSample && !isEditing && (
           <div className="space-y-4">
+            {/* Status badge prominente */}
+            <div className="flex items-center gap-3">
+              {getStatusBadge(selectedSample)}
+              <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                selectedSample.signal_word === 'PELIGRO' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {selectedSample.signal_word || 'ATENCION'}
+              </span>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500">Producto</p>
-                <p className="text-sm font-medium text-gray-200">{selectedSample.name || selectedSample.product_name}</p>
+                <p className="text-sm font-medium text-gray-200">{selectedSample.name}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Lote</p>
-                <p className="text-sm font-medium text-gray-200">{selectedSample.lot || 'N/A'}</p>
+                <p className="text-sm font-medium text-gray-200 font-mono">{selectedSample.lot}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Proveedor</p>
@@ -439,20 +665,20 @@ const SamplesPage = () => {
                 {getSGABadge(selectedSample.ghs_danger_class)}
               </div>
               <div>
-                <p className="text-xs text-gray-500">Peso por Unidad</p>
-                <p className="text-sm font-medium text-gray-200">{selectedSample.weight_per_unit_grams ? `${selectedSample.weight_per_unit_grams}g` : 'N/A'}</p>
+                <p className="text-xs text-gray-500">Peso Total del Bulk</p>
+                <p className="text-sm font-medium text-gray-200">{selectedSample.total_weight_grams ? `${selectedSample.total_weight_grams}g` : 'N/A'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Dimensiones</p>
+                <p className="text-xs text-gray-500">Tamaño del Bulk</p>
                 <p className="text-sm font-medium text-gray-200">{selectedSample.dimensions || 'N/A'}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Unidades Disponibles</p>
-                <p className="text-sm font-medium text-green-400">{selectedSample.available_units ?? 0}</p>
+                <p className="text-xs text-gray-500">Muestras Hijas</p>
+                <p className="text-sm font-medium text-green-400">{selectedSample.available_units ?? 0} / {selectedSample.total_units ?? 0}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Unidades Totales</p>
-                <p className="text-sm font-medium text-gray-200">{selectedSample.total_units ?? 0}</p>
+                <p className="text-xs text-gray-500">Línea de Mercado</p>
+                <p className="text-sm font-medium text-gray-200">{selectedSample.market_line_name || 'N/A'}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Fecha de Manufactura</p>
@@ -463,24 +689,39 @@ const SamplesPage = () => {
                 <p className="text-sm font-medium text-gray-200">{selectedSample.expiration_date ? new Date(selectedSample.expiration_date).toLocaleDateString() : 'N/A'}</p>
               </div>
             </div>
-            <div className="border-t border-gray-700 pt-4">
-              <p className="text-xs text-gray-500 mb-2">Estado</p>
-              {getStatusBadge(selectedSample)}
-            </div>
-            {/* Certificado CoA */}
+
+            {/* Pictogramas GHS */}
+            {selectedSample.ghs_pictograms && selectedSample.ghs_pictograms.length > 0 && (
+              <div className="border-t border-gray-700 pt-4">
+                <p className="text-xs text-gray-500 mb-2">Pictogramas de Riesgo GHS</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedSample.ghs_pictograms.map(picto => {
+                    const info = GHS_PICTOGRAM_MAP[picto];
+                    if (!info) return null;
+                    return (
+                      <div key={picto} className="flex flex-col items-center gap-1 p-2 bg-red-500/5 border border-red-500/20 rounded-lg">
+                        <img src={`${API_BASE}/recursos/pictogramas/${info.file}`} alt={picto} className="w-7 h-7" />
+                        <span className="text-[8px] text-red-300 font-medium">{info.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* CoA */}
             <div className="border-t border-gray-700 pt-4">
               <p className="text-xs text-gray-500 mb-2">Certificado de Análisis (CoA)</p>
               {selectedSample.coa_file_path ? (
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-green-400 font-medium">✓ CoA adjunto</span>
                   <a
-                    href={`${process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001'}/${selectedSample.coa_file_path}`}
+                    href={`${API_BASE}/${selectedSample.coa_file_path}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-500/10 text-blue-400 text-xs font-medium rounded-lg hover:bg-blue-500/20 transition-colors"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-500/10 text-blue-400 text-xs font-medium rounded-lg hover:bg-blue-500/20"
                   >
-                    <DocumentArrowDownIcon className="w-3.5 h-3.5" />
-                    Ver / Descargar PDF
+                    <DocumentArrowDownIcon className="w-3.5 h-3.5" />Ver / Descargar PDF
                   </a>
                 </div>
               ) : (
@@ -489,6 +730,39 @@ const SamplesPage = () => {
             </div>
           </div>
         )}
+
+        {selectedSample && isEditing && (
+          <SampleForm isEdit={true} />
+        )}
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteConfirm}
+        onClose={() => { setShowDeleteConfirm(false); setDeleteTarget(null); }}
+        title="⚠ Confirmar Eliminación"
+        footer={
+          <>
+            <button onClick={() => { setShowDeleteConfirm(false); setDeleteTarget(null); }} className="btn-secondary">Cancelar</button>
+            <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
+              Sí, Eliminar Todo
+            </button>
+          </>
+        }
+      >
+        <div className="flex gap-4">
+          <div className="shrink-0 w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
+            <ExclamationTriangleIcon className="w-6 h-6 text-red-400" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              La muestra <strong className="text-white">{deleteTarget?.name}</strong> (Lote: {deleteTarget?.lot}) tiene <strong className="text-red-400">{deleteTarget?.total_units || '?'}</strong> muestras hijas asociadas.
+            </p>
+            <p className="text-sm text-red-400 mt-2 font-medium">
+              Eliminarla borrará TODAS las muestras hijas y sus posiciones en los anaqueles. Esta acción no se puede deshacer.
+            </p>
+          </div>
+        </div>
       </Modal>
 
       {/* Filter Modal */}
@@ -498,34 +772,22 @@ const SamplesPage = () => {
         title="Filtrar Muestras"
         footer={
           <>
-            <button onClick={() => setFilters({ market_line_id: '', ghs_danger_class: '', status: '' })} className="btn-secondary">
-              Limpiar
-            </button>
-            <button onClick={() => setShowFilterModal(false)} className="btn-primary">
-              Aplicar Filtros
-            </button>
+            <button onClick={() => setFilters({ market_line_id: '', ghs_danger_class: '', status: '' })} className="btn-secondary">Limpiar</button>
+            <button onClick={() => setShowFilterModal(false)} className="btn-primary">Aplicar Filtros</button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
             <label className="label">Línea de Mercado</label>
-            <select 
-              className="select" 
-              value={filters.market_line_id} 
-              onChange={e => setFilters(prev => ({ ...prev, market_line_id: e.target.value }))}
-            >
+            <select className="select" value={filters.market_line_id} onChange={e => setFilters(prev => ({ ...prev, market_line_id: e.target.value }))}>
               <option value="">Todas</option>
               {marketLines.map(ml => <option key={ml.id} value={ml.id}>{ml.name}</option>)}
             </select>
           </div>
           <div>
             <label className="label">Clase de Peligro SGA</label>
-            <select 
-              className="select" 
-              value={filters.ghs_danger_class} 
-              onChange={e => setFilters(prev => ({ ...prev, ghs_danger_class: e.target.value }))}
-            >
+            <select className="select" value={filters.ghs_danger_class} onChange={e => setFilters(prev => ({ ...prev, ghs_danger_class: e.target.value }))}>
               <option value="">Todas</option>
               <option>Sin Riesgo</option>
               <option>Inflamable</option>
@@ -537,16 +799,11 @@ const SamplesPage = () => {
           </div>
           <div>
             <label className="label">Estado</label>
-            <select 
-              className="select" 
-              value={filters.status} 
-              onChange={e => setFilters(prev => ({ ...prev, status: e.target.value }))}
-            >
+            <select className="select" value={filters.status} onChange={e => setFilters(prev => ({ ...prev, status: e.target.value }))}>
               <option value="">Todos</option>
-              <option value="available">Con unidades disponibles</option>
-              <option value="empty">Sin unidades disponibles</option>
+              <option value="pending">Pendiente por dispensar</option>
+              <option value="dispensed">Ya dispensada</option>
               <option value="expired">Vencidas</option>
-              <option value="warning">Por vencer (30 días)</option>
             </select>
           </div>
         </div>

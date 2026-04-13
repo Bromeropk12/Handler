@@ -61,13 +61,16 @@ export const samplesAPI = {
   getBulkSample: id => api.get(`/samples/${id}`),
   createBulkSample: (data, coaFile) => {
     const formData = new FormData();
-    // Agregar todos los campos de texto
     Object.entries(data).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
-        formData.append(key, value);
+        // Serializar arrays como JSON para que multer no los pierda
+        if (Array.isArray(value)) {
+          formData.append(key, JSON.stringify(value));
+        } else {
+          formData.append(key, value);
+        }
       }
     });
-    // Agregar archivo CoA si existe
     if (coaFile) {
       formData.append('coa_file', coaFile);
     }
@@ -80,7 +83,11 @@ export const samplesAPI = {
     const formData = new FormData();
     Object.entries(data).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
-        formData.append(key, value);
+        if (Array.isArray(value)) {
+          formData.append(key, JSON.stringify(value));
+        } else {
+          formData.append(key, value);
+        }
       }
     });
     if (coaFile) {
@@ -90,7 +97,7 @@ export const samplesAPI = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
-  deleteBulkSample: id => api.delete(`/samples/${id}`),
+  deleteBulkSample: (id, confirmDelete = false) => api.delete(`/samples/${id}`, { data: { confirm_delete: confirmDelete } }),
   getMarketLines: () => api.get('/samples/market-lines'),
   getSuppliers: () => api.get('/samples/suppliers'),
 };
@@ -114,6 +121,13 @@ export const suppliersAPI = {
   createSupplier: data => api.post('/suppliers', data),
   updateSupplier: (id, data) => api.put(`/suppliers/${id}`, data),
   deleteSupplier: id => api.delete(`/suppliers/${id}`),
+  uploadLogo: (id, file) => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    return api.post(`/suppliers/${id}/logo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
 };
 
 export const dispensingAPI = {

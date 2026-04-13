@@ -72,9 +72,11 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:"],
+      imgSrc: ["'self'", "data:", "blob:", "http://localhost:3001", "http://127.0.0.1:3001"],
+      connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001"],
     },
   },
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 // CORS: Permitir localhost y IPs de red local (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
@@ -112,9 +114,13 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(require('cookie-parser')());
 
-// Servir archivos estáticos (CoA PDFs, uploads)
+// Servir archivos estáticos (CoA PDFs, uploads, recursos)
 const path = require('path');
+const recursosPath = path.resolve(__dirname, '../../recursos');
+console.log(`[DEBUG] Sirviendo recursos desde: ${recursosPath}`);
+
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use('/recursos', express.static(recursosPath));
 
 // Middleware de logging
 app.use(logger(loggerInstance));

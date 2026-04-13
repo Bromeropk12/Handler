@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, MapPin, Phone, Mail, Box, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Search, Edit2, Trash2, MapPin, Phone, Mail, Check, Upload, Image, Package } from 'lucide-react';
 import { suppliersAPI } from '../../services/api';
 
 const MARKET_LINES = ['Cosmética', 'Industrial', 'Farmacéutica'];
+const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
 
 const SuppliersPage = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -10,6 +11,8 @@ const SuppliersPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
+  const [uploadingLogo, setUploadingLogo] = useState(null);
+  const logoInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -98,14 +101,57 @@ const SuppliersPage = () => {
     }
   };
 
+  const handleLogoUpload = async (supplierId, file) => {
+    if (!file) return;
+    if (file.type !== 'image/png') {
+      alert('Solo se permiten archivos PNG');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('El archivo no debe superar 5MB');
+      return;
+    }
+    try {
+      setUploadingLogo(supplierId);
+      await suppliersAPI.uploadLogo(supplierId, file);
+      loadSuppliers();
+    } catch (err) {
+      alert(err.message || 'Error al subir logo');
+    } finally {
+      setUploadingLogo(null);
+    }
+  };
+
+  const getLogoUrl = (supplier) => {
+    // Si ya es una URL completa (raro)
+    if (supplier.logo_url && supplier.logo_url.startsWith('http')) return supplier.logo_url;
+    // Usar ruta relativa servida por el frontend (desde public/recursos)
+    if (supplier.logo_url) return supplier.logo_url;
+    if (supplier.logo_path) return `/${supplier.logo_path}`;
+    return null;
+  };
+
+  const getInitials = (name) => {
+    return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  };
+
   const currentSuppliers = suppliers.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const formatMarketLines = (lines) => {
-    if (Array.isArray(lines)) return lines.join(', ');
-    if (typeof lines === 'string') return lines;
-    return 'N/A';
+    if (Array.isArray(lines)) return lines;
+    if (typeof lines === 'string') return lines.split(',').map(s => s.trim());
+    return [];
+  };
+
+  const getMarketLineColor = (line) => {
+    const colors = {
+      'Cosmética': 'bg-pink-500/15 text-pink-400 border-pink-500/30',
+      'Industrial': 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+      'Farmacéutica': 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+    };
+    return colors[line] || 'bg-gray-500/15 text-gray-400 border-gray-500/30';
   };
 
   return (
@@ -137,6 +183,10 @@ const SuppliersPage = () => {
             className="w-full pl-10 pr-4 py-2 bg-surface-900 border border-white/10 rounded-lg text-white focus:border-brand-red focus:ring-1 focus:ring-brand-red transition-all"
           />
         </div>
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <Package size={14} />
+          <span>{currentSuppliers.length} proveedores</span>
+        </div>
       </div>
 
       {/* Content */}
@@ -146,40 +196,98 @@ const SuppliersPage = () => {
         ) : currentSuppliers.length === 0 ? (
           <div className="col-span-full py-12 text-center text-gray-400">No hay proveedores registrados.</div>
         ) : (
-          currentSuppliers.map(supplier => (
-            <div key={supplier.id} className="bg-surface-800 border border-white/5 rounded-xl p-5 hover:border-white/10 transition-colors group">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-surface-900 flex items-center justify-center border border-white/5">
-                    <Box className="text-brand-red" size={20} />
+          currentSuppliers.map(supplier => {
+            const logoUrl = getLogoUrl(supplier);
+            const lines = formatMarketLines(supplier.market_lines);
+
+            return (
+              <div key={supplier.id} className="bg-surface-800 border border-white/5 rounded-xl overflow-hidden hover:border-white/10 transition-all duration-300 group">
+                {/* Logo Area */}
+                <div className="relative bg-white/[0.03] p-6 flex items-center justify-center min-h-[120px] border-b border-white/5">
+                  {logoUrl ? (
+                    <img 
+                      src={logoUrl} 
+                      alt={`Logo ${supplier.name}`}
+                      className="max-h-[80px] max-w-[180px] object-contain filter brightness-0 invert opacity-80 group-hover:opacity-100 transition-opacity"
+                      onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                    />
+                  ) : null}
+                  <div 
+                    className={`w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-red/20 to-brand-red/5 border border-brand-red/20 items-center justify-center text-brand-red font-bold text-xl ${logoUrl ? 'hidden' : 'flex'}`}
+                  >
+                    {getInitials(supplier.name)}
                   </div>
-                  <div>
-                    <h3 className="font-medium text-white truncate max-w-[200px]">{supplier.name}</h3>
-                    <span className="text-xs text-gray-400">{formatMarketLines(supplier.market_lines)}</span>
-                  </div>
+
+                  {/* Upload logo overlay */}
+                  <button
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'image/png';
+                      input.onchange = (e) => handleLogoUpload(supplier.id, e.target.files[0]);
+                      input.click();
+                    }}
+                    disabled={uploadingLogo === supplier.id}
+                    className="absolute top-2 right-2 p-1.5 bg-surface-900/80 backdrop-blur-sm rounded-lg text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10 hover:border-white/20"
+                    title="Cambiar logo (PNG 500×500)"
+                  >
+                    {uploadingLogo === supplier.id ? (
+                      <div className="w-4 h-4 border-2 border-brand-red border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Upload size={14} />
+                    )}
+                  </button>
                 </div>
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => handleOpenModal(supplier)} className="p-1.5 hover:bg-surface-900 text-gray-400 hover:text-white rounded-md transition-colors"><Edit2 size={16} /></button>
-                  <button onClick={() => handleDelete(supplier.id)} className="p-1.5 hover:bg-surface-900 text-gray-400 hover:text-red-500 rounded-md transition-colors"><Trash2 size={16} /></button>
+
+                {/* Info */}
+                <div className="p-5">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h3 className="font-semibold text-white text-lg">{supplier.name}</h3>
+                      {supplier.sample_count > 0 && (
+                        <span className="text-[10px] text-gray-500 uppercase tracking-wider">{supplier.sample_count} muestras</span>
+                      )}
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => handleOpenModal(supplier)} className="p-1.5 hover:bg-surface-900 text-gray-400 hover:text-white rounded-md transition-colors"><Edit2 size={15} /></button>
+                      <button onClick={() => handleDelete(supplier.id)} className="p-1.5 hover:bg-surface-900 text-gray-400 hover:text-red-500 rounded-md transition-colors"><Trash2 size={15} /></button>
+                    </div>
+                  </div>
+
+                  {/* Market Lines badges */}
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {lines.map(line => (
+                      <span key={line} className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${getMarketLineColor(line)}`}>
+                        {line}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Contact info */}
+                  <div className="space-y-2">
+                    {supplier.phone && (
+                      <div className="flex items-center gap-2.5 text-sm text-gray-400">
+                        <Phone size={13} className="text-gray-600 shrink-0" />
+                        <span>{supplier.phone}</span>
+                      </div>
+                    )}
+                    {supplier.email && (
+                      <div className="flex items-center gap-2.5 text-sm text-gray-400">
+                        <Mail size={13} className="text-gray-600 shrink-0" />
+                        <span className="truncate">{supplier.email}</span>
+                      </div>
+                    )}
+                    {supplier.address && (
+                      <div className="flex items-center gap-2.5 text-sm text-gray-400">
+                        <MapPin size={13} className="text-gray-600 shrink-0" />
+                        <span className="truncate">{supplier.address}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-              
-              <div className="space-y-3 mt-5">
-                <div className="flex items-center gap-3 text-sm text-gray-300">
-                  <Phone size={14} className="text-gray-500" />
-                  <span>{supplier.phone || '-'}</span>
-                </div>
-                <div className="flex items-center gap-3 text-sm text-gray-300">
-                  <Mail size={14} className="text-gray-500" />
-                  <span>{supplier.email || '-'}</span>
-                </div>
-                <div className="flex items-center gap-3 text-sm text-gray-300">
-                  <MapPin size={14} className="text-gray-500" />
-                  <span className="truncate">{supplier.address || '-'}</span>
-                </div>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

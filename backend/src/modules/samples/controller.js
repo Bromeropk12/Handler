@@ -1,6 +1,6 @@
 /**
  * Samples Controller
- * Gestión de muestras globales (bulk) con upload de CoA
+ * Gestión de muestras globales (bulk) con pictogramas GHS y CoA
  */
 
 const { query, transaction } = require('../../services/database');
@@ -8,10 +8,17 @@ const { AppError } = require('../../middleware/errorHandler');
 const fs = require('fs').promises;
 const path = require('path');
 
+// Pictogramas GHS válidos (los 9 del sistema SGA)
+const VALID_PICTOGRAMS = [
+  'Explosivo', 'Inflamable', 'Comburente', 'Gas Bajo Presión',
+  'Corrosivo', 'Toxicidad Aguda', 'Irritante', 'Toxicidad Crónica',
+  'Tóxico para Medio Ambiente'
+];
+
 // Validaciones para bulk samples
 const validateBulkSampleData = (data) => {
   const required = ['name', 'supplier_id', 'lot', 'expiration_date', 'manufacture_date',
-                   'ghs_danger_class', 'market_line_id', 'dimensions', 'weight_per_unit_grams'];
+                   'ghs_danger_class', 'market_line_id', 'dimensions', 'total_weight_grams'];
 
   for (const field of required) {
     if (!data[field]) {
@@ -26,7 +33,6 @@ const validateBulkSampleData = (data) => {
 
   // Dimensiones válidas en formato 3D (Ancho×Alto×Profundidad)
   const validDimensions = ['1x1x1', '1x2x1', '2x1x1', '2x2x1', '1x1x2', '1x2x2', '2x1x2', '2x2x2'];
-  // También aceptar formato 2D legacy y convertirlo
   const legacyDimensions = { '1x1': '1x1x1', '1x2': '1x2x1', '2x1': '2x1x1', '2x2': '2x2x1' };
   if (legacyDimensions[data.dimensions]) {
     data.dimensions = legacyDimensions[data.dimensions];
@@ -38,6 +44,20 @@ const validateBulkSampleData = (data) => {
   const validDangerClasses = ['Sin Riesgo', 'Inflamable', 'Corrosivo', 'Toxico', 'Comburente', 'Explosivo'];
   if (!validDangerClasses.includes(data.ghs_danger_class)) {
     throw new AppError('Clase de peligro SGA inválida', 400);
+  }
+
+  // Validar signal_word si se proporciona
+  if (data.signal_word && !['PELIGRO', 'ATENCION'].includes(data.signal_word)) {
+    throw new AppError('Palabra de señal inválida. Use PELIGRO o ATENCION', 400);
+  }
+
+  // Validar pictogramas si se proporcionan
+  if (data.ghs_pictograms && Array.isArray(data.ghs_pictograms)) {
+    for (const p of data.ghs_pictograms) {
+      if (!VALID_PICTOGRAMS.includes(p)) {
+        throw new AppError(`Pictograma GHS inválido: ${p}`, 400);
+      }
+    }
   }
 };
 
@@ -62,6 +82,11 @@ const createBulkSample = async (req, res, next) => {
       coaFilePath = path.relative(process.cwd(), fullPath).replace(/\\/g, '/');
     }
 
+    // Parsear ghs_pictograms si viene como JSON string
+    if (typeof data.ghs_pictograms === 'string') {
+      try { data.ghs_pictograms = JSON.parse(data.ghs_pictograms); } catch (_) { data.ghs_pictograms = []; }
+    }
+
     validateBulkSampleData(data);
 
     // Verificar línea de mercado
@@ -82,22 +107,25 @@ const createBulkSample = async (req, res, next) => {
       throw new AppError('Proveedor no encontrado', 404);
     }
 
-    // Iniciar transacción para crear Bulk (El contenedor Padre). Sus hijos se crearán al Dispensar.
     const bulkQueries = [{
       query: `
         INSERT INTO global_samples (
           name, supplier_id, lot, expiration_date, manufacture_date,
           ghs_danger_class, market_line_id, dimensions,
-          total_units, available_units, weight_per_unit_grams, coa_file_path
+          total_units, available_units, total_weight_grams,
+          ghs_pictograms, signal_word, coa_file_path
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING *
       `,
       params: [
         data.name, data.supplier_id, data.lot, data.expiration_date, data.manufacture_date,
         data.ghs_danger_class, data.market_line_id, data.dimensions,
-        0, 0, // total_units, available_units - Inician en 0 hasta que sean Dispensados
-        data.weight_per_unit_grams, coaFilePath
+        0, 0, // total_units, available_units - Inician en 0 hasta dispensar
+        data.total_weight_grams,
+        data.ghs_pictograms || [],
+        data.signal_word || 'ATENCION',
+        coaFilePath
       ]
     }];
 
@@ -114,7 +142,7 @@ const createBulkSample = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: 'Muestra global e hijos creados exitosamente',
+      message: 'Muestra global creada exitosamente',
       data: { bulkSample }
     });
 
@@ -144,37 +172,35 @@ const getBulkSamples = async (req, res, next) => {
     let params = [];
     let paramIndex = 1;
 
-    // Filtro de búsqueda
     if (search) {
       whereConditions.push(`(gs.name ILIKE $${paramIndex} OR sup.name ILIKE $${paramIndex} OR gs.lot ILIKE $${paramIndex})`);
       params.push(`%${search}%`);
       paramIndex++;
     }
 
-    // Filtro por línea de mercado
     if (market_line_id) {
-      whereConditions.push(`market_line_id = $${paramIndex}`);
+      whereConditions.push(`gs.market_line_id = $${paramIndex}`);
       params.push(market_line_id);
       paramIndex++;
     }
 
-    // Filtro por estado
     if (status === 'available') {
-      whereConditions.push('available_units > 0');
+      whereConditions.push('gs.available_units > 0');
     } else if (status === 'empty') {
-      whereConditions.push('available_units = 0');
+      whereConditions.push('gs.available_units = 0');
     }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
-    // Consulta principal
     const queryText = `
       SELECT
         gs.*,
         ml.name as market_line_name,
         sup.name as supplier_name,
+        sup.logo_path as supplier_logo_path,
         CASE
-          WHEN gs.available_units = 0 THEN 'empty'
+          WHEN gs.total_units = 0 THEN 'pending'
+          WHEN gs.available_units = 0 AND gs.total_units > 0 THEN 'empty'
           WHEN gs.expiration_date < CURRENT_DATE THEN 'expired'
           ELSE 'available'
         END as status
@@ -187,17 +213,17 @@ const getBulkSamples = async (req, res, next) => {
     `;
 
     params.push(limit, offset);
-
     const result = await query(queryText, params);
 
     // Contar total
+    const countParams = params.slice(0, -2);
     const countQuery = `
       SELECT COUNT(*) as total
       FROM global_samples gs
-      ${whereClause.replace(/gs\./g, '')}
+      LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
+      LEFT JOIN market_lines ml ON gs.market_line_id = ml.id
+      ${whereClause}
     `;
-
-    const countParams = params.slice(0, -2); // Remover limit y offset
     const countResult = await query(countQuery, countParams);
     const total = parseInt(countResult.rows[0].total);
 
@@ -220,7 +246,7 @@ const getBulkSamples = async (req, res, next) => {
 };
 
 /**
- * Obtener muestra global por ID
+ * Obtener muestra global por ID con conteo de hijas
  */
 const getBulkSampleById = async (req, res, next) => {
   try {
@@ -231,14 +257,16 @@ const getBulkSampleById = async (req, res, next) => {
         gs.*,
         ml.name as market_line_name,
         sup.name as supplier_name,
+        sup.logo_path as supplier_logo_path,
         CASE
-          WHEN gs.available_units = 0 THEN 'empty'
+          WHEN gs.total_units = 0 THEN 'pending'
+          WHEN gs.available_units = 0 AND gs.total_units > 0 THEN 'empty'
           WHEN gs.expiration_date < CURRENT_DATE THEN 'expired'
           ELSE 'available'
         END as status
       FROM global_samples gs
       JOIN market_lines ml ON gs.market_line_id = ml.id
-      JOIN suppliers sup ON gs.supplier_id = sup.id
+      LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
       WHERE gs.id = $1
     `, [id]);
 
@@ -246,11 +274,21 @@ const getBulkSampleById = async (req, res, next) => {
       throw new AppError('Muestra global no encontrada', 404);
     }
 
+    // Obtener conteo de hijas por estado
+    const childCounts = await query(`
+      SELECT status, COUNT(*) as count
+      FROM dispensed_samples
+      WHERE global_sample_id = $1
+      GROUP BY status
+    `, [id]);
+
+    const bulkSample = result.rows[0];
+    bulkSample.child_counts = {};
+    childCounts.rows.forEach(r => { bulkSample.child_counts[r.status] = parseInt(r.count); });
+
     res.json({
       success: true,
-      data: {
-        bulkSample: result.rows[0]
-      }
+      data: { bulkSample }
     });
 
   } catch (error) {
@@ -260,6 +298,7 @@ const getBulkSampleById = async (req, res, next) => {
 
 /**
  * Actualizar muestra global
+ * Permite editar TODOS los campos excepto total_units y available_units
  */
 const updateBulkSample = async (req, res, next) => {
   try {
@@ -274,14 +313,32 @@ const updateBulkSample = async (req, res, next) => {
 
     const currentSample = existing.rows[0];
 
-    // Permitir actualizar CoA y ciertos campos incluso después de dispensar
-    // Solo bloquear cambios estructurales (dimensiones, línea de mercado) si ya hay dispensaciones
-    const hasDispensedChildren = currentSample.total_units > 0;
-    const structuralFields = ['dimensions', 'market_line_id'];
-    if (hasDispensedChildren) {
-      const attemptingStructuralChange = structuralFields.some(f => data[f] !== undefined && data[f] !== currentSample[f]);
-      if (attemptingStructuralChange) {
-        throw new AppError('No se pueden cambiar dimensiones o línea de mercado de una muestra que ya tiene unidades dispensadas', 400);
+    // Manejar upload de nuevo CoA si existe
+    if (req.file) {
+      if (req.file.mimetype !== 'application/pdf') {
+         throw new AppError('El archivo CoA debe ser un PDF', 400);
+      }
+      
+      // Borrar CoA anterior si existía
+      if (currentSample.coa_file_path) {
+        try {
+          await fs.unlink(path.join(process.cwd(), currentSample.coa_file_path));
+        } catch (e) { console.warn('No se pudo borrar el CoA anterior:', e.message); }
+      }
+
+      const coaDir = path.join(process.cwd(), 'uploads', 'coa');
+      await fs.mkdir(coaDir, { recursive: true });
+      const fileName = `${data.lot || currentSample.lot}_${Date.now()}.pdf`;
+      const fullPath = path.join(coaDir, fileName);
+      await fs.rename(req.file.path, fullPath);
+      data.coa_file_path = path.relative(process.cwd(), fullPath).replace(/\\/g, '/');
+    }
+
+    // Parsear ghs_pictograms si viene como JSON string (común en FormData)
+    if (typeof data.ghs_pictograms === 'string') {
+      try { data.ghs_pictograms = JSON.parse(data.ghs_pictograms); } catch (_) { 
+        // Si no es JSON válido, intentar separar por comas si es string simple
+        data.ghs_pictograms = data.ghs_pictograms.split(',').filter(Boolean);
       }
     }
 
@@ -290,13 +347,17 @@ const updateBulkSample = async (req, res, next) => {
       validateBulkSampleData({ ...currentSample, ...data });
     }
 
-    // Construir query de actualización
+    // Construir query de actualización dinámico
     const updateFields = [];
     const params = [];
     let paramIndex = 1;
 
-    const allowedFields = ['name', 'supplier_id', 'expiration_date', 'manufacture_date',
-                          'ghs_danger_class', 'market_line_id', 'dimensions', 'weight_per_unit_grams', 'coa_file_path'];
+    // Campos permitidos para edición (TODOS excepto total_units/available_units)
+    const allowedFields = [
+      'name', 'supplier_id', 'lot', 'expiration_date', 'manufacture_date',
+      'ghs_danger_class', 'market_line_id', 'dimensions', 'total_weight_grams',
+      'coa_file_path', 'ghs_pictograms', 'signal_word'
+    ];
 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
@@ -306,7 +367,7 @@ const updateBulkSample = async (req, res, next) => {
       }
     }
 
-    if (updateFields.length === 0) {
+    if (updateFields.length === 0 && !req.file) {
       throw new AppError('No se proporcionaron campos para actualizar', 400);
     }
 
@@ -334,16 +395,14 @@ const updateBulkSample = async (req, res, next) => {
       req.user.id,
       JSON.stringify({
         type: 'bulk_update',
-        changes: Object.keys(data)
+        changes: Object.keys(data).filter(k => allowedFields.includes(k))
       })
     ]);
 
     res.json({
       success: true,
       message: 'Muestra global actualizada exitosamente',
-      data: {
-        bulkSample: updatedSample
-      }
+      data: { bulkSample: updatedSample }
     });
 
   } catch (error) {
@@ -352,16 +411,17 @@ const updateBulkSample = async (req, res, next) => {
 };
 
 /**
- * Eliminar muestra global (solo si no ha sido dispensada)
+ * Eliminar muestra global (permitido siempre, con advertencia si tiene hijas)
  */
 const deleteBulkSample = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { confirm_delete } = req.body;
 
-    // Verificar que existe y no ha sido dispensada
     const existing = await query(`
-      SELECT gs.*, 
-             (SELECT COUNT(*) FROM dispensed_samples WHERE global_sample_id = $1 AND status != 'stored') as dispensed_count
+      SELECT gs.*,
+             (SELECT COUNT(*) FROM dispensed_samples WHERE global_sample_id = $1) as child_count,
+             (SELECT COUNT(*) FROM dispensed_samples WHERE global_sample_id = $1 AND status = 'dispatched') as dispatched_count
       FROM global_samples gs
       WHERE gs.id = $1
     `, [id]);
@@ -372,8 +432,17 @@ const deleteBulkSample = async (req, res, next) => {
 
     const sample = existing.rows[0];
 
-    if (sample.dispensed_count > 0) {
-      throw new AppError('No se puede eliminar porque ya se despacharon unidades', 400);
+    // Si tiene hijas, requerir confirmación explícita
+    if (parseInt(sample.child_count) > 0 && !confirm_delete) {
+      return res.status(409).json({
+        success: false,
+        requires_confirmation: true,
+        message: `Esta muestra tiene ${sample.child_count} muestra(s) hija(s) (${sample.dispatched_count} despachadas). Eliminarla borrará TODAS las hijas y sus posiciones en anaqueles. ¿Confirmar eliminación?`,
+        data: {
+          child_count: parseInt(sample.child_count),
+          dispatched_count: parseInt(sample.dispatched_count)
+        }
+      });
     }
 
     // Eliminar archivo CoA si existe
@@ -381,12 +450,11 @@ const deleteBulkSample = async (req, res, next) => {
       try {
         await fs.unlink(path.join(process.cwd(), sample.coa_file_path));
       } catch (fileError) {
-        // Log pero no fallar
         console.warn('Error eliminando archivo CoA:', fileError.message);
       }
     }
 
-    // Eliminar de BD
+    // Eliminar de BD (CASCADE eliminará dispensed_samples)
     await query('DELETE FROM global_samples WHERE id = $1', [id]);
 
     // Log del movimiento
@@ -399,13 +467,14 @@ const deleteBulkSample = async (req, res, next) => {
       req.user.id,
       JSON.stringify({
         type: 'bulk_deletion',
-        weight_grams: sample.total_weight_grams
+        child_count: parseInt(sample.child_count),
+        total_weight: sample.total_weight_grams
       })
     ]);
 
     res.json({
       success: true,
-      message: 'Muestra global eliminada exitosamente'
+      message: `Muestra global eliminada exitosamente${parseInt(sample.child_count) > 0 ? ` (${sample.child_count} hijas eliminadas)` : ''}`
     });
 
   } catch (error) {
@@ -419,14 +488,10 @@ const deleteBulkSample = async (req, res, next) => {
 const getMarketLines = async (req, res, next) => {
   try {
     const result = await query('SELECT * FROM market_lines ORDER BY name');
-
     res.json({
       success: true,
-      data: {
-        marketLines: result.rows
-      }
+      data: { marketLines: result.rows }
     });
-
   } catch (error) {
     next(error);
   }
@@ -443,14 +508,10 @@ const getSuppliers = async (req, res, next) => {
       FROM suppliers s 
       ORDER BY s.name ASC
     `);
-
     res.json({
       success: true,
-      data: {
-        suppliers: result.rows
-      }
+      data: { suppliers: result.rows }
     });
-
   } catch (error) {
     next(error);
   }

@@ -5,62 +5,74 @@ const { findAutoPlacement, parseDimensions } = require('../warehouse/validations
 
 /**
  * Subdividir un Bulk Sample en Muestras Hijas (Dispensación)
- * Genera muestras dispensadas con QR único y ubicación automática SGA
  * 
- * Flujo:
- * 1. Crea las muestras hijas sin ubicación (pendientes por ubicar)
- * 2. Ejecuta algoritmo SGA para encontrar ubicación óptima
- * 3. Asigna automáticamente la ubicación encontrada
+ * Cambios clave vs versión anterior:
+ * - BLOQUEA re-dispensación: si el bulk ya tiene total_units > 0, error
+ * - Recibe child_dimensions del request (tamaño del frasco hijo, NO del bulk)
+ * - Peso correcto: weight_per_unit es el peso de cada frasco hijo
+ * - QR data enriquecido con pictogramas y señal
  */
 const subdivideBulkSample = async (req, res, next) => {
   try {
-    const { global_sample_id, number_of_units, weight_per_unit } = req.body;
+    const { global_sample_id, number_of_units, weight_per_unit, child_dimensions } = req.body;
 
     if (!global_sample_id) throw new AppError('El ID del Bulk Sample es requerido', 400);
     if (!number_of_units || number_of_units <= 0) throw new AppError('El número de unidades debe ser mayor a 0', 400);
+    if (!weight_per_unit || weight_per_unit <= 0) throw new AppError('El peso por frasco hijo debe ser mayor a 0', 400);
+    if (!child_dimensions) throw new AppError('Las dimensiones del frasco hijo son requeridas', 400);
 
-    // Verificar que el bulk existe y tiene unidades disponibles
-    const bulkCheck = await query(
-      'SELECT id, name, lot, available_units, weight_per_unit_grams, coa_file_path, dimensions, ghs_danger_class, market_line_id FROM global_samples WHERE id = $1',
-      [global_sample_id]
-    );
+    // Verificar que el bulk existe
+    const bulkCheck = await query(`
+      SELECT gs.*, sup.name as supplier_name, sup.logo_path as supplier_logo_path
+      FROM global_samples gs
+      LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
+      WHERE gs.id = $1
+    `, [global_sample_id]);
 
     if (bulkCheck.rows.length === 0) throw new AppError('Muestra global no encontrada', 404);
 
     const bulk = bulkCheck.rows[0];
 
-    // Usar weight_per_unit del request o del bulk
-    const finalWeightPerUnit = weight_per_unit || bulk.weight_per_unit_grams;
-    if (!finalWeightPerUnit || finalWeightPerUnit <= 0) {
-      throw new AppError('El peso por unidad debe ser mayor a 0. Defínelo en la muestra global o envíalo en el request.', 400);
+    // *** BLOQUEAR RE-DISPENSACIÓN ***
+    if (bulk.total_units > 0) {
+      throw new AppError(
+        `Esta muestra global ya fue dispensada (${bulk.total_units} unidades hijas existentes). No se permite crear más hijas del mismo lote. Si necesita más producto, registre un nuevo lote.`,
+        400
+      );
     }
 
-    // El Bulk no requiere unidades existentes para subdividirse, ya que la dispensación CREA las unidades.
-
-    // Parsear dimensiones del enum 3D
-    const dimensions = parseDimensions(bulk.dimensions);
-    const width = dimensions.width;
-    const height = dimensions.height;
-    const depth = dimensions.depth;
+    // Parsear dimensiones del FRASCO HIJO (NO del bulk)
+    const dims = parseDimensions(child_dimensions);
+    const childWidth = dims.width;
+    const childHeight = dims.height;
+    const childDepth = dims.depth || 1;
 
     const txQueries = [];
     const generatedSamples = [];
 
-    // Generar cada muestra dispensada (sin ubicación inicial)
+    // Generar cada muestra dispensada
     for (let i = 0; i < number_of_units; i++) {
-      // Generar QR único
       const uniqueNumber = Math.floor(1000 + Math.random() * 9000);
       const qrCode = `HS-${bulk.lot}-${Date.now().toString().slice(-4)}${uniqueNumber}-${i + 1}`;
 
-      // QR data con metadata completa
+      // QR data enriquecido para la etiqueta
       const qrData = {
         id: uuidv4(),
         lot: bulk.lot,
         product_name: bulk.name,
         sub_sample_number: i + 1,
-        weight_grams: finalWeightPerUnit,
-        expiration_date: null,
-        ghs_danger_class: bulk.ghs_danger_class
+        total_sub_samples: number_of_units,
+        weight_grams: parseFloat(weight_per_unit),
+        expiration_date: bulk.expiration_date,
+        manufacture_date: bulk.manufacture_date,
+        ghs_danger_class: bulk.ghs_danger_class,
+        ghs_pictograms: bulk.ghs_pictograms || [],
+        signal_word: bulk.signal_word || 'ATENCION',
+        supplier_name: bulk.supplier_name,
+        supplier_id: bulk.supplier_id,
+        supplier_logo_path: bulk.supplier_logo_path,
+        market_line_id: bulk.market_line_id,
+        child_dimensions: child_dimensions
       };
 
       generatedSamples.push({ qr_code: qrCode, qr_data: qrData });
@@ -69,17 +81,22 @@ const subdivideBulkSample = async (req, res, next) => {
         query: `
           INSERT INTO dispensed_samples (
             global_sample_id, qr_code, qr_data, weight_grams, status,
-            width, height, depth, shelf_id, position_x, position_y, position_z
-          ) VALUES ($1, $2, $3, $4, 'stored', $5, $6, $7, NULL, NULL, NULL, NULL)
+            width, height, depth, child_dimensions,
+            shelf_id, position_x, position_y, position_z
+          ) VALUES ($1, $2, $3, $4, 'stored', $5, $6, $7, $8, NULL, NULL, NULL, NULL)
           RETURNING id
         `,
-        params: [global_sample_id, qrCode, JSON.stringify(qrData), finalWeightPerUnit, width, height, depth]
+        params: [
+          global_sample_id, qrCode, JSON.stringify(qrData),
+          parseFloat(weight_per_unit),
+          childWidth, childHeight, childDepth, child_dimensions
+        ]
       });
     }
 
-    // Actualizar contadores: total_units sube (historial total), available_units sube (hijos listos para despacho)
+    // Actualizar contadores del bulk
     txQueries.push({
-      query: 'UPDATE global_samples SET available_units = available_units + $1, total_units = total_units + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      query: 'UPDATE global_samples SET available_units = $1, total_units = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
       params: [number_of_units, global_sample_id]
     });
 
@@ -93,13 +110,14 @@ const subdivideBulkSample = async (req, res, next) => {
         JSON.stringify({
           type: 'subdivision',
           units_generated: number_of_units,
-          weight_per_unit: finalWeightPerUnit,
-          total_weight: number_of_units * finalWeightPerUnit
+          weight_per_unit: parseFloat(weight_per_unit),
+          child_dimensions: child_dimensions,
+          total_weight: number_of_units * parseFloat(weight_per_unit)
         })
       ]
     });
 
-    // Ejecutar transacción para crear muestras
+    // Ejecutar transacción
     const txResult = await transaction(txQueries);
 
     // Extraer IDs de las muestras creadas
@@ -107,12 +125,7 @@ const subdivideBulkSample = async (req, res, next) => {
       .slice(0, number_of_units)
       .map(result => result.rows[0].id);
 
-    // ==========================================
     // ALGORITMO SGA AUTOMÁTICO DE UBICACIÓN
-    // Agrupa todas las muestras hijas en el mismo anaquel
-    // ==========================================
-
-    // Obtener anaqueles de la línea de mercado del bulk, ordenados por menor ocupación
     const shelvesResult = await query(`
       SELECT 
         sh.*,
@@ -123,21 +136,37 @@ const subdivideBulkSample = async (req, res, next) => {
     `, [bulk.market_line_id]);
 
     if (shelvesResult.rows.length === 0) {
-      throw new AppError(`No hay anaqueles disponibles para la línea de mercado del bulk.`, 400);
+      // No hay anaqueles pero la dispensación fue exitosa - quedan sin ubicar
+      return res.json({
+        success: true,
+        message: `Se han dispensado ${number_of_units} unidades de ${bulk.name} pero no hay anaqueles disponibles para ubicarlas automáticamente.`,
+        data: {
+          generated_samples: generatedSamples,
+          placements: [],
+          failed_placements: sampleIds.map((id, i) => ({
+            sample_id: id,
+            qr_code: generatedSamples[i].qr_code,
+            error: 'Sin anaqueles disponibles en la línea de mercado'
+          })),
+          bulk_name: bulk.name,
+          bulk_lot: bulk.lot,
+          sga_danger_class: bulk.ghs_danger_class
+        }
+      });
     }
 
     const placements = [];
     const failedPlacements = [];
 
-    // Datos de la muestra para colocación
+    // Datos de la muestra para colocación, usando dimensiones del FRASCO HIJO
     const sampleTemplate = {
-      width,
-      height,
-      depth,
+      width: childWidth,
+      height: childHeight,
+      depth: childDepth,
       ghs_danger_class: bulk.ghs_danger_class
     };
 
-    // Intentar colocar TODAS las muestras en un mismo anaquel (agrupadas)
+    // Intentar colocar TODAS en un mismo anaquel (agrupadas)
     let allPlaced = false;
     for (const shelf of shelvesResult.rows) {
       const shelfPlacements = [];
@@ -149,23 +178,21 @@ const subdivideBulkSample = async (req, res, next) => {
 
         try {
           const autoPos = await findAutoPlacement(shelf, sample);
-
-          // Colocar en el anaquel encontrado
           await query(`
             UPDATE dispensed_samples
             SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4, updated_at = CURRENT_TIMESTAMP
             WHERE id = $5
-          `, [shelf.id, autoPos.x, autoPos.y, autoPos.z, sampleId]);
+          `, [shelf.id, autoPos.x, autoPos.y, autoPos.z || 0, sampleId]);
 
           shelfPlacements.push({
             sample_id: sampleId,
             qr_code: generatedSamples[i].qr_code,
             shelf_name: shelf.name,
-            position: { x: autoPos.x, y: autoPos.y, z: autoPos.z },
-            dimensions: `${width}x${height}x${depth}`
+            position: { x: autoPos.x, y: autoPos.y, z: autoPos.z || 0 },
+            dimensions: child_dimensions
           });
         } catch (e) {
-          // Este anaquel no puede con todas; revertir las ya posicionadas en este anaquel
+          // Revertir colocaciones de este anaquel
           for (const placed of shelfPlacements) {
             await query(`
               UPDATE dispensed_samples
@@ -199,14 +226,14 @@ const subdivideBulkSample = async (req, res, next) => {
               UPDATE dispensed_samples
               SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4, updated_at = CURRENT_TIMESTAMP
               WHERE id = $5
-            `, [shelf.id, autoPos.x, autoPos.y, autoPos.z, sampleId]);
+            `, [shelf.id, autoPos.x, autoPos.y, autoPos.z || 0, sampleId]);
 
             placements.push({
               sample_id: sampleId,
               qr_code: generatedSamples[i].qr_code,
               shelf_name: shelf.name,
-              position: { x: autoPos.x, y: autoPos.y, z: autoPos.z },
-              dimensions: `${width}x${height}x${depth}`
+              position: { x: autoPos.x, y: autoPos.y, z: autoPos.z || 0 },
+              dimensions: child_dimensions
             });
             placed = true;
             break;
@@ -219,7 +246,7 @@ const subdivideBulkSample = async (req, res, next) => {
           failedPlacements.push({
             sample_id: sampleId,
             qr_code: generatedSamples[i].qr_code,
-            error: 'No se encontró espacio compatible en ningún anaquel de la línea de mercado'
+            error: 'No se encontró espacio compatible en ningún anaquel'
           });
         }
       }
@@ -234,8 +261,14 @@ const subdivideBulkSample = async (req, res, next) => {
         failed_placements: failedPlacements,
         bulk_name: bulk.name,
         bulk_lot: bulk.lot,
-        remaining_units: bulk.available_units - number_of_units,
-        sga_danger_class: bulk.ghs_danger_class
+        bulk_expiration: bulk.expiration_date,
+        sga_danger_class: bulk.ghs_danger_class,
+        signal_word: bulk.signal_word,
+        ghs_pictograms: bulk.ghs_pictograms,
+        supplier_name: bulk.supplier_name,
+        supplier_logo_path: bulk.supplier_logo_path,
+        child_dimensions: child_dimensions,
+        weight_per_unit: parseFloat(weight_per_unit)
       }
     });
 
@@ -282,13 +315,19 @@ const getDispensedSamples = async (req, res, next) => {
         gs.lot,
         gs.expiration_date,
         gs.ghs_danger_class,
+        gs.ghs_pictograms,
+        gs.signal_word,
         gs.coa_file_path,
+        gs.total_weight_grams as bulk_total_weight,
         sh.name as shelf_name,
-        ml.name as market_line_name
+        ml.name as market_line_name,
+        sup.name as supplier_name,
+        sup.logo_path as supplier_logo_path
       FROM dispensed_samples ds
       JOIN global_samples gs ON ds.global_sample_id = gs.id
       LEFT JOIN shelves sh ON ds.shelf_id = sh.id
       LEFT JOIN market_lines ml ON sh.market_line_id = ml.id
+      LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
       ${whereClause}
       ORDER BY ds.created_at DESC
       LIMIT 100
@@ -329,7 +368,8 @@ const getUnplacedSamples = async (req, res, next) => {
         gs.name as product_name,
         gs.lot,
         gs.ghs_danger_class,
-        gs.dimensions,
+        gs.dimensions as bulk_dimensions,
+        ds.child_dimensions,
         ml.name as market_line_name
       FROM dispensed_samples ds
       JOIN global_samples gs ON ds.global_sample_id = gs.id

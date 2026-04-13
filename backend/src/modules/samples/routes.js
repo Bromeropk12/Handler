@@ -87,7 +87,7 @@ router.post('/', verifyToken, upload.single('coa_file'), createBulkSample);
  * PUT /api/samples/:id
  * Actualizar muestra global
  */
-router.put('/:id', verifyToken, requireAdmin, updateBulkSample);
+router.put('/:id', verifyToken, requireAdmin, upload.single('coa_file'), updateBulkSample);
 
 /**
  * DELETE /api/samples/:id

@@ -1,7 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
 const Modal = ({ isOpen, onClose, title, children, size = 'md', footer }) => {
+  // Bloquear scroll del fondo mientras el modal está abierto
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const sizeClasses = {
@@ -19,10 +29,13 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md', footer }) => {
         onClick={onClose}
       />
 
-      {/* Modal */}
-      <div className={`relative ${sizeClasses[size]} w-full bg-surface-300 border border-gray-700/50 rounded-xl shadow-large animate-scale-in`}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50">
+      {/* Modal — altura máxima al 90% del viewport */}
+      <div
+        className={`relative ${sizeClasses[size]} w-full bg-surface-300 border border-gray-700/50 rounded-xl shadow-large animate-scale-in flex flex-col`}
+        style={{ maxHeight: '90vh' }}
+      >
+        {/* Header — fijo arriba */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50 shrink-0">
           <h2 className="text-lg font-semibold text-white">{title}</h2>
           <button
             onClick={onClose}
@@ -32,14 +45,14 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md', footer }) => {
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-6 py-5 max-h-[70vh] overflow-y-auto">
+        {/* Body — único scroll aquí */}
+        <div className="px-6 py-5 overflow-y-auto flex-1 custom-scrollbar">
           {children}
         </div>
 
-        {/* Footer */}
+        {/* Footer — fijo abajo */}
         {footer && (
-          <div className="px-6 py-4 border-t border-gray-700/50 flex items-center justify-end gap-3">
+          <div className="px-6 py-4 border-t border-gray-700/50 flex items-center justify-end gap-3 shrink-0">
             {footer}
           </div>
         )}

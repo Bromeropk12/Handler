@@ -1,19 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { BeakerIcon, Search, PlusCircle, CheckCircle2, Box, Info } from 'lucide-react';
+import { BeakerIcon, Search, PlusCircle, CheckCircle2, Box, Info, AlertTriangle, Ruler, Tag, Edit3, X, Save } from 'lucide-react';
 import { samplesAPI, dispensingAPI } from '../../services/api';
 import Modal from '../../components/Modal';
+import LabelPrint from './components/LabelPrint';
+
+const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
+
+const PICTO_FILES = {
+  'Explosivo':                  'explos.webp',
+  'Inflamable':                 'flamme.webp',
+  'Comburente':                 'rondflam.webp',
+  'Gas Bajo Presión':           'bottle.webp',
+  'Corrosivo':                  'acid_red.webp',
+  'Toxicidad Aguda':            'skull.webp',
+  'Irritante':                  'exclam.webp',
+  'Toxicidad Crónica':          'silhouete.webp',
+  'Tóxico para Medio Ambiente': 'Aquatic-pollut-red.png'
+};
 
 const DispensingPage = () => {
   const [globalSamples, setGlobalSamples] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showDispensed, setShowDispensed] = useState(false);
   
   const [selectedSample, setSelectedSample] = useState(null);
   const [unitsToGenerate, setUnitsToGenerate] = useState(1);
   const [weightPerUnit, setWeightPerUnit] = useState('');
+  const [childDimensions, setChildDimensions] = useState('1x1x1');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successData, setSuccessData] = useState(null);
+  const [dispensingResult, setDispensingResult] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showLabelPreview, setShowLabelPreview] = useState(false);
+  const [labelSamples, setLabelSamples] = useState([]);
+  const [labelBulk, setLabelBulk] = useState(null);
 
   useEffect(() => {
     loadSamples();
@@ -22,38 +43,38 @@ const DispensingPage = () => {
   const loadSamples = async () => {
     try {
       setLoading(true);
-      // Fetch all available global samples
-      const response = await samplesAPI.getBulkSamples({ limit: 100 });
-      // El backend devuelve bulkSamples, no samples
-      const samples = response.data?.data?.bulkSamples || response.data?.data?.samples || [];
+      const response = await samplesAPI.getBulkSamples({ limit: 200 });
+      const samples = response.data?.data?.bulkSamples || [];
       setGlobalSamples(samples);
     } catch (err) {
       console.error('Error loading global samples:', err);
-      alert('Error cargando muestras globales. Continúe con precaución.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Filtrado mejorado: busca por nombre, lote, proveedor o clase SGA
-  const filteredSamples = globalSamples.filter(s => {
+  const pendingSamples = globalSamples.filter(s => s.total_units === 0);
+  const dispensedSamples = globalSamples.filter(s => s.total_units > 0);
+  const displayedSamples = showDispensed ? dispensedSamples : pendingSamples;
+  const filteredSamples = displayedSamples.filter(s => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase().trim();
     return (
       (s.name || '').toLowerCase().includes(term) || 
       (s.lot || '').toLowerCase().includes(term) ||
-      (s.supplier_name || '').toLowerCase().includes(term) ||
-      (s.ghs_danger_class || '').toLowerCase().includes(term)
+      (s.supplier_name || '').toLowerCase().includes(term)
     );
   });
 
   const handleDispense = (e) => {
     e.preventDefault();
     if (!selectedSample || unitsToGenerate <= 0) return;
-    
-    // Validar peso de cada frasco
     if (!weightPerUnit || parseFloat(weightPerUnit) <= 0) {
-      alert('Debes ingresar un Peso por Unidad (en gramos) válido mayor a 0 para las muestras hijas.');
+      alert('Debes ingresar un Peso por Frasco válido mayor a 0.');
+      return;
+    }
+    if (!childDimensions) {
+      alert('Debes seleccionar el tamaño del frasco hijo.');
       return;
     }
     setShowConfirmModal(true);
@@ -63,23 +84,21 @@ const DispensingPage = () => {
     try {
       setShowConfirmModal(false);
       setIsSubmitting(true);
-      // Enviar weight_per_unit personalizado
       const resp = await dispensingAPI.dispense({
         global_sample_id: selectedSample.id,
         number_of_units: parseInt(unitsToGenerate),
-        weight_per_unit: parseFloat(weightPerUnit)
+        weight_per_unit: parseFloat(weightPerUnit),
+        child_dimensions: childDimensions
       });
       
       setSuccessData(resp.data.data.generated_samples || []);
-      
-      // Update local state temporarily so the user sees the new unit count
+      setDispensingResult(resp.data.data);
       setGlobalSamples(prev => prev.map(s => {
          if (s.id === selectedSample.id) {
-           return { ...s, total_units: (s.total_units || 0) + parseInt(unitsToGenerate), available_units: (s.available_units || 0) + parseInt(unitsToGenerate) };
+           return { ...s, total_units: parseInt(unitsToGenerate), available_units: parseInt(unitsToGenerate) };
          }
          return s;
       }));
-      
     } catch (err) {
       alert(err.message || 'Hubo un error en la dispensación');
     } finally {
@@ -87,51 +106,79 @@ const DispensingPage = () => {
     }
   };
 
-  const printQRCodes = () => {
-    if (!successData) return;
-    
-    // Abrir ventana para imprimir los QRs y luego resetear todo
-    const printWindow = window.open('', '_blank');
-    const qrHTML = successData.map(item => `
-      <div style="border: 2px dashed #000; padding: 10px; margin: 10px; width: 250px; text-align: center; display: inline-block;">
-        <h3 style="margin: 0; font-size: 14px;">Handler S.A.S</h2>
-        <div style="font-weight: bold; font-family: monospace; font-size: 18px; margin: 10px 0;">${item.qr_code}</div>
-        <div style="font-size: 12px;">${selectedSample.name} - Lote: ${selectedSample.lot}</div>
-      </div>
-    `).join('');
+  // Abrir etiquetas de una muestra recién dispensada
+  const openNewLabels = () => {
+    setLabelSamples(successData);
+    setLabelBulk({
+      name: selectedSample.name,
+      lot: selectedSample.lot,
+      expiration_date: selectedSample.expiration_date,
+      manufacture_date: selectedSample.manufacture_date,
+      supplier_name: dispensingResult.supplier_name || selectedSample.supplier_name,
+      supplier_logo_path: dispensingResult.supplier_logo_path || selectedSample.supplier_logo_path,
+      signal_word: dispensingResult.signal_word || selectedSample.signal_word || 'ATENCION',
+      ghs_pictograms: dispensingResult.ghs_pictograms || selectedSample.ghs_pictograms || [],
+      ghs_danger_class: selectedSample.ghs_danger_class,
+      weight_per_unit: parseFloat(weightPerUnit),
+    });
+    setShowLabelPreview(true);
+  };
 
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Imprimir Códigos Hijos</title>
-        </head>
-        <body>
-          <h2>Lote de Impresión</h2>
-          ${qrHTML}
-          <script>window.print(); window.close();</script>
-        </body>
-      </html>
-    `);
-    
-    // Reset state after printing
-    setSuccessData(null);
-    setSelectedSample(null);
-    setUnitsToGenerate(1);
-    setSearchTerm('');
+  // Abrir etiquetas de una muestra ya dispensada (carga sus hijas del API)
+  const openExistingLabels = async (sample) => {
+    try {
+      const resp = await dispensingAPI.getDispensedSamples({ global_sample_id: sample.id });
+      const children = resp.data?.data?.samples || [];
+      setLabelSamples(children.map(c => ({ qr_code: c.qr_code, weight_grams: c.weight_grams })));
+      setLabelBulk({
+        name: sample.name,
+        lot: sample.lot,
+        expiration_date: sample.expiration_date,
+        manufacture_date: sample.manufacture_date,
+        supplier_name: sample.supplier_name,
+        supplier_logo_path: sample.supplier_logo_path,
+        signal_word: sample.signal_word || 'ATENCION',
+        ghs_pictograms: sample.ghs_pictograms || [],
+        ghs_danger_class: sample.ghs_danger_class,
+        weight_per_unit: children[0]?.weight_grams || 0,
+      });
+      setShowLabelPreview(true);
+    } catch (err) {
+      alert('No se pudieron cargar las muestras hijas: ' + (err.message || ''));
+    }
   };
 
   const resetFlow = () => {
     setSuccessData(null);
+    setDispensingResult(null);
     setSelectedSample(null);
     setUnitsToGenerate(1);
     setWeightPerUnit('');
+    setChildDimensions('1x1x1');
+    loadSamples();
   };
 
   const handleSelectSample = (sample) => {
     if (successData) return;
+    if (sample.total_units > 0) {
+      // Si ya dispensada, seleccionar para ver info (no dispensar)
+      setSelectedSample(sample);
+      return;
+    }
     setSelectedSample(sample);
     setUnitsToGenerate(1);
-    setWeightPerUnit(sample.weight_per_unit_grams || '');
+    setWeightPerUnit('');
+    setChildDimensions('1x1x1');
+  };
+
+  const getDimensionLabel = (dim) => {
+    const labels = {
+      '1x1x1': 'Pequeño (1 celda)',
+      '1x2x1': 'Alto (2 niveles)',
+      '2x1x1': 'Ancho (2 columnas)',
+      '2x2x1': 'Grande (2×2)',
+    };
+    return labels[dim] || dim;
   };
 
   return (
@@ -139,19 +186,39 @@ const DispensingPage = () => {
       <div>
         <h1 className="text-2xl font-bold font-sga text-white">Dispensación (Subdivisión)</h1>
         <p className="text-sm text-gray-400 mt-1">
-          Toma una Muestra Global del sistema y subdivídela en "Hijos" individuales ingresando la cantidad de unidades.
+          Seleccione una Muestra Global pendiente y defina cuántos frascos hijos estandarizados generar.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* LADO IZQUIERDO: Seleccion de Bulk */}
+        {/* LADO IZQUIERDO: Selección de Bulk */}
         <div className="bg-surface-800 p-6 rounded-2xl border border-white/5 space-y-6">
           <div className="flex items-center gap-3 border-b border-white/5 pb-4">
             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
               <Search size={24} />
             </div>
             <h2 className="text-lg font-medium text-white">1. Seleccionar Muestra Global</h2>
+          </div>
+
+          {/* Toggle pendientes / dispensadas */}
+          <div className="flex bg-surface-900 rounded-lg p-1 gap-1">
+            <button
+              onClick={() => { setShowDispensed(false); setSelectedSample(null); }}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+                !showDispensed ? 'bg-blue-500/20 text-blue-400' : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              Pendientes ({pendingSamples.length})
+            </button>
+            <button
+              onClick={() => { setShowDispensed(true); setSelectedSample(null); }}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+                showDispensed ? 'bg-green-500/20 text-green-400' : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              Ya Dispensadas ({dispensedSamples.length})
+            </button>
           </div>
 
           <div className="relative">
@@ -169,42 +236,63 @@ const DispensingPage = () => {
             {loading ? (
                <div className="py-10 text-center text-gray-500">Cargando Muestras...</div>
             ) : filteredSamples.length > 0 ? (
-              filteredSamples.map(sample => (
-                <div 
-                  key={sample.id} 
-                  onClick={() => handleSelectSample(sample)}
-                  className={`p-4 rounded-xl border cursor-pointer transition-colors ${
-                    selectedSample?.id === sample.id 
-                    ? 'bg-blue-500/20 border-blue-500' 
-                    : 'bg-surface-900 border-white/5 hover:border-white/20'
-                  } ${successData ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-bold text-white text-lg">{sample.name}</h3>
-                      <p className="text-xs text-gray-400 mt-1">Lote: {sample.lot}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-blue-400 text-sm font-medium">{sample.total_units} Uds act.</span>
+              filteredSamples.map(sample => {
+                const isDispensed = sample.total_units > 0;
+                const isSelected = selectedSample?.id === sample.id;
+                return (
+                  <div 
+                    key={sample.id} 
+                    onClick={() => handleSelectSample(sample)}
+                    className={`p-4 rounded-xl border transition-colors cursor-pointer ${
+                      isSelected 
+                        ? isDispensed ? 'bg-green-500/15 border-green-500' : 'bg-blue-500/20 border-blue-500'
+                        : isDispensed ? 'bg-surface-900/50 border-white/5 hover:border-green-500/30' 
+                        : 'bg-surface-900 border-white/5 hover:border-white/20'
+                    } ${successData ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-bold text-white text-lg">{sample.name}</h3>
+                        <p className="text-xs text-gray-400 mt-1">Lote: {sample.lot}</p>
+                        <p className="text-xs text-gray-500">{sample.supplier_name || ''}</p>
+                      </div>
+                      <div className="text-right">
+                        {isDispensed ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 size={14} className="text-green-500" />
+                              <span className="text-green-400 text-xs font-medium">{sample.total_units} hijas</span>
+                            </div>
+                            <span className="text-[10px] text-gray-500">{sample.available_units} disponibles</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-amber-400 font-medium bg-amber-500/10 px-2 py-0.5 rounded-full">
+                            Pendiente
+                          </span>
+                        )}
+                        <p className="text-[10px] text-gray-500 mt-1">
+                          Bulk: {sample.total_weight_grams ? `${sample.total_weight_grams}g` : 'N/A'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="py-10 text-center text-gray-500">
-                No se encontraron muestras globales.
+                {showDispensed ? 'No hay muestras dispensadas aún.' : 'No hay muestras pendientes por dispensar.'}
               </div>
             )}
           </div>
         </div>
 
-        {/* LADO DERECHO: Formulario de Subdivisión */}
+        {/* LADO DERECHO: Formulario o Info */}
         <div className="bg-surface-800 p-6 rounded-2xl border border-white/5 space-y-6">
           <div className="flex items-center gap-3 border-b border-white/5 pb-4">
             <div className="p-2 bg-brand-red/10 rounded-lg text-brand-red">
               <BeakerIcon size={24} />
             </div>
-            <h2 className="text-lg font-medium text-white">2. Configurar "Hijos" a Generar</h2>
+            <h2 className="text-lg font-medium text-white">2. Configurar Frascos Hijos</h2>
           </div>
 
           {selectedSample ? (
@@ -217,21 +305,87 @@ const DispensingPage = () => {
                 <div>
                   <h3 className="text-2xl font-bold text-white">¡Dispensación Exitosa!</h3>
                   <p className="text-gray-400 mt-2 max-w-sm mx-auto">
-                    Se han generado y loggeado <strong>{successData.length}</strong> muestras en estado "Disponible" para el producto <strong>{selectedSample.name}</strong>.
+                    Se han generado <strong>{successData.length}</strong> muestras hijas de <strong>{selectedSample.name}</strong> 
+                    ({weightPerUnit}g c/u, tamaño {getDimensionLabel(childDimensions)}).
                   </p>
                 </div>
                 
                 <div className="flex flex-col gap-3 pt-4">
-                  <button onClick={printQRCodes} className="py-3 px-6 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors">
-                    Imprimir Etiquetas QR
+                  <button onClick={openNewLabels} className="py-3 px-6 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <Tag size={18} /> 🏷️ Generar e Imprimir Etiquetas
                   </button>
                   <button onClick={resetFlow} className="py-3 px-6 bg-surface-900 hover:bg-surface-700 text-gray-300 font-medium rounded-lg transition-colors">
-                    Continuar Dispensando
+                    Continuar
                   </button>
                 </div>
               </div>
+            ) : selectedSample.total_units > 0 ? (
+              // ── VISTA DE MUESTRA YA DISPENSADA ──
+              <div className="space-y-5 animate-fade-in">
+                <div className="p-4 bg-green-500/5 border border-green-500/20 rounded-xl">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckCircle2 size={18} className="text-green-400" />
+                    <span className="text-green-400 font-semibold">Muestra ya dispensada</span>
+                  </div>
+                  <p className="text-white font-bold text-xl">{selectedSample.name}</p>
+                  <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-white/10">
+                    <div>
+                      <p className="text-xs text-gray-500">Lote</p>
+                      <p className="text-sm font-mono text-gray-200">{selectedSample.lot}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Unidades Hijas</p>
+                      <p className="text-sm font-bold text-green-400">{selectedSample.total_units} total / {selectedSample.available_units} disponibles</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Proveedor</p>
+                      <p className="text-sm text-gray-200">{selectedSample.supplier_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Señal</p>
+                      <p className={`text-sm font-bold ${selectedSample.signal_word === 'PELIGRO' ? 'text-red-400' : 'text-amber-400'}`}>
+                        {selectedSample.signal_word || 'ATENCION'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Vencimiento</p>
+                      <p className="text-sm text-gray-200">{selectedSample.expiration_date ? new Date(selectedSample.expiration_date).toLocaleDateString('es-CO') : 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">CoA</p>
+                      {selectedSample.coa_file_path ? (
+                        <a href={`${API_BASE}/${selectedSample.coa_file_path}`} target="_blank" rel="noreferrer"
+                          className="text-xs text-blue-400 hover:text-blue-300 font-medium">Ver PDF →</a>
+                      ) : (
+                        <span className="text-xs text-yellow-500">⚠ Sin CoA</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pictogramas */}
+                {selectedSample.ghs_pictograms?.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSample.ghs_pictograms.map(p => (
+                      <div key={p} className="flex flex-col items-center gap-1 p-2 bg-red-500/5 border border-red-500/15 rounded-lg">
+                        <img src={`/recursos/pictogramas/${PICTO_FILES[p] || 'skull.webp'}`}
+                          alt={p} className="w-6 h-6 object-contain" onError={e => { e.target.style.display='none'; }} />
+                        <span className="text-[8px] text-red-300">{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Acción: imprimir etiquetas */}
+                <button 
+                  onClick={() => openExistingLabels(selectedSample)}
+                  className="w-full py-3 px-6 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  <Tag size={18} /> Ver / Imprimir Etiquetas de este Lote
+                </button>
+              </div>
             ) : (
-              // PANTALLA DE FORMULARIO
+              // FORMULARIO DE DISPENSACIÓN
               <form onSubmit={handleDispense} className="space-y-6 mt-4">
                 <div className="p-4 bg-surface-900 border border-white/5 rounded-xl space-y-3">
                   <h3 className="text-sm text-gray-400 mb-1">Muestra Seleccionada:</h3>
@@ -246,25 +400,46 @@ const DispensingPage = () => {
                       <p className="text-sm text-gray-300">{selectedSample.ghs_danger_class || 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Uds. Disponibles</p>
-                      <p className="text-sm font-bold text-green-400">{selectedSample.available_units ?? 0}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Peso por Unidad</p>
-                      <p className="text-sm font-mono text-gray-300">{selectedSample.weight_per_unit_grams ? `${selectedSample.weight_per_unit_grams}g` : 'No definido'}</p>
+                      <p className="text-xs text-gray-500">Peso Total del Bulk</p>
+                      <p className="text-sm font-bold text-blue-400">{selectedSample.total_weight_grams ? `${selectedSample.total_weight_grams}g` : 'N/A'}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">CoA</p>
                       <p className="text-sm text-gray-300">
-                        {selectedSample.coa_file_path ? <span className="text-green-400 cursor-help" title="Con certificado">✓ Adjunto</span> : <span className="text-yellow-500">⚠ Falta</span>}
+                        {selectedSample.coa_file_path ? <span className="text-green-400">✓ Adjunto</span> : <span className="text-yellow-500">⚠ Falta</span>}
                       </p>
                     </div>
                   </div>
                 </div>
 
+                {/* Tamaño del frasco hijo */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-gray-400 mb-2">
+                    <Ruler size={14} className="text-primary-400" />
+                    Tamaño del Frasco Hijo (en el anaquel)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['1x1x1', '1x2x1', '2x1x1', '2x2x1'].map(dim => (
+                      <button
+                        key={dim}
+                        type="button"
+                        onClick={() => setChildDimensions(dim)}
+                        className={`py-3 px-4 rounded-xl text-sm font-medium border-2 transition-all ${
+                          childDimensions === dim
+                            ? 'bg-primary-500/15 border-primary-500 text-primary-400'
+                            : 'bg-surface-900 border-white/10 text-gray-400 hover:border-white/20'
+                        }`}
+                      >
+                        <span className="font-mono text-xs">{dim}</span>
+                        <span className="block text-[10px] mt-0.5 opacity-70">{getDimensionLabel(dim)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Cantidad a Dispensar</label>
+                    <label className="block text-sm text-gray-400 mb-2">Cantidad de Frascos</label>
                     <input 
                       type="number" 
                       min="1"
@@ -272,10 +447,9 @@ const DispensingPage = () => {
                       value={unitsToGenerate}
                       onChange={(e) => setUnitsToGenerate(e.target.value)}
                     />
-                    <p className="text-xs text-gray-500 mt-2">Uds totales actuales: {selectedSample.total_units || 0}</p>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Gramos por Unidad (g)</label>
+                    <label className="block text-sm text-gray-400 mb-2">Peso por Frasco (g)</label>
                     <input 
                       type="number" 
                       step="0.01"
@@ -285,9 +459,16 @@ const DispensingPage = () => {
                       value={weightPerUnit}
                       onChange={(e) => setWeightPerUnit(e.target.value)}
                     />
-                    <p className="text-xs text-gray-500 mt-2">Peso exacto de cada frasco hijo.</p>
+                    <p className="text-xs text-gray-500 mt-2">Peso exacto de cada frasco hijo estandarizado.</p>
                   </div>
                 </div>
+
+                {weightPerUnit && unitsToGenerate > 0 && (
+                  <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl text-sm text-blue-300">
+                    <p>📦 {unitsToGenerate} frascos × {weightPerUnit}g = <strong>{(unitsToGenerate * parseFloat(weightPerUnit || 0)).toFixed(1)}g</strong> total dispensado</p>
+                    <p className="text-xs text-gray-500 mt-1">Tamaño en anaquel: {getDimensionLabel(childDimensions)}</p>
+                  </div>
+                )}
 
                 <div className="pt-4 border-t border-white/10">
                   <button 
@@ -296,7 +477,7 @@ const DispensingPage = () => {
                     className="w-full flex justify-center items-center gap-2 py-4 bg-brand-red hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-brand-red/20 transition-all"
                   >
                     <PlusCircle size={20} />
-                    {isSubmitting ? 'Procesando...' : `Generar ${unitsToGenerate} Códigos QR`}
+                    {isSubmitting ? 'Procesando...' : `Dispensar ${unitsToGenerate} Frascos Hijos`}
                   </button>
                 </div>
               </form>
@@ -304,30 +485,25 @@ const DispensingPage = () => {
           ) : (
              <div className="py-20 text-center flex flex-col items-center justify-center text-gray-500">
                <Box size={48} className="mb-4 opacity-20" />
-               <p>Selecciona una Muestra Global a tu izquierda</p>
-               <p className="text-sm mt-2">para inicializar los frascos de este lote.</p>
+               <p>{showDispensed ? 'Selecciona una muestra dispensada para ver sus etiquetas.' : 'Selecciona una Muestra Global pendiente'}</p>
+               <p className="text-sm mt-2">{showDispensed ? '' : 'para inicializar los frascos de este lote.'}</p>
              </div>
           )}
         </div>
       </div>
 
+      {/* Confirm Modal */}
       <Modal
         isOpen={showConfirmModal}
         onClose={() => setShowConfirmModal(false)}
         title="Confirmar Dispensación"
         footer={
           <>
-            <button
-              onClick={() => setShowConfirmModal(false)}
-              className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
-            >
+            <button onClick={() => setShowConfirmModal(false)} className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors">
               Cancelar
             </button>
-            <button
-              onClick={executeDispense}
-              className="px-4 py-2 text-sm bg-brand-red text-white rounded-lg hover:bg-red-700 font-medium"
-            >
-              Confirmar y Generar QRs
+            <button onClick={executeDispense} className="px-4 py-2 text-sm bg-brand-red text-white rounded-lg hover:bg-red-700 font-medium">
+              Confirmar y Generar
             </button>
           </>
         }
@@ -337,17 +513,25 @@ const DispensingPage = () => {
             <Info className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-white mb-2">
-              Validación de Creación
-            </h3>
+            <h3 className="text-sm font-medium text-white mb-2">Validación de Creación</h3>
             <p className="text-sm text-gray-400 leading-relaxed">
-              ¿Está seguro que desea generar <strong>{unitsToGenerate}</strong> nuevas unidades hijas de <strong>{weightPerUnit}g</strong> cada una, para la muestra global <strong>{selectedSample?.name}</strong>?
+              Se generarán <strong>{unitsToGenerate}</strong> frascos hijos de <strong>{weightPerUnit}g</strong> cada uno 
+              (tamaño {getDimensionLabel(childDimensions)}) para <strong>{selectedSample?.name}</strong>.
               <br /><br />
-              Esta acción registrará los nuevos contenedores en estado "disponible" localmente en la base de datos y permitirá la impresión de sus respectivas etiquetas QR. El remanente de gramos no es tracking estricto.
+              <strong className="text-amber-400">⚠ Una vez dispensada, esta muestra global no podrá dispensarse nuevamente.</strong>
             </p>
           </div>
         </div>
       </Modal>
+
+      {/* Label Preview/Print */}
+      {showLabelPreview && labelBulk && (
+        <LabelPrint
+          samples={labelSamples}
+          bulkData={labelBulk}
+          onClose={() => setShowLabelPreview(false)}
+        />
+      )}
     </div>
   );
 };
