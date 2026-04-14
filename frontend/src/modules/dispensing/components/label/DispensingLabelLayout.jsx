@@ -59,8 +59,6 @@ const DispensingLabelLayout = ({ sample, bulkData }) => {
         gridTemplateRows: '10.5mm 10.5mm 10.5mm 10.5mm 4mm',
         border: '0.4mm solid #111827',
         background: '#ffffff',
-        marginBottom: '4mm',
-        pageBreakAfter: 'always',
         fontFamily: '"Inter", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         WebkitPrintColorAdjust: 'exact',
         printColorAdjust: 'exact',

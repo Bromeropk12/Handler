@@ -45,7 +45,7 @@ const LoginPage = () => {
             }}
           />
         </div>
-        
+
         {/* Red accent line - top */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-handler-red via-handler-red to-handler-gold" />
 
@@ -56,20 +56,20 @@ const LoginPage = () => {
             alt="Händler"
             className="h-16 w-auto mx-auto mb-10 brightness-0 invert"
           />
-          
+
           <h2 className="text-3xl font-bold text-white mb-4 leading-tight">
-            Sistema de Gestión de
-            <span className="text-gradient-handler block mt-1">Muestras Químicas</span>
+            Sistema de Gestión
+            <span className="text-gradient-handler block mt-1">TrackSamples</span>
           </h2>
-          
+
           <p className="text-gray-400 text-base leading-relaxed mb-8">
-            Trazabilidad completa con estándares SGA. Control inteligente de inventario, 
+            Trazabilidad completa con estándares SGA. Control inteligente de inventario,
             dispensación y despacho validado.
           </p>
 
           {/* Feature pills */}
           <div className="flex flex-wrap gap-2 justify-center">
-            {['Trazabilidad SGA', 'QR Codes', 'Mapa 2D', 'FEFO'].map(feature => (
+            {['Trazabilidad SGA', 'QR Codes', 'Mapa 3D', 'FEFO'].map(feature => (
               <span
                 key={feature}
                 className="px-3 py-1.5 bg-surface-200 border border-gray-700/50 rounded-full text-xs text-gray-300 font-medium"
