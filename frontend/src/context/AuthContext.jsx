@@ -27,8 +27,19 @@ export const AuthProvider = ({ children }) => {
         if (token) {
           // Verificar token con el servidor
           const response = await authAPI.getCurrentUser();
-          setUser(response.data.user);
-          setIsAuthenticated(true);
+          const userData = response.data.user;
+
+          // Solo permitir sesiones persistentes para administradores
+          // Si es operador, forzar logout para mayor seguridad
+          if (userData.role === 'admin') {
+            setUser(userData);
+            setIsAuthenticated(true);
+          } else {
+            // Limpiar sesión de operador por seguridad
+            localStorage.removeItem('auth_token');
+            setUser(null);
+            setIsAuthenticated(false);
+          }
         }
       } catch (_error) {
         // Token inválido, limpiar

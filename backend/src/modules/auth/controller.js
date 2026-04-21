@@ -8,6 +8,40 @@ const jwt = require('jsonwebtoken');
 const { query } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 
+/**
+ * Validar fuerza de contraseña (seguridad media)
+ * - Mínimo 8 caracteres
+ * - Al menos 1 mayúscula, 1 minúscula, 1 número, 1 especial
+ */
+const validatePasswordStrength = (password) => {
+  if (password.length < 8) {
+    return { valid: false, message: 'La contraseña debe tener al menos 8 caracteres' };
+  }
+
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumbers = /\d/.test(password);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+
+  if (!hasUpperCase) {
+    return { valid: false, message: 'La contraseña debe contener al menos una letra mayúscula' };
+  }
+
+  if (!hasLowerCase) {
+    return { valid: false, message: 'La contraseña debe contener al menos una letra minúscula' };
+  }
+
+  if (!hasNumbers) {
+    return { valid: false, message: 'La contraseña debe contener al menos un número' };
+  }
+
+  if (!hasSpecialChar) {
+    return { valid: false, message: 'La contraseña debe contener al menos un carácter especial' };
+  }
+
+  return { valid: true };
+};
+
 // Generar JWT token
 const generateToken = (user) => {
   return jwt.sign(
@@ -194,6 +228,302 @@ const requireAdmin = (req, res, next) => {
 };
 
 /**
+ * Listar todos los usuarios (solo admin)
+ */
+const listUsers = async (req, res, next) => {
+  try {
+    const users = await query(
+      'SELECT id, username, role, created_at, updated_at FROM users ORDER BY created_at DESC'
+    );
+
+    res.json({
+      success: true,
+      data: {
+        users: users.rows
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Crear nuevo usuario (solo admin)
+ * Los administradores pueden crear usuarios sin validación de contraseña
+ * Los operadores creados deberán cambiar su contraseña con validación
+ */
+const createUser = async (req, res, next) => {
+  try {
+    const { username, password, role } = req.body;
+
+    // Validaciones básicas
+    if (!username || !password || !role) {
+      throw new AppError('Usuario, contraseña y rol son requeridos', 400);
+    }
+
+    if (!['admin', 'operator'].includes(role)) {
+      throw new AppError('El rol debe ser "admin" o "operator"', 400);
+    }
+
+    // Nota: Los administradores pueden crear usuarios con cualquier contraseña
+    // Los operadores tendrán que cambiar su contraseña después con validación completa
+
+    // Verificar que el username no existe
+    const existingUser = await query(
+      'SELECT id FROM users WHERE username = $1',
+      [username]
+    );
+
+    if (existingUser.rows.length > 0) {
+      throw new AppError('El nombre de usuario ya existe', 409);
+    }
+
+    // Generar contraseña secreta aleatoria (para recuperación)
+    const secretPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
+    const hashedPassword = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+    const hashedSecretPassword = await bcrypt.hash(secretPassword, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+
+    // Crear usuario
+    const newUser = await query(
+      'INSERT INTO users (username, password_hash, secret_password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, username, role, created_at',
+      [username, hashedPassword, hashedSecretPassword, role]
+    );
+
+    // Log de creación de usuario
+    await query(
+      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+      [null, 'user_created', req.user.id, JSON.stringify({
+        new_user_id: newUser.rows[0].id,
+        new_username: username,
+        new_role: role,
+        ip: req.ip,
+        timestamp: new Date().toISOString()
+      })]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: role === 'operator'
+        ? 'Usuario operador creado exitosamente. Debe cambiar su contraseña al iniciar sesión.'
+        : 'Usuario administrador creado exitosamente',
+      data: {
+        user: newUser.rows[0],
+        secretPassword: secretPassword // Solo se muestra una vez para que el admin lo proporcione
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Cambiar contraseña de otro usuario (solo admin)
+ * Los administradores pueden cambiar cualquier contraseña sin validación
+ */
+const changeUserPassword = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword) {
+      throw new AppError('La nueva contraseña es requerida', 400);
+    }
+
+    // Nota: Los administradores pueden cambiar cualquier contraseña sin validación
+
+    // Verificar que el usuario existe
+    const userExists = await query(
+      'SELECT id, username FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userExists.rows.length === 0) {
+      throw new AppError('Usuario no encontrado', 404);
+    }
+
+    // Hash de la nueva contraseña
+    const hashedNewPassword = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+
+    // Actualizar contraseña
+    await query(
+      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedNewPassword, userId]
+    );
+
+    // Log de cambio de contraseña por admin
+    await query(
+      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+      [null, 'admin_password_change', req.user.id, JSON.stringify({
+        target_user_id: userId,
+        target_username: userExists.rows[0].username,
+        ip: req.ip,
+        timestamp: new Date().toISOString()
+      })]
+    );
+
+    res.json({
+      success: true,
+      message: 'Contraseña del usuario actualizada exitosamente'
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Cambiar contraseña del usuario actual
+ * Los operadores deben usar validaciones de seguridad, los admins pueden cambiar libremente
+ */
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    // Validaciones básicas
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      throw new AppError('Todos los campos son requeridos', 400);
+    }
+
+    if (newPassword !== confirmPassword) {
+      throw new AppError('La nueva contraseña y su confirmación no coinciden', 400);
+    }
+
+    // Validar fuerza de la nueva contraseña solo para operadores
+    if (userRole === 'operator') {
+      const passwordValidation = validatePasswordStrength(newPassword);
+      if (!passwordValidation.valid) {
+        throw new AppError(passwordValidation.message, 400);
+      }
+    }
+
+    // Verificar contraseña actual
+    const users = await query(
+      'SELECT password_hash FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (users.rows.length === 0) {
+      throw new AppError('Usuario no encontrado', 404);
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, users.rows[0].password_hash);
+
+    if (!isCurrentPasswordValid) {
+      throw new AppError('La contraseña actual es incorrecta', 401);
+    }
+
+    // Hash de la nueva contraseña
+    const hashedNewPassword = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+
+    // Actualizar contraseña
+    await query(
+      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedNewPassword, userId]
+    );
+
+    // Log de cambio de contraseña
+    await query(
+      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+      [null, 'password_change', userId, JSON.stringify({ ip: req.ip, timestamp: new Date().toISOString() })]
+    );
+
+    res.json({
+      success: true,
+      message: 'Contraseña actualizada exitosamente'
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Cambiar nombre de usuario del usuario actual (solo para administradores)
+ */
+const changeUsername = async (req, res, next) => {
+  try {
+    const { newUsername, currentPassword } = req.body;
+    const userId = req.user.id;
+
+    // Solo administradores pueden cambiar su nombre de usuario
+    if (req.user.role !== 'admin') {
+      throw new AppError('Solo los administradores pueden cambiar su nombre de usuario', 403);
+    }
+
+    // Validaciones
+    if (!newUsername || !currentPassword) {
+      throw new AppError('Nombre de usuario y contraseña actual son requeridos', 400);
+    }
+
+    if (newUsername.length < 3) {
+      throw new AppError('El nombre de usuario debe tener al menos 3 caracteres', 400);
+    }
+
+    // Verificar que el nuevo username no existe
+    const existingUser = await query(
+      'SELECT id FROM users WHERE username = $1 AND id != $2',
+      [newUsername, userId]
+    );
+
+    if (existingUser.rows.length > 0) {
+      throw new AppError('El nombre de usuario ya existe', 409);
+    }
+
+    // Verificar contraseña actual
+    const users = await query(
+      'SELECT password_hash FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (users.rows.length === 0) {
+      throw new AppError('Usuario no encontrado', 404);
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, users.rows[0].password_hash);
+
+    if (!isCurrentPasswordValid) {
+      throw new AppError('La contraseña actual es incorrecta', 401);
+    }
+
+    // Actualizar nombre de usuario
+    await query(
+      'UPDATE users SET username = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [newUsername, userId]
+    );
+
+    // Log de cambio de nombre de usuario
+    await query(
+      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+      [null, 'username_change', userId, JSON.stringify({
+        old_username: req.user.username,
+        new_username: newUsername,
+        ip: req.ip,
+        timestamp: new Date().toISOString()
+      })]
+    );
+
+    res.json({
+      success: true,
+      message: 'Nombre de usuario actualizado exitosamente',
+      data: {
+        user: {
+          id: userId,
+          username: newUsername,
+          role: req.user.role
+        }
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Obtener información del usuario actual
  */
 const getCurrentUser = async (req, res, next) => {
@@ -209,10 +539,62 @@ const getCurrentUser = async (req, res, next) => {
   }
 };
 
+/**
+ * Eliminar un usuario (solo admin)
+ * No se puede eliminar a uno mismo
+ */
+const deleteUser = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    if (parseInt(userId) === req.user.id) {
+      throw new AppError('No puedes eliminar tu propio usuario administrador', 400);
+    }
+
+    // Verificar que el usuario existe
+    const userExists = await query(
+      'SELECT id, username FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userExists.rows.length === 0) {
+      throw new AppError('Usuario no encontrado', 404);
+    }
+
+    // Eliminar usuario
+    await query('DELETE FROM users WHERE id = $1', [userId]);
+
+    // Log de eliminación de usuario
+    await query(
+      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+      [null, 'user_deleted', req.user.id, JSON.stringify({
+        deleted_user_id: userId,
+        deleted_username: userExists.rows[0].username,
+        ip: req.ip,
+        timestamp: new Date().toISOString()
+      })]
+    );
+
+    res.json({
+      success: true,
+      message: 'Usuario eliminado exitosamente'
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   login,
   resetPassword,
   verifyToken,
   requireAdmin,
   getCurrentUser,
+  changePassword,
+  changeUsername,
+  listUsers,
+  createUser,
+  changeUserPassword,
+  deleteUser,
 };

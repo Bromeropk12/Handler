@@ -54,6 +54,12 @@ export const authAPI = {
   login: apiCircuitBreaker.wrap('auth/login', credentials => api.post('/auth/login', credentials)),
   resetPassword: apiCircuitBreaker.wrap('auth/reset-password', data => api.post('/auth/reset-password', data)),
   getCurrentUser: apiCircuitBreaker.wrap('auth/me', () => api.get('/auth/me')),
+  changePassword: apiCircuitBreaker.wrap('auth/change-password', data => api.post('/auth/change-password', data)),
+  changeUsername: apiCircuitBreaker.wrap('auth/change-username', data => api.put('/auth/change-username', data)),
+  listUsers: apiCircuitBreaker.wrap('auth/users', () => api.get('/auth/users')),
+  createUser: apiCircuitBreaker.wrap('auth/users', data => api.post('/auth/users', data)),
+  changeUserPassword: apiCircuitBreaker.wrap('auth/change-user-password', (userId, data) => api.put(`/auth/users/${userId}/password`, data)),
+  deleteUser: apiCircuitBreaker.wrap('auth/delete-user', userId => api.delete(`/auth/users/${userId}`)),
 };
 
 export const samplesAPI = {

@@ -139,27 +139,79 @@ const DashboardPage = () => {
                     tickFormatter={(value) => `${value}%`}
                   />
                   <Tooltip
-                    cursor={{ fill: '#374151' }}
-                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.375rem', color: '#f3f4f6' }}
-                    formatter={(value, name, props) => [`${value}% Ocupado`, 'Ocupación']}
+                    cursor={{ fill: 'rgba(55, 65, 81, 0.3)' }}
+                    contentStyle={{
+                      backgroundColor: '#1f2937',
+                      border: '1px solid #374151',
+                      borderRadius: '0.5rem',
+                      color: '#f3f4f6',
+                      boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                      fontSize: '12px'
+                    }}
+                    formatter={(value, name, props) => {
+                      const data = props.payload;
+                      return [
+                        <div key="tooltip-content" className="space-y-1">
+                          <div className="font-semibold text-white">{value}% Ocupado</div>
+                          <div className="text-xs text-gray-400">
+                            {data.occupiedPositions || 0} de {data.totalPositions || 0} posiciones
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {data.shelves || 0} anaquel{data.shelves !== 1 ? 'es' : ''}
+                          </div>
+                        </div>,
+                        'Ocupación'
+                      ];
+                    }}
                     labelStyle={{ color: '#fff', fontWeight: 'bold', marginBottom: '0.25rem' }}
+                    animationDuration={300}
                   />
-                  <Bar dataKey="occupancy" radius={[4, 4, 0, 0]}>
+                  <Bar
+                    dataKey="occupancy"
+                    radius={[6, 6, 0, 0]}
+                    animationBegin={0}
+                    animationDuration={1200}
+                    animationEasing="ease-out"
+                  >
                     {
                       stats.marketLines.map((entry, index) => {
-                        // Map the tailwind bg colors to HEX for recharts
+                        // Enhanced color mapping with gradients
                         const colorMap = {
-                          'bg-pink-500': '#ec4899',
-                          'bg-blue-500': '#3b82f6',
-                          'bg-amber-500': '#f59e0b',
-                          'bg-green-500': '#22c55e',
-                          'bg-purple-500': '#a855f7'
+                          'bg-pink-500': 'url(#gradient-pink)',
+                          'bg-blue-500': 'url(#gradient-blue)',
+                          'bg-amber-500': 'url(#gradient-amber)',
+                          'bg-green-500': 'url(#gradient-green)',
+                          'bg-purple-500': 'url(#gradient-purple)'
                         };
                         const hexColor = colorMap[entry.color] || '#ef4444';
-                        return <Cell key={`cell-${index}`} fill={hexColor} />;
+                        return <Cell key={`cell-${index}`} fill={hexColor} stroke={`rgba(255,255,255,0.1)`} strokeWidth={1} />;
                       })
                     }
                   </Bar>
+
+                  {/* Gradient Definitions */}
+                  <defs>
+                    <linearGradient id="gradient-pink" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#ec4899" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#be185d" stopOpacity={0.8} />
+                    </linearGradient>
+                    <linearGradient id="gradient-blue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#1d4ed8" stopOpacity={0.8} />
+                    </linearGradient>
+                    <linearGradient id="gradient-amber" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#d97706" stopOpacity={0.8} />
+                    </linearGradient>
+                    <linearGradient id="gradient-green" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#16a34a" stopOpacity={0.8} />
+                    </linearGradient>
+                    <linearGradient id="gradient-purple" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#a855f7" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#9333ea" stopOpacity={0.8} />
+                    </linearGradient>
+                  </defs>
                 </BarChart>
               </ResponsiveContainer>
             ) : (

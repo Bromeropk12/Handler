@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
-const Modal = ({ isOpen, onClose, title, children, size = 'md', footer }) => {
+const Modal = ({ isOpen, onClose, title, children, size = 'md', footer, maxWidth, noPadding = false }) => {
   // Bloquear scroll del fondo mientras el modal está abierto
   useEffect(() => {
     if (isOpen) {
@@ -19,7 +19,15 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md', footer }) => {
     md: 'max-w-lg',
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
+    '2xl': 'max-w-2xl',
+    '3xl': 'max-w-3xl',
+    '4xl': 'max-w-4xl',
+    '5xl': 'max-w-5xl',
+    '6xl': 'max-w-6xl',
+    '7xl': 'max-w-7xl',
   };
+
+  const currentMaxWidth = maxWidth ? `max-w-${maxWidth}` : sizeClasses[size] || 'max-w-lg';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -31,22 +39,24 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md', footer }) => {
 
       {/* Modal — altura máxima al 90% del viewport */}
       <div
-        className={`relative ${sizeClasses[size]} w-full bg-surface-300 border border-gray-700/50 rounded-xl shadow-large animate-scale-in flex flex-col`}
+        className={`relative ${currentMaxWidth} w-full bg-surface-300 border border-gray-700/50 rounded-xl shadow-large animate-scale-in flex flex-col`}
         style={{ maxHeight: '90vh' }}
       >
         {/* Header — fijo arriba */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50 shrink-0">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
-          <button
-            onClick={onClose}
-            className="btn-icon p-1.5"
-          >
-            <XMarkIcon className="w-5 h-5" />
-          </button>
-        </div>
+        {title && (
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50 shrink-0">
+            <h2 className="text-lg font-semibold text-white">{title}</h2>
+            <button
+              onClick={onClose}
+              className="btn-icon p-1.5"
+            >
+              <XMarkIcon className="w-5 h-5" />
+            </button>
+          </div>
+        )}
 
         {/* Body — único scroll aquí */}
-        <div className="px-6 py-5 overflow-y-auto flex-1 custom-scrollbar">
+        <div className={`${noPadding ? '' : 'px-6 py-5'} overflow-y-auto flex-1 custom-scrollbar`}>
           {children}
         </div>
 
