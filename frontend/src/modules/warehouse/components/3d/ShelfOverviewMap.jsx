@@ -106,7 +106,7 @@ const ShelfStructure = ({ totalCols, totalDepth, totalLevels }) => {
         <mesh key={`post-${i}`} position={[px, postH / 2 - 0.5, pz]}>
           <boxGeometry args={[0.1, postH, 0.1]} />
           <meshStandardMaterial color="#020617" metalness={0.95} roughness={0.05} />
-          <Edges color="#0ea5e940" transparent opacity={0.5} />
+          <Edges color="#0ea5e9" transparent opacity={0.5} />
         </mesh>
       ))}
 

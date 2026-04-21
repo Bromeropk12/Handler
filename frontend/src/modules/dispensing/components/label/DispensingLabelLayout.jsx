@@ -199,11 +199,11 @@ const DispensingLabelLayout = ({ sample, bulkData }) => {
             <QRCodeSVG value={sample.qr_code} size={54} level="M" includeMargin={false} />
           </div>
           <div style={{
-            fontSize: '3pt', color: '#111827',
+            fontSize: '4.5pt', color: '#111827',
             textAlign: 'center', marginTop: '1mm',
             fontFamily: '"SF Mono", "Roboto Mono", monospace', wordBreak: 'break-all',
-            maxWidth: '32mm', lineHeight: 1.1, fontWeight: 'bold',
-            backgroundColor: 'rgba(255,255,255,0.9)', padding: '0.3mm 1mm',
+            maxWidth: '32mm', lineHeight: 1.2, fontWeight: 'bold',
+            backgroundColor: 'rgba(255,255,255,0.9)', padding: '0.5mm 1mm',
             border: '0.2mm solid #e5e7eb'
           }}>
             {sample.qr_code}

@@ -181,16 +181,16 @@ const LabelPrint = ({ samples, bulkData, onClose }) => {
               <div>
                 <label className="text-xs text-gray-400 block mb-1">Columnas</label>
                 <input 
-                  type="number" min="1" max="5" 
-                  value={cols} onChange={(e) => setCols(Number(e.target.value) || 1)}
+                  type="text" inputMode="numeric" 
+                  value={cols} onChange={(e) => setCols(Number(e.target.value.replace(/\D/g, '')) || 1)}
                   className="w-full bg-surface-900 border border-white/10 rounded-md p-2 text-white text-sm"
                 />
               </div>
               <div>
                 <label className="text-xs text-gray-400 block mb-1">Filas</label>
                 <input 
-                  type="number" min="1" max="10" 
-                  value={rows} onChange={(e) => setRows(Number(e.target.value) || 1)}
+                  type="text" inputMode="numeric" 
+                  value={rows} onChange={(e) => setRows(Number(e.target.value.replace(/\D/g, '')) || 1)}
                   className="w-full bg-surface-900 border border-white/10 rounded-md p-2 text-white text-sm"
                 />
               </div>
@@ -212,7 +212,9 @@ const LabelPrint = ({ samples, bulkData, onClose }) => {
                 value={scale} onChange={(e) => setScale(Number(e.target.value))}
                 className="w-full accent-blue-500 hover:accent-blue-400 transition-all cursor-pointer"
               />
-              <p className="text-[10px] text-gray-500 mt-1">El documento mantiene sus cálculos en milímetros; esto sólo te permite cambiar la escala en la que se inyecta en el papel Carta.</p>
+              <div className="mt-2 text-xs text-green-400/90 bg-green-500/10 p-2 rounded border border-green-500/20">
+                📏 Tamaño real impreso: <strong>{((108 * scale) / 10).toFixed(2)} cm × {((46 * scale) / 10).toFixed(2)} cm</strong>
+              </div>
             </div>
           </div>
 

@@ -14,7 +14,7 @@ const { findAutoPlacement, parseDimensions } = require('../warehouse/validations
  */
 const subdivideBulkSample = async (req, res, next) => {
   try {
-    const { global_sample_id, number_of_units, weight_per_unit, child_dimensions } = req.body;
+    const { global_sample_id, number_of_units, weight_per_unit, child_dimensions, shelf_id } = req.body;
 
     if (!global_sample_id) throw new AppError('El ID del Bulk Sample es requerido', 400);
     if (!number_of_units || number_of_units <= 0) throw new AppError('El número de unidades debe ser mayor a 0', 400);
@@ -23,7 +23,8 @@ const subdivideBulkSample = async (req, res, next) => {
 
     // Verificar que el bulk existe
     const bulkCheck = await query(`
-      SELECT gs.*, sup.name as supplier_name, sup.logo_path as supplier_logo_path
+      SELECT gs.*, sup.name as supplier_name, sup.logo_path as supplier_logo_path,
+             COALESCE(gs.dispensed_size, '1x1x1') as dispensed_size
       FROM global_samples gs
       LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
       WHERE gs.id = $1
@@ -52,8 +53,22 @@ const subdivideBulkSample = async (req, res, next) => {
 
     // Generar cada muestra dispensada
     for (let i = 0; i < number_of_units; i++) {
-      const uniqueNumber = Math.floor(1000 + Math.random() * 9000);
-      const qrCode = `HS-${bulk.lot}-${Date.now().toString().slice(-4)}${uniqueNumber}-${i + 1}`;
+      // Generar código corto único (7 chars alfanumérico aleatorio + secuencia hija)
+      // Ejemplo: "A3K9M2X-1", "B7NP4QZ-2" — no expone el lote en la etiqueta
+      const SHORT_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let shortBase = '';
+      let qrCode = '';
+      let attempts = 0;
+      do {
+        shortBase = Array.from({ length: 7 }, () =>
+          SHORT_CHARS[Math.floor(Math.random() * SHORT_CHARS.length)]
+        ).join('');
+        qrCode = `${shortBase}-${i + 1}`;
+        // Verificar unicidad (evitar colisiones extremadamente raras)
+        const existing = await query('SELECT 1 FROM dispensed_samples WHERE qr_code = $1', [qrCode]);
+        if (existing.rows.length === 0) break;
+        attempts++;
+      } while (attempts < 10);
 
       // QR data enriquecido para la etiqueta
       const qrData = {
@@ -126,14 +141,34 @@ const subdivideBulkSample = async (req, res, next) => {
       .map(result => result.rows[0].id);
 
     // ALGORITMO SGA AUTOMÁTICO DE UBICACIÓN
-    const shelvesResult = await query(`
-      SELECT 
-        sh.*,
-        (SELECT COUNT(*) FROM dispensed_samples ds WHERE ds.shelf_id = sh.id AND ds.status = 'stored') as occupied_cells
-      FROM shelves sh
-      WHERE sh.market_line_id = $1
-      ORDER BY occupied_cells ASC
-    `, [bulk.market_line_id]);
+    // Si el usuario escogió un anaquel, ponerlo primero en la lista
+    let shelvesQuery;
+    if (shelf_id) {
+      shelvesQuery = await query(`
+        SELECT 
+          sh.*,
+          (SELECT COUNT(*) FROM dispensed_samples ds WHERE ds.shelf_id = sh.id AND ds.status = 'stored') as occupied_cells
+        FROM shelves sh
+        WHERE sh.id = $1
+        UNION ALL
+        SELECT 
+          sh.*,
+          (SELECT COUNT(*) FROM dispensed_samples ds WHERE ds.shelf_id = sh.id AND ds.status = 'stored') as occupied_cells
+        FROM shelves sh
+        WHERE sh.market_line_id = $2 AND sh.id != $1
+        ORDER BY occupied_cells ASC
+      `, [shelf_id, bulk.market_line_id]);
+    } else {
+      shelvesQuery = await query(`
+        SELECT 
+          sh.*,
+          (SELECT COUNT(*) FROM dispensed_samples ds WHERE ds.shelf_id = sh.id AND ds.status = 'stored') as occupied_cells
+        FROM shelves sh
+        WHERE sh.market_line_id = $1
+        ORDER BY occupied_cells ASC
+      `, [bulk.market_line_id]);
+    }
+    const shelvesResult = shelvesQuery;
 
     if (shelvesResult.rows.length === 0) {
       // No hay anaqueles pero la dispensación fue exitosa - quedan sin ubicar
@@ -393,5 +428,68 @@ const getUnplacedSamples = async (req, res, next) => {
 module.exports = {
   subdivideBulkSample,
   getDispensedSamples,
-  getUnplacedSamples
+  getUnplacedSamples,
+  reassignShelf
 };
+
+/**
+ * Reasignar todas las muestras hijas de un bulk a un anaquel diferente
+ * PUT /api/dispensing/reassign-shelf
+ */
+async function reassignShelf(req, res, next) {
+  try {
+    const { global_sample_id, shelf_id } = req.body;
+    if (!global_sample_id) throw new AppError('global_sample_id es requerido', 400);
+    if (!shelf_id) throw new AppError('shelf_id es requerido', 400);
+
+    // Verificar que el anaquel existe
+    const shelfCheck = await query('SELECT * FROM shelves WHERE id = $1', [shelf_id]);
+    if (shelfCheck.rows.length === 0) throw new AppError('Anaquel no encontrado', 404);
+    const shelf = shelfCheck.rows[0];
+
+    // Obtener todas las muestras hijas almacenadas
+    const childSamples = await query(`
+      SELECT id, width, height, depth, child_dimensions
+      FROM dispensed_samples
+      WHERE global_sample_id = $1 AND status = 'stored'
+      ORDER BY created_at ASC
+    `, [global_sample_id]);
+
+    if (childSamples.rows.length === 0) {
+      throw new AppError('No hay muestras hijas almacenadas para reasignar', 404);
+    }
+
+    // Limpiar ubicaciones actuales
+    await query(`
+      UPDATE dispensed_samples
+      SET shelf_id = NULL, position_x = NULL, position_y = NULL, position_z = NULL
+      WHERE global_sample_id = $1 AND status = 'stored'
+    `, [global_sample_id]);
+
+    const placements = [];
+    const failed = [];
+
+    for (const child of childSamples.rows) {
+      try {
+        const autoPos = await findAutoPlacement(shelf, child);
+        await query(`
+          UPDATE dispensed_samples
+          SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $5
+        `, [shelf.id, autoPos.x, autoPos.y, autoPos.z || 0, child.id]);
+        placements.push({ id: child.id, position: autoPos });
+      } catch (e) {
+        failed.push({ id: child.id, error: e.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${placements.length} muestras reasignadas al anaquel "${shelf.name}". ${failed.length > 0 ? `${failed.length} no cupieron.` : ''}`,
+      data: { placements, failed, shelf_name: shelf.name }
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+

@@ -1,5 +1,5 @@
 const express = require('express');
-const { subdivideBulkSample, getDispensedSamples, getUnplacedSamples } = require('./controller');
+const { subdivideBulkSample, getDispensedSamples, getUnplacedSamples, reassignShelf } = require('./controller');
 const { verifyToken, requireAdmin } = require('../auth/controller');
 
 const router = express.Router();
@@ -10,6 +10,12 @@ const router = express.Router();
  * Solo admin puede realizar esta acción
  */
 router.post('/subdivide', verifyToken, requireAdmin, subdivideBulkSample);
+
+/**
+ * PUT /api/dispensing/reassign-shelf
+ * Reasignar todas las muestras hijas de un bulk a un anaquel diferente
+ */
+router.put('/reassign-shelf', verifyToken, requireAdmin, reassignShelf);
 
 /**
  * GET /api/dispensing

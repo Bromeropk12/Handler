@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BeakerIcon, Search, PlusCircle, CheckCircle2, Box, Info, AlertTriangle, Ruler, Tag, Edit3, X, Save } from 'lucide-react';
-import { samplesAPI, dispensingAPI } from '../../services/api';
+import { samplesAPI, dispensingAPI, warehouseAPI } from '../../services/api';
 import Modal from '../../components/Modal';
 import LabelPrint from './components/LabelPrint';
 
@@ -34,7 +34,12 @@ const DispensingPage = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showLabelPreview, setShowLabelPreview] = useState(false);
   const [labelSamples, setLabelSamples] = useState([]);
+  const [availableShelves, setAvailableShelves] = useState([]);
+  const [selectedShelfId, setSelectedShelfId] = useState('');
   const [labelBulk, setLabelBulk] = useState(null);
+  const [reassignShelfId, setReassignShelfId] = useState('');
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [reassignMessage, setReassignMessage] = useState(null);
 
   useEffect(() => {
     loadSamples();
@@ -88,7 +93,8 @@ const DispensingPage = () => {
         global_sample_id: selectedSample.id,
         number_of_units: parseInt(unitsToGenerate),
         weight_per_unit: parseFloat(weightPerUnit),
-        child_dimensions: childDimensions
+        child_dimensions: childDimensions,
+        shelf_id: selectedShelfId || undefined
       });
       
       setSuccessData(resp.data.data.generated_samples || []);
@@ -155,20 +161,64 @@ const DispensingPage = () => {
     setUnitsToGenerate(1);
     setWeightPerUnit('');
     setChildDimensions('1x1x1');
+    setSelectedShelfId('');
+    setAvailableShelves([]);
     loadSamples();
   };
 
-  const handleSelectSample = (sample) => {
+  const handleSelectSample = async (sample) => {
     if (successData) return;
     if (sample.total_units > 0) {
-      // Si ya dispensada, seleccionar para ver info (no dispensar)
       setSelectedSample(sample);
+      setReassignShelfId('');
+      setReassignMessage(null);
+      // Load compatible shelves for reassignment
+      try {
+        const resp = await warehouseAPI.getShelves({ limit: 200 });
+        const all = resp.data?.data?.shelves || [];
+        const filtered = sample.market_line_id
+          ? all.filter(s => s.market_line_id === sample.market_line_id)
+          : all;
+        setAvailableShelves(filtered);
+      } catch (_) { setAvailableShelves([]); }
       return;
     }
     setSelectedSample(sample);
     setUnitsToGenerate(1);
     setWeightPerUnit('');
     setChildDimensions('1x1x1');
+    setSelectedShelfId('');
+    setReassignShelfId('');
+    setReassignMessage(null);
+    // Load shelves filtered by this sample's market line
+    try {
+      const resp = await warehouseAPI.getShelves({ limit: 200 });
+      const all = resp.data?.data?.shelves || [];
+      const filtered = sample.market_line_id
+        ? all.filter(s => s.market_line_id === sample.market_line_id)
+        : all;
+      setAvailableShelves(filtered);
+    } catch (_) {
+      setAvailableShelves([]);
+    }
+  };
+
+  const handleReassignShelf = async () => {
+    if (!reassignShelfId || !selectedSample) return;
+    try {
+      setReassignLoading(true);
+      setReassignMessage(null);
+      const resp = await dispensingAPI.reassignShelf({
+        global_sample_id: selectedSample.id,
+        shelf_id: reassignShelfId
+      });
+      setReassignMessage({ type: 'success', text: resp.data.message });
+      setReassignShelfId('');
+    } catch (err) {
+      setReassignMessage({ type: 'error', text: err.response?.data?.message || err.message });
+    } finally {
+      setReassignLoading(false);
+    }
   };
 
   const getDimensionLabel = (dim) => {
@@ -354,8 +404,14 @@ const DispensingPage = () => {
                     <div>
                       <p className="text-xs text-gray-500">CoA</p>
                       {selectedSample.coa_file_path ? (
-                        <a href={`${API_BASE}/${selectedSample.coa_file_path}`} target="_blank" rel="noreferrer"
-                          className="text-xs text-blue-400 hover:text-blue-300 font-medium">Ver PDF →</a>
+                        <a
+                          href={`${API_BASE}/${selectedSample.coa_file_path}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 mt-0.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm border border-blue-500/40"
+                        >
+                          📄 Ver CoA PDF
+                        </a>
                       ) : (
                         <span className="text-xs text-yellow-500">⚠ Sin CoA</span>
                       )}
@@ -375,6 +431,43 @@ const DispensingPage = () => {
                     ))}
                   </div>
                 )}
+
+                {/* Shelf Reassignment Panel */}
+                <div className="border border-yellow-500/20 bg-yellow-500/5 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Box size={15} className="text-yellow-400" />
+                    <span className="text-sm font-semibold text-yellow-300">Reasignar Anaquel de Destino</span>
+                  </div>
+                  <p className="text-xs text-gray-500">Mueve todas las muestras hijas almacenadas a un anaquel diferente de la misma línea de mercado.</p>
+                  {availableShelves.length === 0 ? (
+                    <p className="text-xs text-amber-400">⚠ No hay anaqueles compatibles con esta línea de mercado.</p>
+                  ) : (
+                    <div className="flex gap-2">
+                      <select
+                        value={reassignShelfId}
+                        onChange={e => setReassignShelfId(e.target.value)}
+                        className="flex-1 bg-surface-900 border border-white/10 rounded-lg p-2 text-white text-sm focus:border-yellow-500 focus:outline-none"
+                      >
+                        <option value="">— Seleccionar nuevo anaquel —</option>
+                        {availableShelves.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}{s.zone_name ? ` · ${s.zone_name}` : ''}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleReassignShelf}
+                        disabled={!reassignShelfId || reassignLoading}
+                        className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 disabled:opacity-40 text-black font-bold text-sm rounded-lg transition-colors"
+                      >
+                        {reassignLoading ? '...' : '↗ Mover'}
+                      </button>
+                    </div>
+                  )}
+                  {reassignMessage && (
+                    <p className={`text-xs font-medium mt-1 ${reassignMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                      {reassignMessage.type === 'success' ? '✓' : '✗'} {reassignMessage.text}
+                    </p>
+                  )}
+                </div>
 
                 {/* Acción: imprimir etiquetas */}
                 <button 
@@ -441,26 +534,57 @@ const DispensingPage = () => {
                   <div>
                     <label className="block text-sm text-gray-400 mb-2">Cantidad de Frascos</label>
                     <input 
-                      type="number" 
-                      min="1"
+                      type="text" 
+                      inputMode="numeric"
                       className="flex-1 w-full bg-surface-900 border border-white/10 rounded-lg p-4 font-mono text-2xl text-center text-white focus:border-brand-red focus:outline-none"
                       value={unitsToGenerate}
-                      onChange={(e) => setUnitsToGenerate(e.target.value)}
+                      onChange={(e) => setUnitsToGenerate(e.target.value.replace(/\D/g, ''))}
                     />
                   </div>
                   <div>
                     <label className="block text-sm text-gray-400 mb-2">Peso por Frasco (g)</label>
                     <input 
-                      type="number" 
-                      step="0.01"
-                      min="0.1"
+                      type="text" 
+                      inputMode="decimal"
                       placeholder="Ej. 60"
                       className="flex-1 w-full bg-surface-900 border border-brand-red/30 rounded-lg p-4 font-mono text-2xl text-center text-white focus:border-brand-red focus:outline-none"
                       value={weightPerUnit}
-                      onChange={(e) => setWeightPerUnit(e.target.value)}
+                      onChange={(e) => setWeightPerUnit(e.target.value.replace(/,/g, '.').replace(/[^\d.]/g, ''))}
                     />
                     <p className="text-xs text-gray-500 mt-2">Peso exacto de cada frasco hijo estandarizado.</p>
                   </div>
+                </div>
+
+                {/* Shelf selector — filtered by market line */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-gray-400 mb-2">
+                    <Box size={14} className="text-yellow-400" />
+                    Anaquel de Destino *
+                    {selectedSample?.market_line_name && (
+                      <span className="ml-auto text-xs text-yellow-400/80 bg-yellow-500/10 px-2 py-0.5 rounded-full">
+                        Línea: {selectedSample.market_line_name}
+                      </span>
+                    )}
+                  </label>
+                  {availableShelves.length === 0 ? (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-400">
+                      ⚠ No hay anaqueles disponibles para la línea de mercado de este producto. Crea uno primero en el módulo Anaqueles.
+                    </div>
+                  ) : (
+                    <select
+                      required
+                      value={selectedShelfId}
+                      onChange={e => setSelectedShelfId(e.target.value)}
+                      className="w-full bg-surface-900 border border-white/10 rounded-xl p-3 text-white text-sm focus:border-yellow-500 focus:outline-none"
+                    >
+                      <option value="">— Seleccionar anaquel —</option>
+                      {availableShelves.map(shelf => (
+                        <option key={shelf.id} value={shelf.id}>
+                          {shelf.name}{shelf.zone_name ? ` · ${shelf.zone_name}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {weightPerUnit && unitsToGenerate > 0 && (
@@ -473,12 +597,15 @@ const DispensingPage = () => {
                 <div className="pt-4 border-t border-white/10">
                   <button 
                     type="submit" 
-                    disabled={isSubmitting || unitsToGenerate <= 0}
+                    disabled={isSubmitting || unitsToGenerate <= 0 || !selectedShelfId}
                     className="w-full flex justify-center items-center gap-2 py-4 bg-brand-red hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-brand-red/20 transition-all"
                   >
                     <PlusCircle size={20} />
-                    {isSubmitting ? 'Procesando...' : `Dispensar ${unitsToGenerate} Frascos Hijos`}
+                    {isSubmitting ? 'Procesando...' : `Dispensar ${unitsToGenerate} Frascos al Anaquel`}
                   </button>
+                  {!selectedShelfId && availableShelves.length > 0 && (
+                    <p className="text-xs text-center text-amber-400 mt-2">⚠ Debes seleccionar un anaquel de destino</p>
+                  )}
                 </div>
               </form>
             )

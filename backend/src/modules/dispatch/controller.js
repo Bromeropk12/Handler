@@ -17,6 +17,7 @@ const getFefoRecommendation = async (req, res, next) => {
         ds.qr_code,
         ds.status,
         ds.weight_grams,
+        ds.weight_grams as weight_per_unit_grams,
         ds.position_y as level,
         ds.position_x as column_x,
         ds.position_z as depth_z,

@@ -62,6 +62,7 @@ const SamplesPage = () => {
     ghs_danger_class: '',
     market_line_id: '',
     dimensions: '1x1x1',
+    dispensed_size: '1x1x1',
     total_weight_grams: '',
     ghs_pictograms: [],
     signal_word: 'ATENCION',
@@ -71,7 +72,7 @@ const SamplesPage = () => {
     setFormData({
       name: '', supplier_id: '', lot: '', expiration_date: '',
       manufacture_date: '', ghs_danger_class: '', market_line_id: '',
-      dimensions: '1x1x1', total_weight_grams: '',
+      dimensions: '1x1x1', dispensed_size: '1x1x1', total_weight_grams: '',
       ghs_pictograms: [], signal_word: 'ATENCION',
     });
     setCoaFile(null);
@@ -163,12 +164,12 @@ const SamplesPage = () => {
       setSelectedSample(null);
       loadSamples();
     } catch (err) {
-      if (err.data?.requires_confirmation) {
+      if (err.response?.data?.requires_confirmation) {
         setDeleteTarget(sample);
         setShowDeleteConfirm(true);
         return;
       }
-      alert(err.message || 'Error al eliminar');
+      alert(err.response?.data?.message || err.message || 'Error al eliminar');
     }
   };
 
@@ -198,6 +199,7 @@ const SamplesPage = () => {
       ghs_danger_class: sample.ghs_danger_class || '',
       market_line_id: sample.market_line_id || '',
       dimensions: sample.dimensions || '1x1x1',
+      dispensed_size: sample.dispensed_size || '1x1x1',
       total_weight_grams: sample.total_weight_grams || '',
       ghs_pictograms: sample.ghs_pictograms || [],
       signal_word: sample.signal_word || 'ATENCION',
@@ -309,8 +311,8 @@ const SamplesPage = () => {
     return matchesSearch && matchesMarketLine && matchesDangerClass && matchesStatus;
   });
 
-  // Componente reutilizable para el formulario de pictogramas
-  const PictogramChecklist = ({ selected, onToggle, disabled }) => (
+  // Función para renderizar el checklist de pictogramas
+  const renderPictogramChecklist = (selected, onToggle, disabled) => (
     <div className="grid grid-cols-3 gap-2">
       {ALL_PICTOGRAMS.map(picto => {
         const info = GHS_PICTOGRAM_MAP[picto];
@@ -339,8 +341,8 @@ const SamplesPage = () => {
     </div>
   );
 
-  // Componente de formulario completo (reutilizado en crear y editar)
-  const SampleForm = ({ isEdit = false }) => (
+  // Función para renderizar el formulario completo (reutilizado en crear y editar)
+  const renderSampleForm = (isEdit = false) => (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -409,17 +411,13 @@ const SamplesPage = () => {
             </span>
           )}
         </div>
-        <PictogramChecklist
-          selected={formData.ghs_pictograms}
-          onToggle={togglePictogram}
-          disabled={false}
-        />
+        {renderPictogramChecklist(formData.ghs_pictograms, togglePictogram, false)}
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="label">Peso Total del Bulk (g) *</label>
-          <input type="number" className="input" placeholder="5000" value={formData.total_weight_grams} onChange={e => handleInputChange('total_weight_grams', e.target.value)} />
+          <input type="text" inputMode="decimal" className="input" placeholder="5000" value={formData.total_weight_grams} onChange={e => handleInputChange('total_weight_grams', e.target.value.replace(/,/g, '.').replace(/[^\d.]/g, ''))} />
         </div>
         <div>
           <label className="label">Fecha Manufactura *</label>
@@ -450,6 +448,20 @@ const SamplesPage = () => {
             <option value="2x1x2">Ancho + Profundo</option>
             <option value="2x2x2">Máximo (2×2×2)</option>
           </select>
+        </div>
+        <div>
+          <label className="label">📰 Tamaño frasco dispensado (Almacén 3D)</label>
+          <select className="select" value={formData.dispensed_size} onChange={e => handleInputChange('dispensed_size', e.target.value)}>
+            <option value="1x1x1">Pequeño (1 unidad)</option>
+            <option value="1x2x1">Alto (2 niveles)</option>
+            <option value="2x1x1">Ancho (2 columnas)</option>
+            <option value="2x2x1">Grande (2×2)</option>
+            <option value="1x1x2">Profundo (2 profundidad)</option>
+            <option value="1x2x2">Alto + Profundo</option>
+            <option value="2x1x2">Ancho + Profundo</option>
+            <option value="2x2x2">Máximo (2×2×2)</option>
+          </select>
+          <p className="text-[10px] text-gray-500 mt-1">Representa el tamaño visual del frasco hijo en los anaqueles 3D al dispensar.</p>
         </div>
       </div>
 
@@ -600,7 +612,7 @@ const SamplesPage = () => {
           </>
         }
       >
-        <SampleForm isEdit={false} />
+        {renderSampleForm(false)}
       </Modal>
 
       {/* Detail / Edit Modal */}
@@ -731,9 +743,7 @@ const SamplesPage = () => {
           </div>
         )}
 
-        {selectedSample && isEditing && (
-          <SampleForm isEdit={true} />
-        )}
+        {selectedSample && isEditing && renderSampleForm(true)}
       </Modal>
 
       {/* Delete Confirmation Modal */}

@@ -115,7 +115,7 @@ const DashboardPage = () => {
           </div>
           <div className="card-body" style={{ height: '300px' }}>
             {stats.marketLines?.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300}>
                 <BarChart
                   data={stats.marketLines}
                   margin={{ top: 20, right: 30, left: 0, bottom: 5 }}

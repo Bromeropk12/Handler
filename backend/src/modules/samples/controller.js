@@ -111,16 +111,16 @@ const createBulkSample = async (req, res, next) => {
       query: `
         INSERT INTO global_samples (
           name, supplier_id, lot, expiration_date, manufacture_date,
-          ghs_danger_class, market_line_id, dimensions,
+          ghs_danger_class, market_line_id, dimensions, dispensed_size,
           total_units, available_units, total_weight_grams,
           ghs_pictograms, signal_word, coa_file_path
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING *
       `,
       params: [
         data.name, data.supplier_id, data.lot, data.expiration_date, data.manufacture_date,
-        data.ghs_danger_class, data.market_line_id, data.dimensions,
+        data.ghs_danger_class, data.market_line_id, data.dimensions, data.dispensed_size || '1x1x1',
         0, 0, // total_units, available_units - Inician en 0 hasta dispensar
         data.total_weight_grams,
         data.ghs_pictograms || [],
@@ -355,7 +355,7 @@ const updateBulkSample = async (req, res, next) => {
     // Campos permitidos para edición (TODOS excepto total_units/available_units)
     const allowedFields = [
       'name', 'supplier_id', 'lot', 'expiration_date', 'manufacture_date',
-      'ghs_danger_class', 'market_line_id', 'dimensions', 'total_weight_grams',
+      'ghs_danger_class', 'market_line_id', 'dimensions', 'dispensed_size', 'total_weight_grams',
       'coa_file_path', 'ghs_pictograms', 'signal_word'
     ];
 

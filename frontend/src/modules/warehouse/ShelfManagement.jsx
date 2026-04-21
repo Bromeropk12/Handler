@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { warehouseAPI, suppliersAPI, shelfSuppliersAPI } from '../../services/api';
+import { warehouseAPI, suppliersAPI, shelfSuppliersAPI, marketLinesAPI } from '../../services/api';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, CheckIcon, CubeIcon } from '@heroicons/react/24/outline';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -32,7 +32,7 @@ const ShelfManagement = () => {
       setLoading(true);
       const [shelvesResp, mlResp, suppResp] = await Promise.all([
         warehouseAPI.getShelves({ limit: 200 }),
-        warehouseAPI.getMarketLines ? warehouseAPI.getMarketLines() : { data: { data: { marketLines: [] } } },
+        marketLinesAPI.getAll(),
         suppliersAPI.getSuppliers()
       ]);
       setShelves(shelvesResp.data.data.shelves || []);
@@ -268,17 +268,17 @@ const ShelfManagement = () => {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">Columnas (X)</label>
-              <input type="number" min="1" max="50" value={formData.grid_width} onChange={e => setFormData({ ...formData, grid_width: parseInt(e.target.value) })}
+              <input type="text" inputMode="numeric" value={formData.grid_width} onChange={e => setFormData({ ...formData, grid_width: parseInt(e.target.value.replace(/\D/g, '')) || '' })}
                 className="w-full bg-gray-900/50 border border-gray-700 rounded-lg p-3 text-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">Niveles (Y)</label>
-              <input type="number" min="1" max="50" value={formData.grid_height} onChange={e => setFormData({ ...formData, grid_height: parseInt(e.target.value) })}
+              <input type="text" inputMode="numeric" value={formData.grid_height} onChange={e => setFormData({ ...formData, grid_height: parseInt(e.target.value.replace(/\D/g, '')) || '' })}
                 className="w-full bg-gray-900/50 border border-gray-700 rounded-lg p-3 text-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">Profundidad (Z)</label>
-              <input type="number" min="1" max="50" value={formData.shelf_depth} onChange={e => setFormData({ ...formData, shelf_depth: parseInt(e.target.value) })}
+              <input type="text" inputMode="numeric" value={formData.shelf_depth} onChange={e => setFormData({ ...formData, shelf_depth: parseInt(e.target.value.replace(/\D/g, '')) || '' })}
                 className="w-full bg-gray-900/50 border border-gray-700 rounded-lg p-3 text-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
           </div>

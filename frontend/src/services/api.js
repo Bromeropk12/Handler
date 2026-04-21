@@ -133,6 +133,7 @@ export const suppliersAPI = {
 export const dispensingAPI = {
   dispense: data => api.post('/dispensing/subdivide', data),
   getDispensedSamples: params => api.get('/dispensing', { params }),
+  reassignShelf: data => api.put('/dispensing/reassign-shelf', data),
 };
 
 export const dispatchAPI = {

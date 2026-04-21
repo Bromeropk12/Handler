@@ -32,7 +32,7 @@ const FloorPanel = ({ totalCols, totalDepth }) => (
     <mesh position={[0, 0.55, -totalDepth / 2 - 0.12]}>
       <boxGeometry args={[totalCols + 0.4, 1.3, 0.1]} />
       <meshStandardMaterial color="#030712" metalness={0.85} roughness={0.15} transparent opacity={0.95} />
-      <Edges color="#0ea5e920" transparent opacity={0.5} />
+      <Edges color="#0ea5e9" transparent opacity={0.5} />
     </mesh>
 
     {/* Side walls (thin) */}
@@ -40,7 +40,7 @@ const FloorPanel = ({ totalCols, totalDepth }) => (
       <mesh key={side} position={[side * (totalCols / 2 + 0.2), 0.4, 0]}>
         <boxGeometry args={[0.08, 1.1, totalDepth + 0.4]} />
         <meshStandardMaterial color="#020712" metalness={0.9} roughness={0.1} transparent opacity={0.5} />
-        <Edges color="#0ea5e915" transparent opacity={0.4} />
+        <Edges color="#0ea5e9" transparent opacity={0.4} />
       </mesh>
     ))}
   </group>
