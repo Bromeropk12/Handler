@@ -18,7 +18,7 @@ const VALID_PICTOGRAMS = [
 // Validaciones para bulk samples
 const validateBulkSampleData = (data) => {
   const required = ['name', 'supplier_id', 'lot', 'expiration_date', 'manufacture_date',
-                   'ghs_danger_class', 'market_line_id', 'dimensions', 'total_weight_grams'];
+    'ghs_danger_class', 'market_line_id', 'dimensions', 'total_weight_grams'];
 
   for (const field of required) {
     if (!data[field]) {
@@ -72,7 +72,7 @@ const createBulkSample = async (req, res, next) => {
     // Manejar upload de CoA si existe
     if (req.file) {
       if (req.file.mimetype !== 'application/pdf') {
-         throw new AppError('El archivo CoA debe ser un PDF', 400);
+        throw new AppError('El archivo CoA debe ser un PDF', 400);
       }
       const coaDir = path.join(process.cwd(), 'uploads', 'coa');
       await fs.mkdir(coaDir, { recursive: true });
@@ -148,7 +148,7 @@ const createBulkSample = async (req, res, next) => {
 
   } catch (error) {
     if (req.file && req.file.path) {
-      try { await fs.unlink(req.file.path); } catch (e) {}
+      try { await fs.unlink(req.file.path); } catch (e) { }
     }
     next(error);
   }
@@ -167,7 +167,19 @@ const getBulkSamples = async (req, res, next) => {
       status // 'available', 'empty', 'all'
     } = req.query;
 
-    const offset = (page - 1) * limit;
+    // Validar y convertir parámetros
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+
+    // Validar rangos
+    if (pageNum < 1) {
+      throw new AppError('El número de página debe ser mayor o igual a 1', 400);
+    }
+    if (limitNum < 1 || limitNum > 1000) {
+      throw new AppError('El límite debe estar entre 1 y 1000', 400);
+    }
+
+    const offset = (pageNum - 1) * limitNum;
     let whereConditions = [];
     let params = [];
     let paramIndex = 1;
@@ -205,14 +217,14 @@ const getBulkSamples = async (req, res, next) => {
           ELSE 'available'
         END as status
       FROM global_samples gs
-      JOIN market_lines ml ON gs.market_line_id = ml.id
+      LEFT JOIN market_lines ml ON gs.market_line_id = ml.id
       LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
       ${whereClause}
       ORDER BY gs.created_at DESC
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
 
-    params.push(limit, offset);
+    params.push(limitNum, offset);
     const result = await query(queryText, params);
 
     // Contar total
@@ -220,8 +232,8 @@ const getBulkSamples = async (req, res, next) => {
     const countQuery = `
       SELECT COUNT(*) as total
       FROM global_samples gs
-      LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
       LEFT JOIN market_lines ml ON gs.market_line_id = ml.id
+      LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
       ${whereClause}
     `;
     const countResult = await query(countQuery, countParams);
@@ -232,10 +244,10 @@ const getBulkSamples = async (req, res, next) => {
       data: {
         bulkSamples: result.rows,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          totalPages: Math.ceil(total / limit)
+          totalPages: Math.ceil(total / limitNum)
         }
       }
     });
@@ -316,9 +328,9 @@ const updateBulkSample = async (req, res, next) => {
     // Manejar upload de nuevo CoA si existe
     if (req.file) {
       if (req.file.mimetype !== 'application/pdf') {
-         throw new AppError('El archivo CoA debe ser un PDF', 400);
+        throw new AppError('El archivo CoA debe ser un PDF', 400);
       }
-      
+
       // Borrar CoA anterior si existía
       if (currentSample.coa_file_path) {
         try {
@@ -336,7 +348,7 @@ const updateBulkSample = async (req, res, next) => {
 
     // Parsear ghs_pictograms si viene como JSON string (común en FormData)
     if (typeof data.ghs_pictograms === 'string') {
-      try { data.ghs_pictograms = JSON.parse(data.ghs_pictograms); } catch (_) { 
+      try { data.ghs_pictograms = JSON.parse(data.ghs_pictograms); } catch (_) {
         // Si no es JSON válido, intentar separar por comas si es string simple
         data.ghs_pictograms = data.ghs_pictograms.split(',').filter(Boolean);
       }

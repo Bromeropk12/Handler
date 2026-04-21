@@ -11,6 +11,7 @@ const ShelfManagement = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingShelf, setEditingShelf] = useState(null);
+  const [selectedMarketLine, setSelectedMarketLine] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     market_line_id: '',
@@ -22,6 +23,32 @@ const ShelfManagement = () => {
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Mapa de colores por línea de mercado (igual que MarketLineSelector)
+  const colorMap = {
+    'Cosmética': { bg: '#ec4899', border: 'border-pink-500/30', text: 'text-pink-400' },
+    'Farmacéutica': { bg: '#0ea5e9', border: 'border-blue-500/30', text: 'text-blue-400' },
+    'Industrial': { bg: '#f59e0b', border: 'border-amber-500/30', text: 'text-amber-400' }
+  };
+
+  const getMarketLineColor = (marketLineName) => {
+    return colorMap[marketLineName] || { bg: '#10b981', border: 'border-green-500/30', text: 'text-green-400' };
+  };
+
+  // Agrupar anaqueles por línea de mercado
+  const groupedShelves = shelves.reduce((acc, shelf) => {
+    const marketLineName = shelf.market_line_name || 'Sin Línea';
+    if (!acc[marketLineName]) {
+      acc[marketLineName] = [];
+    }
+    acc[marketLineName].push(shelf);
+    return acc;
+  }, {});
+
+  // Filtrar por línea de mercado seleccionada
+  const filteredGroupedShelves = selectedMarketLine
+    ? { [selectedMarketLine]: groupedShelves[selectedMarketLine] || [] }
+    : groupedShelves;
 
   useEffect(() => {
     fetchData();
@@ -169,6 +196,31 @@ const ShelfManagement = () => {
         </button>
       </div>
 
+      {/* Filtro por línea de mercado */}
+      <div className="flex items-center gap-4 mt-4">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-300">Filtrar por línea:</label>
+          <select
+            value={selectedMarketLine}
+            onChange={(e) => setSelectedMarketLine(e.target.value)}
+            className="bg-gray-900/50 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+          >
+            <option value="">Todas las líneas</option>
+            {marketLines.map(ml => (
+              <option key={ml.id} value={ml.name}>{ml.name}</option>
+            ))}
+          </select>
+        </div>
+        {selectedMarketLine && (
+          <button
+            onClick={() => setSelectedMarketLine('')}
+            className="text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            Limpiar filtro
+          </button>
+        )}
+      </div>
+
       {success && (
         <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-3 text-green-400">
           <CheckIcon className="w-5 h-5 shrink-0" />
@@ -182,61 +234,145 @@ const ShelfManagement = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {shelves.length > 0 ? shelves.map(shelf => (
-          <div key={shelf.id} className="bg-gray-900/50 rounded-xl border border-gray-800 p-5 hover:border-gray-700 transition-colors">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <CubeIcon className="w-5 h-5 text-primary-400" />
-                <h3 className="font-bold text-white">{shelf.name}</h3>
-              </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => handleOpenModal(shelf)} className="p-1.5 text-gray-400 hover:text-primary-400 transition-colors">
-                  <PencilIcon className="w-4 h-4" />
-                </button>
-                <button onClick={() => handleDelete(shelf)} className="p-1.5 text-gray-400 hover:text-red-400 transition-colors">
-                  <TrashIcon className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 mb-3">{shelf.market_line_name}</p>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                <p className="text-sm font-bold text-primary-400">{shelf.grid_width}</p>
-                <p className="text-[10px] text-gray-500">Columnas</p>
-              </div>
-              <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                <p className="text-sm font-bold text-yellow-400">{shelf.grid_height}</p>
-                <p className="text-[10px] text-gray-500">Niveles</p>
-              </div>
-              <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                <p className="text-sm font-bold text-green-400">{shelf.shelf_depth || 10}</p>
-                <p className="text-[10px] text-gray-500">Profundidad</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500">Capacidad: {shelf.total_capacity || shelf.grid_width * shelf.grid_height * (shelf.shelf_depth || 10)}</span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                shelf.shelf_type === 'bulk_temporary' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-              }`}>
-                {shelf.shelf_type === 'bulk_temporary' ? 'Bulk Temporal' : 'Almacenamiento'}
-              </span>
-            </div>
-            {shelf.occupied_count > 0 && (
-              <div className="mt-3">
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-gray-500">Ocupacion</span>
-                  <span className="text-primary-400">{shelf.occupancy_percentage || 0}%</span>
+      {/* Layout agrupado por línea de mercado */}
+      <div className="space-y-8">
+        {Object.keys(filteredGroupedShelves).length > 0 ? (
+          Object.entries(filteredGroupedShelves).map(([marketLineName, lineShelves]) => {
+            if (!lineShelves || lineShelves.length === 0) return null;
+
+            const colorScheme = getMarketLineColor(marketLineName);
+            const totalShelves = lineShelves.length;
+            const occupiedShelves = lineShelves.filter(s => s.occupancy_percentage > 0).length;
+            const totalCapacity = lineShelves.reduce((acc, s) => acc + (s.total_capacity || s.grid_width * s.grid_height * (s.shelf_depth || 10)), 0);
+
+            return (
+              <div key={marketLineName} className="space-y-4">
+                {/* Header de la línea de mercado */}
+                <div className={`relative overflow-hidden rounded-xl border ${colorScheme.border} bg-gradient-to-r from-gray-900/80 to-gray-800/60 p-4`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-4 h-4 rounded-full shadow-lg"
+                        style={{ backgroundColor: colorScheme.bg, boxShadow: `0 0 15px ${colorScheme.bg}40` }}
+                      />
+                      <div>
+                        <h2 className="text-lg font-bold text-white">{marketLineName}</h2>
+                        <p className="text-sm text-gray-400">
+                          {totalShelves} anaquel{totalShelves !== 1 ? 'es' : ''} • {occupiedShelves} ocupados • Capacidad total: {totalCapacity}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-gray-300">
+                        {occupiedShelves}/{totalShelves} activos
+                      </div>
+                      <div className="w-24 bg-gray-700 rounded-full h-1.5 mt-1">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{
+                            width: `${totalShelves > 0 ? (occupiedShelves / totalShelves) * 100 : 0}%`,
+                            backgroundColor: colorScheme.bg
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Efecto de brillo sutil */}
+                  <div
+                    className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-10 blur-2xl"
+                    style={{ backgroundColor: colorScheme.bg }}
+                  />
                 </div>
-                <div className="w-full bg-gray-800 rounded-full h-1.5">
-                  <div className="bg-primary-500 h-full rounded-full" style={{ width: `${shelf.occupancy_percentage || 0}%` }}></div>
+
+                {/* Grid de anaqueles para esta línea */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {lineShelves.map(shelf => (
+                    <div
+                      key={shelf.id}
+                      className={`relative bg-gray-900/50 rounded-xl border ${colorScheme.border} p-5 hover:border-opacity-60 transition-all duration-200 group`}
+                      style={{
+                        boxShadow: `0 0 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)`
+                      }}
+                    >
+                      {/* Indicador de línea de mercado */}
+                      <div className="absolute top-3 right-3">
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: colorScheme.bg }}
+                        />
+                      </div>
+
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <CubeIcon className={`w-5 h-5 ${colorScheme.text}`} />
+                          <h3 className="font-bold text-white">{shelf.name}</h3>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => handleOpenModal(shelf)} className="p-1.5 text-gray-400 hover:text-primary-400 transition-colors">
+                            <PencilIcon className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(shelf)} className="p-1.5 text-gray-400 hover:text-red-400 transition-colors">
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                          <p className="text-sm font-bold text-primary-400">{shelf.grid_width}</p>
+                          <p className="text-[10px] text-gray-500">Columnas</p>
+                        </div>
+                        <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                          <p className="text-sm font-bold text-yellow-400">{shelf.grid_height}</p>
+                          <p className="text-[10px] text-gray-500">Niveles</p>
+                        </div>
+                        <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                          <p className="text-sm font-bold text-green-400">{shelf.shelf_depth || 10}</p>
+                          <p className="text-[10px] text-gray-500">Profundidad</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs mb-3">
+                        <span className="text-gray-500">
+                          Capacidad: {shelf.total_capacity || shelf.grid_width * shelf.grid_height * (shelf.shelf_depth || 10)}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${shelf.shelf_type === 'bulk_temporary'
+                            ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                            : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                          }`}>
+                          {shelf.shelf_type === 'bulk_temporary' ? 'Bulk Temporal' : 'Almacenamiento'}
+                        </span>
+                      </div>
+
+                      {shelf.occupied_count > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-500">Ocupación</span>
+                            <span className={colorScheme.text} font-medium>{shelf.occupancy_percentage || 0}%</span>
+                          </div>
+                          <div className="w-full bg-gray-800 rounded-full h-1.5">
+                            <div
+                              className="h-full rounded-full transition-all duration-300"
+                              style={{ width: `${shelf.occupancy_percentage || 0}%`, backgroundColor: colorScheme.bg }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
+            );
+          })
+        ) : (
+          <div className="py-12 text-center">
+            <CubeIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No hay anaqueles registrados</p>
+            {selectedMarketLine && (
+              <p className="text-gray-600 text-sm mt-2">
+                No hay anaqueles para la línea "{selectedMarketLine}"
+              </p>
             )}
-          </div>
-        )) : (
-          <div className="col-span-full py-12 text-center text-gray-500">
-            No hay anaqueles registrados
           </div>
         )}
       </div>

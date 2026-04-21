@@ -18,6 +18,7 @@ import {
 const DashboardPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [chartReady, setChartReady] = useState(false);
   const [stats, setStats] = useState({
     marketLines: [],
     totalSamples: 0,
@@ -39,6 +40,8 @@ const DashboardPage = () => {
         // Fallback or handle error
       } finally {
         setLoading(false);
+        // Pequeño delay para asegurar que el DOM esté completamente renderizado
+        setTimeout(() => setChartReady(true), 100);
       }
     };
 
@@ -114,28 +117,28 @@ const DashboardPage = () => {
             <h3 className="text-sm font-semibold text-white">Líneas de Mercado</h3>
           </div>
           <div className="card-body" style={{ height: '300px' }}>
-            {stats.marketLines?.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300}>
+            {stats.marketLines?.length > 0 && chartReady ? (
+              <ResponsiveContainer width={300} height={300}>
                 <BarChart
                   data={stats.marketLines}
                   margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke="#9ca3af" 
+                  <XAxis
+                    dataKey="name"
+                    stroke="#9ca3af"
                     tick={{ fill: '#9ca3af', fontSize: 12 }}
                     axisLine={{ stroke: '#4b5563' }}
                     tickLine={{ stroke: '#4b5563' }}
                   />
-                  <YAxis 
-                    stroke="#9ca3af" 
+                  <YAxis
+                    stroke="#9ca3af"
                     tick={{ fill: '#9ca3af', fontSize: 12 }}
                     axisLine={{ stroke: '#4b5563' }}
                     tickLine={{ stroke: '#4b5563' }}
                     tickFormatter={(value) => `${value}%`}
                   />
-                  <Tooltip 
+                  <Tooltip
                     cursor={{ fill: '#374151' }}
                     contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.375rem', color: '#f3f4f6' }}
                     formatter={(value, name, props) => [`${value}% Ocupado`, 'Ocupación']}
@@ -152,7 +155,7 @@ const DashboardPage = () => {
                           'bg-green-500': '#22c55e',
                           'bg-purple-500': '#a855f7'
                         };
-                        const hexColor = colorMap[entry.color] || '#ef4444'; 
+                        const hexColor = colorMap[entry.color] || '#ef4444';
                         return <Cell key={`cell-${index}`} fill={hexColor} />;
                       })
                     }
@@ -175,12 +178,11 @@ const DashboardPage = () => {
           <div className="card-body space-y-3">
             {stats.recentAlerts?.length > 0 ? stats.recentAlerts.map((alert, i) => (
               <div key={i} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-surface-200 transition-colors">
-                <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
-                  alert.type === 'danger' ? 'bg-danger-300' :
+                <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${alert.type === 'danger' ? 'bg-danger-300' :
                   alert.type === 'warning' ? 'bg-warning-300' :
-                  alert.type === 'success' ? 'bg-green-500' :
-                  'bg-info-300'
-                }`} />
+                    alert.type === 'success' ? 'bg-green-500' :
+                      'bg-info-300'
+                  }`} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-gray-300 leading-snug">{alert.text}</p>
                   <p className="text-xs text-gray-600 mt-0.5">{alert.time}</p>

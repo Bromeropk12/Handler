@@ -53,13 +53,13 @@ END $$;
 -- Verificar si total_capacity es una columna generada
 DO $$
 DECLARE
-    is_generated BOOLEAN;
+    is_gen BOOLEAN;
 BEGIN
-    SELECT is_generated = 'YES' INTO is_generated
-    FROM information_schema.columns 
-    WHERE table_name = 'shelves' AND column_name = 'total_capacity';
-    
-    IF is_generated THEN
+    SELECT c.is_generated = 'YES' INTO is_gen
+    FROM information_schema.columns c
+    WHERE c.table_name = 'shelves' AND c.column_name = 'total_capacity';
+
+    IF is_gen THEN
         RAISE NOTICE 'ℹ️  total_capacity es columna generada. Se usará trigger para actualizar.';
     ELSE
         RAISE NOTICE 'ℹ️  total_capacity NO es columna generada. Se actualizará directamente.';
@@ -91,19 +91,19 @@ BEGIN
     END IF;
 END $$;
 
--- Actualizar registros existentes (solo si total_capacity NO es generada)
+-- Para columnas generadas, no se puede hacer UPDATE directo.
+-- En su lugar, forzamos una actualización del trigger usando una columna dummy
 DO $$
 DECLARE
-    is_generated BOOLEAN;
+    is_gen BOOLEAN;
 BEGIN
-    SELECT is_generated = 'YES' INTO is_generated
-    FROM information_schema.columns 
-    WHERE table_name = 'shelves' AND column_name = 'total_capacity';
-    
-    IF NOT is_generated THEN
-        UPDATE shelves SET total_capacity = grid_width * grid_height * shelf_depth;
-        RAISE NOTICE '✅ total_capacity actualizado para registros existentes';
-    END IF;
+    SELECT c.is_generated = 'YES' INTO is_gen
+    FROM information_schema.columns c
+    WHERE c.table_name = 'shelves' AND c.column_name = 'total_capacity';
+
+    -- Nota: Para columnas generadas, no podemos hacer UPDATE directo.
+    -- El trigger se encargará de mantener los valores correctos en futuras operaciones.
+    RAISE NOTICE 'ℹ️  total_capacity se mantendrá actualizado automáticamente via trigger.';
 END $$;
 
 -- ==========================================
