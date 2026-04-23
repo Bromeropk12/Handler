@@ -7,14 +7,14 @@ import LabelPrint from './components/LabelPrint';
 const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
 
 const PICTO_FILES = {
-  'Explosivo':                  'explos.webp',
-  'Inflamable':                 'flamme.webp',
-  'Comburente':                 'rondflam.webp',
-  'Gas Bajo Presión':           'bottle.webp',
-  'Corrosivo':                  'acid_red.webp',
-  'Toxicidad Aguda':            'skull.webp',
-  'Irritante':                  'exclam.webp',
-  'Toxicidad Crónica':          'silhouete.webp',
+  'Explosivo': 'explos.webp',
+  'Inflamable': 'flamme.webp',
+  'Comburente': 'rondflam.webp',
+  'Gas Bajo Presión': 'bottle.webp',
+  'Corrosivo': 'acid_red.webp',
+  'Toxicidad Aguda': 'skull.webp',
+  'Irritante': 'exclam.webp',
+  'Toxicidad Crónica': 'silhouete.webp',
   'Tóxico para Medio Ambiente': 'Aquatic-pollut-red.png'
 };
 
@@ -23,7 +23,7 @@ const DispensingPage = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showDispensed, setShowDispensed] = useState(false);
-  
+
   const [selectedSample, setSelectedSample] = useState(null);
   const [unitsToGenerate, setUnitsToGenerate] = useState(1);
   const [weightPerUnit, setWeightPerUnit] = useState('');
@@ -48,7 +48,7 @@ const DispensingPage = () => {
   const loadSamples = async () => {
     try {
       setLoading(true);
-      const response = await samplesAPI.getBulkSamples({ limit: 200 });
+      const response = await samplesAPI.getBulkSamples({ limit: 1000 }); // Límite máximo permitido por backend
       const samples = response.data?.data?.bulkSamples || [];
       setGlobalSamples(samples);
     } catch (err) {
@@ -65,7 +65,7 @@ const DispensingPage = () => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase().trim();
     return (
-      (s.name || '').toLowerCase().includes(term) || 
+      (s.name || '').toLowerCase().includes(term) ||
       (s.lot || '').toLowerCase().includes(term) ||
       (s.supplier_name || '').toLowerCase().includes(term)
     );
@@ -96,14 +96,14 @@ const DispensingPage = () => {
         child_dimensions: childDimensions,
         shelf_id: selectedShelfId || undefined
       });
-      
+
       setSuccessData(resp.data.data.generated_samples || []);
       setDispensingResult(resp.data.data);
       setGlobalSamples(prev => prev.map(s => {
-         if (s.id === selectedSample.id) {
-           return { ...s, total_units: parseInt(unitsToGenerate), available_units: parseInt(unitsToGenerate) };
-         }
-         return s;
+        if (s.id === selectedSample.id) {
+          return { ...s, total_units: parseInt(unitsToGenerate), available_units: parseInt(unitsToGenerate) };
+        }
+        return s;
       }));
     } catch (err) {
       alert(err.message || 'Hubo un error en la dispensación');
@@ -241,7 +241,7 @@ const DispensingPage = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
+
         {/* LADO IZQUIERDO: Selección de Bulk */}
         <div className="bg-surface-800 p-6 rounded-2xl border border-white/5 space-y-6">
           <div className="flex items-center gap-3 border-b border-white/5 pb-4">
@@ -255,17 +255,15 @@ const DispensingPage = () => {
           <div className="flex bg-surface-900 rounded-lg p-1 gap-1">
             <button
               onClick={() => { setShowDispensed(false); setSelectedSample(null); }}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
-                !showDispensed ? 'bg-blue-500/20 text-blue-400' : 'text-gray-500 hover:text-gray-300'
-              }`}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!showDispensed ? 'bg-blue-500/20 text-blue-400' : 'text-gray-500 hover:text-gray-300'
+                }`}
             >
               Pendientes ({pendingSamples.length})
             </button>
             <button
               onClick={() => { setShowDispensed(true); setSelectedSample(null); }}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
-                showDispensed ? 'bg-green-500/20 text-green-400' : 'text-gray-500 hover:text-gray-300'
-              }`}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${showDispensed ? 'bg-green-500/20 text-green-400' : 'text-gray-500 hover:text-gray-300'
+                }`}
             >
               Ya Dispensadas ({dispensedSamples.length})
             </button>
@@ -273,9 +271,9 @@ const DispensingPage = () => {
 
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Buscar por Nombre o Lote..." 
+            <input
+              type="text"
+              placeholder="Buscar por Nombre o Lote..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-surface-900 border border-white/10 rounded-lg text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -284,21 +282,20 @@ const DispensingPage = () => {
 
           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
             {loading ? (
-               <div className="py-10 text-center text-gray-500">Cargando Muestras...</div>
+              <div className="py-10 text-center text-gray-500">Cargando Muestras...</div>
             ) : filteredSamples.length > 0 ? (
               filteredSamples.map(sample => {
                 const isDispensed = sample.total_units > 0;
                 const isSelected = selectedSample?.id === sample.id;
                 return (
-                  <div 
-                    key={sample.id} 
+                  <div
+                    key={sample.id}
                     onClick={() => handleSelectSample(sample)}
-                    className={`p-4 rounded-xl border transition-colors cursor-pointer ${
-                      isSelected 
-                        ? isDispensed ? 'bg-green-500/15 border-green-500' : 'bg-blue-500/20 border-blue-500'
-                        : isDispensed ? 'bg-surface-900/50 border-white/5 hover:border-green-500/30' 
+                    className={`p-4 rounded-xl border transition-colors cursor-pointer ${isSelected
+                      ? isDispensed ? 'bg-green-500/15 border-green-500' : 'bg-blue-500/20 border-blue-500'
+                      : isDispensed ? 'bg-surface-900/50 border-white/5 hover:border-green-500/30'
                         : 'bg-surface-900 border-white/5 hover:border-white/20'
-                    } ${successData ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      } ${successData ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <div className="flex justify-between items-start">
                       <div>
@@ -355,11 +352,11 @@ const DispensingPage = () => {
                 <div>
                   <h3 className="text-2xl font-bold text-white">¡Dispensación Exitosa!</h3>
                   <p className="text-gray-400 mt-2 max-w-sm mx-auto">
-                    Se han generado <strong>{successData.length}</strong> muestras hijas de <strong>{selectedSample.name}</strong> 
+                    Se han generado <strong>{successData.length}</strong> muestras hijas de <strong>{selectedSample.name}</strong>
                     ({weightPerUnit}g c/u, tamaño {getDimensionLabel(childDimensions)}).
                   </p>
                 </div>
-                
+
                 <div className="flex flex-col gap-3 pt-4">
                   <button onClick={openNewLabels} className="py-3 px-6 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
                     <Tag size={18} /> 🏷️ Generar e Imprimir Etiquetas
@@ -425,7 +422,7 @@ const DispensingPage = () => {
                     {selectedSample.ghs_pictograms.map(p => (
                       <div key={p} className="flex flex-col items-center gap-1 p-2 bg-red-500/5 border border-red-500/15 rounded-lg">
                         <img src={`/recursos/pictogramas/${PICTO_FILES[p] || 'skull.webp'}`}
-                          alt={p} className="w-6 h-6 object-contain" onError={e => { e.target.style.display='none'; }} />
+                          alt={p} className="w-6 h-6 object-contain" onError={e => { e.target.style.display = 'none'; }} />
                         <span className="text-[8px] text-red-300">{p}</span>
                       </div>
                     ))}
@@ -470,7 +467,7 @@ const DispensingPage = () => {
                 </div>
 
                 {/* Acción: imprimir etiquetas */}
-                <button 
+                <button
                   onClick={() => openExistingLabels(selectedSample)}
                   className="w-full py-3 px-6 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
                 >
@@ -517,11 +514,10 @@ const DispensingPage = () => {
                         key={dim}
                         type="button"
                         onClick={() => setChildDimensions(dim)}
-                        className={`py-3 px-4 rounded-xl text-sm font-medium border-2 transition-all ${
-                          childDimensions === dim
-                            ? 'bg-primary-500/15 border-primary-500 text-primary-400'
-                            : 'bg-surface-900 border-white/10 text-gray-400 hover:border-white/20'
-                        }`}
+                        className={`py-3 px-4 rounded-xl text-sm font-medium border-2 transition-all ${childDimensions === dim
+                          ? 'bg-primary-500/15 border-primary-500 text-primary-400'
+                          : 'bg-surface-900 border-white/10 text-gray-400 hover:border-white/20'
+                          }`}
                       >
                         <span className="font-mono text-xs">{dim}</span>
                         <span className="block text-[10px] mt-0.5 opacity-70">{getDimensionLabel(dim)}</span>
@@ -533,8 +529,8 @@ const DispensingPage = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-400 mb-2">Cantidad de Frascos</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       inputMode="numeric"
                       className="flex-1 w-full bg-surface-900 border border-white/10 rounded-lg p-4 font-mono text-2xl text-center text-white focus:border-brand-red focus:outline-none"
                       value={unitsToGenerate}
@@ -543,8 +539,8 @@ const DispensingPage = () => {
                   </div>
                   <div>
                     <label className="block text-sm text-gray-400 mb-2">Peso por Frasco (g)</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       inputMode="decimal"
                       placeholder="Ej. 60"
                       className="flex-1 w-full bg-surface-900 border border-brand-red/30 rounded-lg p-4 font-mono text-2xl text-center text-white focus:border-brand-red focus:outline-none"
@@ -595,8 +591,8 @@ const DispensingPage = () => {
                 )}
 
                 <div className="pt-4 border-t border-white/10">
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     disabled={isSubmitting || unitsToGenerate <= 0 || !selectedShelfId}
                     className="w-full flex justify-center items-center gap-2 py-4 bg-brand-red hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-brand-red/20 transition-all"
                   >
@@ -610,11 +606,11 @@ const DispensingPage = () => {
               </form>
             )
           ) : (
-             <div className="py-20 text-center flex flex-col items-center justify-center text-gray-500">
-               <Box size={48} className="mb-4 opacity-20" />
-               <p>{showDispensed ? 'Selecciona una muestra dispensada para ver sus etiquetas.' : 'Selecciona una Muestra Global pendiente'}</p>
-               <p className="text-sm mt-2">{showDispensed ? '' : 'para inicializar los frascos de este lote.'}</p>
-             </div>
+            <div className="py-20 text-center flex flex-col items-center justify-center text-gray-500">
+              <Box size={48} className="mb-4 opacity-20" />
+              <p>{showDispensed ? 'Selecciona una muestra dispensada para ver sus etiquetas.' : 'Selecciona una Muestra Global pendiente'}</p>
+              <p className="text-sm mt-2">{showDispensed ? '' : 'para inicializar los frascos de este lote.'}</p>
+            </div>
           )}
         </div>
       </div>
@@ -642,7 +638,7 @@ const DispensingPage = () => {
           <div>
             <h3 className="text-sm font-medium text-white mb-2">Validación de Creación</h3>
             <p className="text-sm text-gray-400 leading-relaxed">
-              Se generarán <strong>{unitsToGenerate}</strong> frascos hijos de <strong>{weightPerUnit}g</strong> cada uno 
+              Se generarán <strong>{unitsToGenerate}</strong> frascos hijos de <strong>{weightPerUnit}g</strong> cada uno
               (tamaño {getDimensionLabel(childDimensions)}) para <strong>{selectedSample?.name}</strong>.
               <br /><br />
               <strong className="text-amber-400">⚠ Una vez dispensada, esta muestra global no podrá dispensarse nuevamente.</strong>

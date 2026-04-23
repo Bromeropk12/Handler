@@ -13,6 +13,7 @@ import {
   ClockIcon,
   BuildingStorefrontIcon,
   ChartBarIcon,
+  CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 
 const DashboardPage = () => {
@@ -20,12 +21,32 @@ const DashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [chartReady, setChartReady] = useState(false);
   const [stats, setStats] = useState({
-    marketLines: [],
-    totalSamples: 0,
+    // Muestras Bulk
+    totalBulkSamples: 0,
+    pendingDispensing: 0,
+    emptySamples: 0,
+    availableSamples: 0,
+    // Muestras Dispensadas
+    totalDispensed: 0,
+    storedCount: 0,
+    dispatchedCount: 0,
+    // Anaqueles
     totalShelves: 0,
+    refrigeratedShelves: 0,
+    ambientShelves: 0,
+    // Ocupación
+    totalPositions: 0,
+    occupiedPositions: 0,
+    freePositions: 0,
     avgOccupancy: 0,
+    // Alertas
     expiredCount: 0,
     warningCount: 0,
+    expiredSamples: [],
+    warningSamples: [],
+    // Otros
+    marketLines: [],
+    recentAlerts: []
   });
 
   useEffect(() => {
@@ -72,41 +93,291 @@ const DashboardPage = () => {
         <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-handler-red/5 rounded-full blur-2xl" />
       </div>
 
-      {/* Alert Banner */}
-      <AlertBanner />
+      {/* Alertas Activas - Sección Mejorada */}
+      {(stats.expiredCount > 0 || stats.warningCount > 0) && (
+        <div className="space-y-4">
+          {/* Muestras Vencidas */}
+          {stats.expiredCount > 0 && (
+            <div className="card border-l-4 border-l-red-500">
+              <div className="card-header flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ExclamationTriangleIcon className="w-5 h-5 text-red-500" />
+                  <h3 className="text-sm font-semibold text-white">
+                    Muestras Vencidas ({stats.expiredCount})
+                  </h3>
+                </div>
+                <span className="text-xs text-red-400 font-medium">
+                  ¡Acción requerida inmediatamente!
+                </span>
+              </div>
+              <div className="card-body">
+                <div className="space-y-2">
+                  {stats.expiredSamples?.slice(0, 5).map(sample => (
+                    <div
+                      key={sample.id}
+                      onClick={() => navigate(`/samples?search=${encodeURIComponent(sample.lot)}`)}
+                      className="flex items-center justify-between p-3 rounded-lg bg-red-500/5 border border-red-500/20 hover:bg-red-500/10 hover:border-red-500/40 transition-all cursor-pointer group"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-semibold text-white truncate">
+                            {sample.name}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                            Vencida
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 space-x-2">
+                          <span>Lote: {sample.lot}</span>
+                          <span>•</span>
+                          <span>Proveedor: {sample.supplier_name}</span>
+                          <span>•</span>
+                          <span className="text-red-400">
+                            Vencida hace {sample.days_expired} días
+                          </span>
+                        </div>
+                      </div>
+                      <div className="ml-4 text-xs text-gray-500 group-hover:text-red-400 transition-colors">
+                        Ver →
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {stats.expiredSamples?.length > 5 && (
+                  <div className="mt-2 text-center">
+                    <button
+                      onClick={() => navigate('/samples?filter=expired')}
+                      className="text-xs text-red-400 hover:text-red-300 font-medium"
+                    >
+                      Ver las {stats.expiredCount} muestras vencidas →
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
-      {/* Stats Grid */}
+          {/* Muestras Próximas a Vencer */}
+          {stats.warningCount > 0 && (
+            <div className="card border-l-4 border-l-amber-500">
+              <div className="card-header flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ClockIcon className="w-5 h-5 text-amber-500" />
+                  <h3 className="text-sm font-semibold text-white">
+                    Próximas a Vencer ({stats.warningCount})
+                  </h3>
+                </div>
+                <span className="text-xs text-amber-400 font-medium">
+                  {stats.warningSamples?.[0]?.days_remaining || 'En 30 días'}
+                </span>
+              </div>
+              <div className="card-body">
+                <div className="space-y-2">
+                  {stats.warningSamples?.slice(0, 5).map(sample => (
+                    <div
+                      key={sample.id}
+                      onClick={() => navigate(`/samples?search=${encodeURIComponent(sample.lot)}`)}
+                      className="flex items-center justify-between p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 hover:bg-amber-500/10 hover:border-amber-500/40 transition-all cursor-pointer group"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-semibold text-white truncate">
+                            {sample.name}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                            En {sample.days_remaining} días
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 space-x-2">
+                          <span>Lote: {sample.lot}</span>
+                          <span>•</span>
+                          <span>Proveedor: {sample.supplier_name}</span>
+                          <span>•</span>
+                          <span>Vence: {new Date(sample.expiration_date).toLocaleDateString('es-CO')}</span>
+                        </div>
+                      </div>
+                      <div className="ml-4 text-xs text-gray-500 group-hover:text-amber-400 transition-colors">
+                        Ver →
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {stats.warningSamples?.length > 5 && (
+                  <div className="mt-2 text-center">
+                    <button
+                      onClick={() => navigate('/samples?filter=warning')}
+                      className="text-xs text-amber-400 hover:text-amber-300 font-medium"
+                    >
+                      Ver las {stats.warningCount} muestras por vencer →
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Stats Grid - Métricas Reales y Útiles */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Muestras Bulk Totales */}
         <StatCard
           icon={BeakerIcon}
-          value={stats.totalSamples}
-          title="Muestras Totales"
-          subtitle="En el sistema"
+          value={stats.totalBulkSamples}
+          title="Muestras Bulk"
+          subtitle={`${stats.pendingDispensing} pendientes dispensar`}
           color="info"
-          trend="up"
-          trendValue="+12%"
+          trend={stats.pendingDispensing > 0 ? "warning" : "up"}
+          trendValue={stats.pendingDispensing > 0 ? `${stats.pendingDispensing} sin dispensar` : "Todas procesadas"}
         />
+
+        {/* Muestras Dispensadas (Hijas) */}
         <StatCard
           icon={BuildingStorefrontIcon}
-          value={stats.totalShelves}
-          title="Anaqueles"
-          subtitle="Configurados"
+          value={stats.totalDispensed}
+          title="Muestras Dispensadas"
+          subtitle={`${stats.storedCount} almacenadas, ${stats.dispatchedCount} despachadas`}
           color="gold"
         />
+
+        {/* Ocupación Real de Estantería */}
         <StatCard
           icon={ChartBarIcon}
           value={`${stats.avgOccupancy}%`}
-          title="Ocupación Promedio"
-          subtitle="De celdas físicas reales"
+          title="Ocupación de Estantería"
+          subtitle={`${stats.occupiedPositions} de ${stats.totalPositions} posiciones`}
           color="success"
+          trend={stats.freePositions < 100 ? "down" : "up"}
+          trendValue={stats.freePositions < 100 ? `Solo ${stats.freePositions} libres` : "Espacio disponible"}
         />
+
+        {/* Alertas Críticas */}
         <StatCard
           icon={ExclamationTriangleIcon}
           value={stats.expiredCount + stats.warningCount}
-          title="Alertas Activas"
+          title="Alertas de Vencimiento"
           subtitle={`${stats.expiredCount} vencidas, ${stats.warningCount} próximas`}
           color="danger"
+          trend={stats.expiredCount > 0 ? "down" : "up"}
+          trendValue={stats.expiredCount > 0 ? "¡Acción requerida!" : "Todo en orden"}
         />
+      </div>
+
+      {/* Métricas Adicionales - Segunda Fila */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Estado de Muestras Bulk */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="text-sm font-semibold text-white">Estado de Muestras Bulk</h3>
+          </div>
+          <div className="card-body">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">Pendientes por dispensar</span>
+                <span className="text-lg font-bold text-amber-400">{stats.pendingDispensing}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">Disponibles (con stock)</span>
+                <span className="text-lg font-bold text-green-400">{stats.availableSamples}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">Vacías (sin stock)</span>
+                <span className="text-lg font-bold text-red-400">{stats.emptySamples}</span>
+              </div>
+              <div className="pt-2 border-t border-gray-700 flex items-center justify-between">
+                <span className="text-sm font-medium text-white">Total Bulk</span>
+                <span className="text-xl font-bold text-white">{stats.totalBulkSamples}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Configuración de Anaqueles */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="text-sm font-semibold text-white">Configuración de Anaqueles</h3>
+          </div>
+          <div className="card-body">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">Total anaqueles</span>
+                <span className="text-lg font-bold text-white">{stats.totalShelves}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">Refrigerados</span>
+                <span className="text-lg font-bold text-blue-400">{stats.refrigeratedShelves}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">Ambiente</span>
+                <span className="text-lg font-bold text-amber-400">{stats.ambientShelves}</span>
+              </div>
+              <div className="pt-2 border-t border-gray-700">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-400">Posiciones totales</span>
+                  <span className="text-lg font-bold text-white">{stats.totalPositions.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-sm text-gray-400">Posiciones libres</span>
+                  <span className="text-lg font-bold text-green-400">{stats.freePositions.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Resumen de Alertas con Acceso Rápido */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="text-sm font-semibold text-white">Acceso Rápido a Alertas</h3>
+          </div>
+          <div className="card-body">
+            <div className="space-y-2">
+              {stats.expiredCount > 0 && (
+                <button
+                  onClick={() => navigate('/samples?filter=expired')}
+                  className="w-full flex items-center justify-between p-3 rounded-lg bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:border-red-500/50 transition-all group"
+                >
+                  <div className="flex items-center gap-2">
+                    <ExclamationTriangleIcon className="w-4 h-4 text-red-500" />
+                    <span className="text-sm font-medium text-red-300">Muestras Vencidas</span>
+                  </div>
+                  <span className="text-sm font-bold text-red-400">{stats.expiredCount}</span>
+                </button>
+              )}
+              {stats.warningCount > 0 && (
+                <button
+                  onClick={() => navigate('/samples?filter=warning')}
+                  className="w-full flex items-center justify-between p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all group"
+                >
+                  <div className="flex items-center gap-2">
+                    <ClockIcon className="w-4 h-4 text-amber-500" />
+                    <span className="text-sm font-medium text-amber-300">Próximas a Vencer</span>
+                  </div>
+                  <span className="text-sm font-bold text-amber-400">{stats.warningCount}</span>
+                </button>
+              )}
+              {stats.pendingDispensing > 0 && (
+                <button
+                  onClick={() => navigate('/samples?filter=pending')}
+                  className="w-full flex items-center justify-between p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all group"
+                >
+                  <div className="flex items-center gap-2">
+                    <BeakerIcon className="w-4 h-4 text-amber-500" />
+                    <span className="text-sm font-medium text-amber-300">Pendientes Dispensar</span>
+                  </div>
+                  <span className="text-sm font-bold text-amber-400">{stats.pendingDispensing}</span>
+                </button>
+              )}
+              {stats.expiredCount === 0 && stats.warningCount === 0 && stats.pendingDispensing === 0 && (
+                <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30 text-center">
+                  <CheckCircleIcon className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                  <p className="text-sm text-green-400 font-medium">¡Todo en orden!</p>
+                  <p className="text-xs text-gray-500 mt-1">No hay alertas activas</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Two Column Layout */}

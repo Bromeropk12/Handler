@@ -22,14 +22,14 @@ const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.r
 
 // Mapeo de pictogramas GHS → archivos de imagen
 const GHS_PICTOGRAM_MAP = {
-  'Explosivo':                  { file: 'explos.webp',           label: 'Explosivo' },
-  'Inflamable':                 { file: 'flamme.webp',           label: 'Inflamable' },
-  'Comburente':                 { file: 'rondflam.webp',         label: 'Comburente' },
-  'Gas Bajo Presión':           { file: 'bottle.webp',           label: 'Gas Bajo Presión' },
-  'Corrosivo':                  { file: 'acid_red.webp',         label: 'Corrosivo' },
-  'Toxicidad Aguda':            { file: 'skull.webp',            label: 'Toxicidad Aguda' },
-  'Irritante':                  { file: 'exclam.webp',           label: 'Irritante' },
-  'Toxicidad Crónica':          { file: 'silhouete.webp',        label: 'Toxicidad Crónica' },
+  'Explosivo': { file: 'explos.webp', label: 'Explosivo' },
+  'Inflamable': { file: 'flamme.webp', label: 'Inflamable' },
+  'Comburente': { file: 'rondflam.webp', label: 'Comburente' },
+  'Gas Bajo Presión': { file: 'bottle.webp', label: 'Gas Bajo Presión' },
+  'Corrosivo': { file: 'acid_red.webp', label: 'Corrosivo' },
+  'Toxicidad Aguda': { file: 'skull.webp', label: 'Toxicidad Aguda' },
+  'Irritante': { file: 'exclam.webp', label: 'Irritante' },
+  'Toxicidad Crónica': { file: 'silhouete.webp', label: 'Toxicidad Crónica' },
   'Tóxico para Medio Ambiente': { file: 'Aquatic-pollut-red.png', label: 'Medio Ambiente' },
 };
 
@@ -53,6 +53,11 @@ const SamplesPage = () => {
     status: ''
   });
   const [coaFile, setCoaFile] = useState(null);
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(100); // 100 items por página
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [formData, setFormData] = useState({
     name: '',
     supplier_id: '',
@@ -78,30 +83,79 @@ const SamplesPage = () => {
     setCoaFile(null);
   };
 
-  const loadSamples = async () => {
+  const loadSamples = async (page = 1) => {
     try {
       setLoading(true);
+      // Preparar parámetros incluyendo búsqueda y filtros
+      const params = {
+        limit: itemsPerPage,
+        page: page,
+      };
+
+      if (searchTerm) params.search = searchTerm;
+      if (filters.market_line_id) params.market_line_id = filters.market_line_id;
+      if (filters.ghs_danger_class) params.ghs_danger_class = filters.ghs_danger_class;
+      if (filters.status) params.status = filters.status;
+
       const [samplesResp, mlResp, suppResp] = await Promise.all([
-        samplesAPI.getBulkSamples({ limit: 200 }),
+        samplesAPI.getBulkSamples(params),
         samplesAPI.getMarketLines(),
         samplesAPI.getSuppliers(),
       ]);
-      setSamples(samplesResp.data?.data?.bulkSamples || []);
+
+      const samplesData = samplesResp.data?.data?.bulkSamples || [];
+      const pagination = samplesResp.data?.data?.pagination || {};
+
+      setSamples(samplesData);
+      setCurrentPage(pagination.page || page);
+      setTotalItems(pagination.total || 0);
+      setTotalPages(pagination.totalPages || 1);
       setMarketLines(mlResp.data?.data?.marketLines || []);
       setSuppliers(suppResp.data?.data?.suppliers || []);
     } catch (_err) {
       setSamples([]);
+      setTotalItems(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
   };
 
+  // Recargar datos cuando cambia página, búsqueda o filtros
   useEffect(() => {
-    loadSamples();
-  }, []);
+    const hasSearchOrFilters = searchTerm || filters.market_line_id || filters.ghs_danger_class || filters.status;
+
+    // Si hay búsqueda/filtros y no estamos en página 1, resetear
+    if (hasSearchOrFilters && currentPage !== 1) {
+      setCurrentPage(1);
+      return;
+    }
+
+    // Cargar datos para la página actual
+    loadSamples(currentPage);
+  }, [currentPage, searchTerm, filters]);
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Paginación
+  const handlePageChange = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(prev => prev + 1);
+    }
+  };
+
+  const goToPrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(prev => prev - 1);
+    }
   };
 
   const togglePictogram = (pictogram) => {
@@ -140,9 +194,9 @@ const SamplesPage = () => {
       // No enviar campos no editables internamente por el sistema
       delete dataToSend.total_units;
       delete dataToSend.available_units;
-      
+
       await samplesAPI.updateBulkSampleWithCoA(selectedSample.id, dataToSend, coaFile);
-      
+
       setIsEditing(false);
       setCoaFile(null); // Limpiar archivo tras subir
       setSelectedSample(null);
@@ -276,9 +330,8 @@ const SamplesPage = () => {
       key: 'signal_word',
       label: 'Señal',
       render: val => (
-        <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-          val === 'PELIGRO' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'
-        }`}>
+        <span className={`text-xs font-bold px-2 py-0.5 rounded ${val === 'PELIGRO' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'
+          }`}>
           {val || 'ATENCION'}
         </span>
       ),
@@ -292,22 +345,22 @@ const SamplesPage = () => {
 
   const filteredSamples = samples.filter(s => {
     if (!searchTerm && !filters.market_line_id && !filters.ghs_danger_class && !filters.status) return true;
-    
+
     const term = searchTerm.toLowerCase();
     const matchesSearch = (
       (s.name || s.product_name || '').toLowerCase().includes(term) ||
       (s.lot || '').toLowerCase().includes(term) ||
       (s.supplier_name || '').toLowerCase().includes(term)
     );
-    
+
     const matchesMarketLine = !filters.market_line_id || s.market_line_id === filters.market_line_id;
     const matchesDangerClass = !filters.ghs_danger_class || s.ghs_danger_class === filters.ghs_danger_class;
-    
+
     let matchesStatus = true;
     if (filters.status === 'pending') matchesStatus = s.total_units === 0;
     else if (filters.status === 'dispensed') matchesStatus = s.total_units > 0;
     else if (filters.status === 'expired') matchesStatus = new Date(s.expiration_date) < new Date();
-    
+
     return matchesSearch && matchesMarketLine && matchesDangerClass && matchesStatus;
   });
 
@@ -386,13 +439,12 @@ const SamplesPage = () => {
               key={word}
               type="button"
               onClick={() => handleInputChange('signal_word', word)}
-              className={`py-3 rounded-xl font-bold text-sm border-2 transition-all ${
-                formData.signal_word === word
-                  ? word === 'PELIGRO'
-                    ? 'bg-red-500/20 border-red-500 text-red-400'
-                    : 'bg-amber-500/20 border-amber-500 text-amber-400'
-                  : 'bg-surface-900 border-white/10 text-gray-500 hover:border-white/20'
-              }`}
+              className={`py-3 rounded-xl font-bold text-sm border-2 transition-all ${formData.signal_word === word
+                ? word === 'PELIGRO'
+                  ? 'bg-red-500/20 border-red-500 text-red-400'
+                  : 'bg-amber-500/20 border-amber-500 text-amber-400'
+                : 'bg-surface-900 border-white/10 text-gray-500 hover:border-white/20'
+                }`}
             >
               {word === 'PELIGRO' ? '⚠ PELIGRO' : '⚡ ATENCIÓN'}
             </button>
@@ -471,7 +523,7 @@ const SamplesPage = () => {
           <DocumentArrowDownIcon className="w-4 h-4 text-green-400" />
           <h4 className="text-sm font-medium text-gray-300">Certificado de Análisis (CoA)</h4>
         </div>
-        
+
         {/* Mostrar CoA actual si existe y estamos editando */}
         {isEdit && selectedSample?.coa_file_path && (
           <div className="flex items-center gap-3 mb-4 p-3 bg-green-500/5 border border-green-500/10 rounded-xl">
@@ -505,11 +557,10 @@ const SamplesPage = () => {
               onChange={e => setCoaFile(e.target.files[0] || null)}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
             />
-            <div className={`w-full p-4 rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 ${
-              coaFile 
-                ? 'bg-green-500/5 border-green-500/40' 
-                : 'bg-surface-900 border-white/10 group-hover:border-white/20'
-            }`}>
+            <div className={`w-full p-4 rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 ${coaFile
+              ? 'bg-green-500/5 border-green-500/40'
+              : 'bg-surface-900 border-white/10 group-hover:border-white/20'
+              }`}>
               {coaFile ? (
                 <>
                   <CheckCircleIcon className="w-8 h-8 text-green-400" />
@@ -528,8 +579,8 @@ const SamplesPage = () => {
             </div>
           </div>
           {coaFile && (
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={() => setCoaFile(null)}
               className="mt-2 text-xs text-red-400 hover:text-red-300 font-medium"
             >
@@ -570,7 +621,7 @@ const SamplesPage = () => {
               className="input-with-icon input-sm"
             />
           </div>
-          <button 
+          <button
             onClick={() => setShowFilterModal(true)}
             className={`btn-ghost ${filters.market_line_id || filters.ghs_danger_class || filters.status ? 'text-blue-400' : ''}`}
           >
@@ -578,7 +629,7 @@ const SamplesPage = () => {
             Filtros
           </button>
           {(filters.market_line_id || filters.ghs_danger_class || filters.status) && (
-            <button 
+            <button
               onClick={() => setFilters({ market_line_id: '', ghs_danger_class: '', status: '' })}
               className="text-xs text-gray-400 hover:text-white"
             >
@@ -598,6 +649,61 @@ const SamplesPage = () => {
         emptyDescription="Comience agregando su primera muestra global al sistema."
         emptyIcon={BeakerIcon}
       />
+
+      {/* Paginación */}
+      {totalPages > 1 && (
+        <div className="card-footer flex items-center justify-between">
+          <div className="text-sm text-gray-400">
+            Mostrando <span className="font-semibold text-gray-200">{(currentPage - 1) * itemsPerPage + 1}</span> a <span className="font-semibold text-gray-200">{Math.min(currentPage * itemsPerPage, totalItems)}</span> de <span className="font-semibold text-gray-200">{totalItems}</span> muestras
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={goToPrevPage}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 rounded-lg bg-surface-700 text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-600 transition-colors"
+            >
+              Anterior
+            </button>
+
+            {/* Números de página */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${currentPage === pageNum
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-surface-700 text-gray-300 hover:bg-surface-600'
+                      }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={goToNextPage}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 rounded-lg bg-surface-700 text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-600 transition-colors"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Create Modal */}
       <Modal
@@ -652,9 +758,8 @@ const SamplesPage = () => {
             {/* Status badge prominente */}
             <div className="flex items-center gap-3">
               {getStatusBadge(selectedSample)}
-              <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                selectedSample.signal_word === 'PELIGRO' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'
-              }`}>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded ${selectedSample.signal_word === 'PELIGRO' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'
+                }`}>
                 {selectedSample.signal_word || 'ATENCION'}
               </span>
             </div>
