@@ -204,10 +204,44 @@ const getShelves = async (req, res, next) => {
     const countResult = await query(countQuery, countParams);
     const total = parseInt(countResult.rows[0].total);
 
+    // Obtener proveedores para todos los anaqueles
+    const shelfIds = result.rows.map(s => s.id);
+    let shelvesWithSuppliers = result.rows;
+
+    if (shelfIds.length > 0) {
+      const suppliersResult = await query(`
+        SELECT ss.shelf_id, ss.supplier_id, ss.is_primary, s.name as supplier_name, s.logo_path
+        FROM shelf_suppliers ss
+        JOIN suppliers s ON ss.supplier_id = s.id
+        WHERE ss.shelf_id = ANY($1)
+        ORDER BY ss.is_primary DESC, s.name ASC
+      `, [shelfIds]);
+
+      // Agrupar proveedores por anaquel
+      const suppliersByShelf = {};
+      suppliersResult.rows.forEach(row => {
+        if (!suppliersByShelf[row.shelf_id]) {
+          suppliersByShelf[row.shelf_id] = [];
+        }
+        suppliersByShelf[row.shelf_id].push({
+          supplier_id: row.supplier_id,
+          is_primary: row.is_primary,
+          supplier_name: row.supplier_name,
+          logo_path: row.logo_path
+        });
+      });
+
+      // Asignar proveedores a cada anaquel
+      shelvesWithSuppliers = result.rows.map(shelf => ({
+        ...shelf,
+        suppliers: suppliersByShelf[shelf.id] || []
+      }));
+    }
+
     res.json({
       success: true,
       data: {
-        shelves: result.rows,
+        shelves: shelvesWithSuppliers,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -260,10 +294,24 @@ const getShelfById = async (req, res, next) => {
       throw new AppError('Anaquel no encontrado', 404);
     }
 
+    const shelf = result.rows[0];
+
+    // Obtener proveedores vinculados
+    const suppliersResult = await query(`
+      SELECT ss.*, s.name as supplier_name, s.logo_path
+      FROM shelf_suppliers ss
+      JOIN suppliers s ON ss.supplier_id = s.id
+      WHERE ss.shelf_id = $1
+      ORDER BY ss.is_primary DESC, s.name ASC
+    `, [id]);
+
     res.json({
       success: true,
       data: {
-        shelf: result.rows[0]
+        shelf: {
+          ...shelf,
+          suppliers: suppliersResult.rows
+        }
       }
     });
 
@@ -304,7 +352,7 @@ const updateShelf = async (req, res, next) => {
     const params = [];
     let paramIndex = 1;
 
-    const allowedFields = ['name', 'provider', 'grid_width', 'grid_height', 'shelf_depth'];
+    const allowedFields = ['name', 'provider', 'grid_width', 'grid_height', 'shelf_depth', 'shelf_type'];
 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
@@ -332,6 +380,58 @@ const updateShelf = async (req, res, next) => {
     const result = await query(updateQuery, params);
     const updatedShelf = result.rows[0];
 
+    // Sincronizar proveedores si se proporcionan
+    if (data.supplier_ids !== undefined) {
+      const supplierIds = data.supplier_ids || [];
+
+      // Verificar que los proveedores existen
+      if (supplierIds.length > 0) {
+        const suppliers = await query('SELECT id FROM suppliers WHERE id = ANY($1)', [supplierIds]);
+        if (suppliers.rows.length !== supplierIds.length) {
+          throw new AppError('Uno o más proveedores no existen', 404);
+        }
+      }
+
+      // Obtener proveedores actuales
+      const currentSuppliers = await query(
+        'SELECT id, supplier_id, is_primary FROM shelf_suppliers WHERE shelf_id = $1',
+        [id]
+      );
+      const currentIds = currentSuppliers.rows.map(s => s.supplier_id);
+
+      // Calcular diff: proveedores a agregar y a eliminar
+      const toAdd = supplierIds.filter(id => !currentIds.includes(id));
+      const toRemove = currentSuppliers.rows.filter(s => !supplierIds.includes(s.supplier_id)).map(s => s.id);
+
+      // Eliminar proveedores que ya no están
+      if (toRemove.length > 0) {
+        await query(`DELETE FROM shelf_suppliers WHERE id = ANY($1)`, [toRemove]);
+      }
+
+      // Agregar nuevos proveedores
+      if (toAdd.length > 0) {
+        for (let i = 0; i < toAdd.length; i++) {
+          const isPrimary = supplierIds.length > 0 && toAdd[i] === supplierIds[0] && toAdd.length === supplierIds.length;
+          await query(
+            'INSERT INTO shelf_suppliers (shelf_id, supplier_id, is_primary) VALUES ($1, $2, $3)',
+            [id, toAdd[i], isPrimary]
+          );
+        }
+      }
+
+      // Actualizar proveedor principal si hay proveedores
+      if (supplierIds.length > 0) {
+        const primaryId = supplierIds[0];
+        await query(
+          'UPDATE shelf_suppliers SET is_primary = (supplier_id = $1) WHERE shelf_id = $2',
+          [primaryId, id]
+        );
+      } else {
+        // Si no hay proveedores, desmarcar todos como principales
+        await query('UPDATE shelf_suppliers SET is_primary = false WHERE shelf_id = $1', [id]);
+      }
+    }
+
     // Log del movimiento
     await query(`
       INSERT INTO movements (sample_id, action_type, user_id, details)
@@ -346,11 +446,23 @@ const updateShelf = async (req, res, next) => {
       })
     ]);
 
+    // Obtener proveedores vinculados
+    const suppliersResult = await query(`
+      SELECT ss.*, s.name as supplier_name, s.logo_path
+      FROM shelf_suppliers ss
+      JOIN suppliers s ON ss.supplier_id = s.id
+      WHERE ss.shelf_id = $1
+      ORDER BY ss.is_primary DESC, s.name ASC
+    `, [id]);
+
     res.json({
       success: true,
       message: 'Anaquel actualizado exitosamente',
       data: {
-        shelf: updatedShelf
+        shelf: {
+          ...updatedShelf,
+          suppliers: suppliersResult.rows
+        }
       }
     });
 

@@ -133,19 +133,9 @@ const ShelfManagement = () => {
           grid_width: formData.grid_width,
           grid_height: formData.grid_height,
           shelf_depth: formData.shelf_depth,
-          shelf_type: formData.shelf_type
+          shelf_type: formData.shelf_type,
+          supplier_ids: formData.supplier_ids
         });
-        const existingSuppliers = await shelfSuppliersAPI.getByShelf(editingShelf.id);
-        for (const s of (existingSuppliers.data.data.suppliers || [])) {
-          await shelfSuppliersAPI.remove(s.id);
-        }
-        for (let i = 0; i < formData.supplier_ids.length; i++) {
-          await shelfSuppliersAPI.add({
-            shelf_id: editingShelf.id,
-            supplier_id: formData.supplier_ids[i],
-            is_primary: i === 0
-          });
-        }
         setSuccess('Anaquel actualizado exitosamente');
       } else {
         await warehouseAPI.createShelf(formData);
@@ -355,6 +345,47 @@ const ShelfManagement = () => {
                               className="h-full rounded-full transition-all duration-300"
                               style={{ width: `${shelf.occupancy_percentage || 0}%`, backgroundColor: colorScheme.bg }}
                             />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Proveedores vinculados */}
+                      {(shelf.suppliers || []).length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-700/50">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Proveedores</span>
+                            <span className="text-[9px] text-gray-600 bg-gray-800/50 px-1.5 py-0.5 rounded">
+                              {(shelf.suppliers || []).length}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(shelf.suppliers || []).map((ss, idx) => (
+                              <div
+                                key={ss.supplier_id}
+                                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium ${ss.is_primary
+                                    ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                                    : 'bg-gray-800/50 text-gray-400 border border-gray-700/50'
+                                  }`}
+                                title={ss.is_primary ? 'Proveedor principal' : 'Proveedor vinculado'}
+                              >
+                                {ss.logo_path ? (
+                                  <img
+                                    src={`/${ss.logo_path}`}
+                                    alt=""
+                                    className="w-3 h-3 rounded-full object-cover border border-gray-600/50"
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-3 h-3 rounded-full bg-gray-600 border border-gray-500"></div>
+                                )}
+                                <span className="truncate max-w-[60px]">{ss.supplier_name || 'N/A'}</span>
+                                {ss.is_primary && (
+                                  <span className="shrink-0">★</span>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}
