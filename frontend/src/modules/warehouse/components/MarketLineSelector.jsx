@@ -15,12 +15,12 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
   useFrame((state) => {
     if (!coreRef.current) return;
     const time = state.clock.getElapsedTime();
-    
+
     // El núcleo brillante late y rota
     coreRef.current.rotation.y += 0.01;
     coreRef.current.rotation.x = Math.sin(time * 0.5) * 0.2;
     coreRef.current.position.y = 1.5 + Math.sin(time * 2 + index) * 0.2;
-    
+
     const targetScale = hovered ? 1.2 : 1;
     coreRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
   });
@@ -29,7 +29,7 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
     ? Math.round((stats.occupiedShelves / stats.totalShelves) * 100) : 0;
 
   return (
-    <group 
+    <group
       position={position}
       ref={groupRef}
     >
@@ -40,7 +40,7 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
           <boxGeometry args={[4.5, 6, 0.4]} />
           <meshStandardMaterial color="#1a1c23" metalness={0.9} roughness={0.4} />
         </mesh>
-        
+
         {/* Pared Lateral Izquierda */}
         <mesh position={[-2.25, 3, 0]} receiveShadow castShadow>
           <boxGeometry args={[0.2, 6, 3]} />
@@ -58,7 +58,7 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
           <boxGeometry args={[4.7, 0.2, 3.4]} />
           <meshStandardMaterial color="#0f1013" metalness={0.8} roughness={0.5} />
         </mesh>
-        
+
         {/* Luces perimetrales de la habitación (tira LED) */}
         <mesh position={[0, 5.8, -1.25]}>
           <boxGeometry args={[4.4, 0.05, 0.05]} />
@@ -72,7 +72,7 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
         <cylinderGeometry args={[1.5, 1.8, 0.2, 32]} />
         <meshStandardMaterial color="#2a2d34" metalness={0.9} roughness={0.2} />
       </mesh>
-      
+
       {/* Anillo de energía en la plataforma base */}
       <mesh position={[0, 0.21, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.2, 1.3, 32]} />
@@ -80,7 +80,7 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
       </mesh>
 
       {/* Elemento Interactivo Central (Núcleo) / Sensor */}
-      <group 
+      <group
         onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
         onPointerOut={() => { setHovered(false); document.body.style.cursor = 'default'; }}
         onClick={() => { document.body.style.cursor = 'default'; onSelect(line); }}
@@ -88,9 +88,9 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
         <mesh ref={coreRef} castShadow>
           <octahedronGeometry args={[0.7, 0]} />
           {/* Cristal holográfico levitando */}
-          <meshPhysicalMaterial 
-            color={color} 
-            transparent 
+          <meshPhysicalMaterial
+            color={color}
+            transparent
             opacity={0.85}
             metalness={0.8}
             roughness={0.1}
@@ -113,9 +113,9 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
               Sector {index + 1}
             </span>
           </div>
-          
+
           <h3 className="text-sm font-semibold text-white tracking-wide mb-3" style={{ color }}>{line.name}</h3>
-          
+
           <div className="flex justify-between items-center text-xs border-y border-gray-600/30 py-2 mb-2">
             <div className="flex flex-col items-start px-2">
               <span className="text-gray-500 font-medium mb-0.5 text-[10px] uppercase">Ocupación</span>
@@ -127,12 +127,12 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
               <span className="text-white font-medium">{stats.totalSamples}</span>
             </div>
           </div>
-          
+
           <div className="bg-black/30 rounded-full h-1 w-full overflow-hidden mb-1">
             <div className="h-full transition-all duration-1000" style={{ width: `${occupancyPct}%`, backgroundColor: color }}>
             </div>
           </div>
-          
+
           {hovered && (
             <div className="mt-3 text-white/80 py-1.5 w-full flex justify-center items-center gap-1 text-[10px] uppercase tracking-widest transition-all">
               Examinar <ArrowRightIcon className="w-3 h-3" />
@@ -209,14 +209,14 @@ const MarketLineSelector = ({ onSelectMarketLine }) => {
       <Canvas camera={{ position: [0, 8, 20], fov: 40 }}>
         <color attach="background" args={['#050508']} />
         <fog attach="fog" args={['#050508', 15, 50]} />
-        
+
         {/* Iluminación Dramática de Película para Metales */}
         <ambientLight intensity={0.6} />
         <spotLight position={[0, 20, 10]} angle={0.8} penumbra={0.7} intensity={2.0} castShadow />
         {/* Luces puntuales distantes simulando reflejos */}
         <pointLight position={[-15, 10, -5]} intensity={1.5} color="#4338ca" />
         <pointLight position={[15, 10, -5]} intensity={1.5} color="#db2777" />
-        
+
         {/* Polvo estelar (simula partículas suspendidas en este gran complejo) */}
         <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
 
@@ -224,27 +224,27 @@ const MarketLineSelector = ({ onSelectMarketLine }) => {
           {marketLines.map((line, index) => {
             const stats = shelfStats[line.id] || { totalShelves: 0, occupiedShelves: 0, totalSamples: 0 };
             const rawColor = colorMap[line.name] || '#10b981';
-            
+
             // Distribuir en línea X con un gran espaciado para formar cuartos grandes (5.5)
             const spacing = 5.5;
             const originX = -((marketLines.length - 1) * spacing) / 2;
             const px = originX + (index * spacing);
 
             return (
-              <MarketLineChamber 
-                key={line.id} 
-                position={[px, 0, 0]} 
-                color={rawColor} 
-                line={line} 
-                stats={stats} 
-                index={index} 
-                onSelect={onSelectMarketLine} 
+              <MarketLineChamber
+                key={line.id}
+                position={[px, 0, 0]}
+                color={rawColor}
+                line={line}
+                stats={stats}
+                index={index}
+                onSelect={onSelectMarketLine}
               />
             );
           })}
 
           <ContactShadows position={[0, 0.01, 0]} opacity={0.6} scale={40} blur={2.5} far={10} />
-          
+
           {/* Suelo del Complejo Altamente Reflectivo */}
           <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
             <planeGeometry args={[150, 100]} />
@@ -253,12 +253,12 @@ const MarketLineSelector = ({ onSelectMarketLine }) => {
           <gridHelper args={[150, 100, '#1f2937', '#0f111a']} position={[0, 0.005, 0]} />
         </group>
 
-        <OrbitControls 
-          enablePan={false} 
-          enableZoom={true} 
+        <OrbitControls
+          enablePan={false}
+          enableZoom={true}
           minDistance={10}
           maxDistance={35}
-          maxPolarAngle={Math.PI / 2 - 0.05} 
+          maxPolarAngle={Math.PI / 2 - 0.05}
           minPolarAngle={0.2}
         />
       </Canvas>
@@ -271,11 +271,11 @@ const MarketLineSelector = ({ onSelectMarketLine }) => {
         </h2>
         <p className="text-gray-400 text-sm tracking-[0.3em] font-medium uppercase mt-2">Selección de Sector // Terminal Primaria</p>
       </div>
-      
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 pointer-events-none z-10">
+
+      <div className="absolute bottom-6 lefot-1/2 -translate-x-1/2 pointer-events-none z-10">
         <div className="flex flex-col items-center gap-2">
           <span className="text-[10px] font-black tracking-[0.2em] text-gray-300 bg-black/80 backdrop-blur-md px-6 py-2.5 rounded-full border border-gray-600/50 shadow-[0_0_30px_rgba(0,0,0,0.8)] uppercase">
-            Arrastra (Click Secundario) para Rotar Cámaras
+            Arrastra (Click) para Rotar Cámaras
           </span>
         </div>
       </div>
