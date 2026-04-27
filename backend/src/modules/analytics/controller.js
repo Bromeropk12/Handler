@@ -61,7 +61,7 @@ const getDashboardStats = async (req, res, next) => {
         gs.supplier_id,
         sup.name as supplier_name,
         ml.name as market_line_name,
-        EXTRACT(DAY FROM (gs.expiration_date - CURRENT_DATE)) as days_remaining
+        FLOOR((gs.expiration_date - CURRENT_DATE)) as days_remaining
       FROM global_samples gs
       LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
       LEFT JOIN market_lines ml ON gs.market_line_id = ml.id
