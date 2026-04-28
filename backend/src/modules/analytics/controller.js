@@ -83,7 +83,7 @@ const getDashboardStats = async (req, res, next) => {
     `);
 
     const filledCheck = await query(`
-        SELECT COUNT(*) as occupied_positions
+        SELECT COALESCE(SUM(COALESCE(width, 1) * COALESCE(height, 1) * COALESCE(depth, 1)), 0) as occupied_positions
         FROM dispensed_samples
         WHERE status = 'stored'
           AND position_x IS NOT NULL
@@ -96,19 +96,32 @@ const getDashboardStats = async (req, res, next) => {
     const mlStats = await query(`
       SELECT
         ml.name,
-        COUNT(DISTINCT sh.id) as shelves,
-        COALESCE(SUM(sh.grid_width * sh.grid_height * sh.shelf_depth), 0) as total_positions,
-        COUNT(DISTINCT ds.id) as occupied_positions
+        COALESCE(sh_stats.shelves, 0) as shelves,
+        COALESCE(sh_stats.total_positions, 0) as total_positions,
+        COALESCE(ds_stats.occupied_positions, 0) as occupied_positions
       FROM market_lines ml
-      LEFT JOIN shelves sh ON sh.market_line_id = ml.id AND sh.grid_width > 0 AND sh.grid_height > 0 AND sh.shelf_depth > 0
-      LEFT JOIN global_samples gs ON gs.market_line_id = ml.id
-      LEFT JOIN dispensed_samples ds ON ds.global_sample_id = gs.id
-        AND ds.status = 'stored'
-        AND ds.position_x IS NOT NULL
-        AND ds.position_y IS NOT NULL
-        AND ds.position_z IS NOT NULL
-        AND ds.shelf_id IS NOT NULL
-      GROUP BY ml.id, ml.name
+      LEFT JOIN (
+        SELECT 
+          market_line_id, 
+          COUNT(id) as shelves, 
+          SUM(grid_width * grid_height * shelf_depth) as total_positions
+        FROM shelves
+        WHERE grid_width > 0 AND grid_height > 0 AND shelf_depth > 0
+        GROUP BY market_line_id
+      ) sh_stats ON sh_stats.market_line_id = ml.id
+      LEFT JOIN (
+        SELECT 
+          sh.market_line_id,
+          SUM(COALESCE(ds.width, 1) * COALESCE(ds.height, 1) * COALESCE(ds.depth, 1)) as occupied_positions
+        FROM dispensed_samples ds
+        JOIN shelves sh ON ds.shelf_id = sh.id
+        WHERE ds.status = 'stored'
+          AND ds.position_x IS NOT NULL
+          AND ds.position_y IS NOT NULL
+          AND ds.position_z IS NOT NULL
+          AND ds.shelf_id IS NOT NULL
+        GROUP BY sh.market_line_id
+      ) ds_stats ON ds_stats.market_line_id = ml.id
     `);
 
     // Alerts (Ultimos despachos, movimientos, etc)

@@ -91,7 +91,7 @@ const DispensingPage = () => {
       setIsSubmitting(true);
       const resp = await dispensingAPI.dispense({
         global_sample_id: selectedSample.id,
-        number_of_units: parseInt(unitsToGenerate),
+        number_of_units: parseInt(unitsToGenerate, 10),
         weight_per_unit: parseFloat(weightPerUnit),
         child_dimensions: childDimensions,
         shelf_id: selectedShelfId || undefined
@@ -101,7 +101,7 @@ const DispensingPage = () => {
       setDispensingResult(resp.data.data);
       setGlobalSamples(prev => prev.map(s => {
         if (s.id === selectedSample.id) {
-          return { ...s, total_units: parseInt(unitsToGenerate), available_units: parseInt(unitsToGenerate) };
+          return { ...s, total_units: parseInt(unitsToGenerate, 10), available_units: parseInt(unitsToGenerate, 10) };
         }
         return s;
       }));

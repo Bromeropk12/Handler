@@ -14,7 +14,8 @@ const { findAutoPlacement, parseDimensions } = require('../warehouse/validations
  */
 const subdivideBulkSample = async (req, res, next) => {
   try {
-    const { global_sample_id, number_of_units, weight_per_unit, child_dimensions, shelf_id } = req.body;
+    const { global_sample_id, weight_per_unit, child_dimensions, shelf_id } = req.body;
+    const number_of_units = parseInt(req.body.number_of_units, 10);
 
     if (!global_sample_id) throw new AppError('El ID del Bulk Sample es requerido', 400);
     if (!number_of_units || number_of_units <= 0) throw new AppError('El número de unidades debe ser mayor a 0', 400);

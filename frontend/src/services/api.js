@@ -150,6 +150,9 @@ export const dispatchAPI = {
 
 export const movementsAPI = {
   getMovements: params => api.get('/movements', { params }),
+  getMovementTypes: () => api.get('/movements/types'),
+  getMovementsSummary: params => api.get('/movements/summary', { params }),
+  exportToCSV: params => api.get('/movements', { params: { ...params, export_csv: 'true' }, responseType: 'blob' }),
 };
 
 export const analyticsAPI = {

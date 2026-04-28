@@ -168,7 +168,9 @@ const executeDispatch = async (req, res, next) => {
 const getDispatchHistory = async (req, res, next) => {
   try {
     const { limit = 20, page = 1 } = req.query;
-    const offset = (page - 1) * limit;
+    const limitNum = parseInt(limit) || 20;
+    const pageNum  = parseInt(page)  || 1;
+    const offset   = (pageNum - 1) * limitNum;
 
     const result = await query(`
       SELECT
@@ -185,7 +187,7 @@ const getDispatchHistory = async (req, res, next) => {
       WHERE m.action_type = 'dispatched'
       ORDER BY m.timestamp DESC
       LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+    `, [limitNum, offset]);
 
     const countResult = await query(`
       SELECT COUNT(*) as total FROM movements WHERE action_type = 'dispatched'
@@ -211,10 +213,10 @@ const getDispatchHistory = async (req, res, next) => {
       data: {
         history,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNum,
+          limit: limitNum,
           total: parseInt(countResult.rows[0].total),
-          totalPages: Math.ceil(countResult.rows[0].total / limit)
+          totalPages: Math.ceil(parseInt(countResult.rows[0].total) / limitNum)
         }
       }
     });

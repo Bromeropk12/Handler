@@ -97,9 +97,15 @@ const createShelf = async (req, res, next) => {
     const results = await transaction(txQueries);
     const shelf = results[0].rows[0];
 
-    // Actualizar el movement con el shelf_id
+    // Actualizar el movement con el shelf_id (subquery compatible con PostgreSQL)
     await query(
-      'UPDATE movements SET sample_id = $1 WHERE sample_id IS NULL AND action_type = $2 AND user_id = $3 ORDER BY timestamp DESC LIMIT 1',
+      `UPDATE movements SET sample_id = $1
+       WHERE id = (
+         SELECT id FROM movements
+         WHERE sample_id IS NULL AND action_type = $2 AND user_id = $3
+         ORDER BY timestamp DESC
+         LIMIT 1
+       )`,
       [shelf.id, 'created', req.user.id]
     );
 
@@ -193,14 +199,14 @@ const getShelves = async (req, res, next) => {
 
     const result = await query(queryText, params);
 
-    // Contar total
+    // Contar total (reutiliza whereClause directamente — aliases s. son válidos con FROM shelves s)
     const countQuery = `
       SELECT COUNT(*) as total
       FROM shelves s
-      ${whereClause.replace(/s\./g, '')}
+      ${whereClause}
     `;
 
-    const countParams = params.slice(0, -2); // Remover limit y offset
+    const countParams = params.slice(0, -2);
     const countResult = await query(countQuery, countParams);
     const total = parseInt(countResult.rows[0].total);
 
@@ -334,15 +340,13 @@ const updateShelf = async (req, res, next) => {
       throw new AppError('Anaquel no encontrado', 404);
     }
 
-    // No permitir cambiar grid si tiene muestras colocadas
-    if ((data.grid_width || data.grid_height || data.shelf_depth) && existing.rows[0].total_capacity > 0) {
-      const occupiedCells = await query(`
-        SELECT COUNT(*) as occupied
-        FROM dispensed_samples
-        WHERE shelf_id = $1 AND status = 'stored'
-      `, [id]);
-
-      if (occupiedCells.rows[0].occupied > 0) {
+    // No permitir cambiar dimensiones del grid si tiene muestras colocadas
+    if (data.grid_width !== undefined || data.grid_height !== undefined || data.shelf_depth !== undefined) {
+      const occupiedCells = await query(
+        `SELECT COUNT(*) as occupied FROM dispensed_samples WHERE shelf_id = $1 AND status = 'stored'`,
+        [id]
+      );
+      if (parseInt(occupiedCells.rows[0].occupied) > 0) {
         throw new AppError('No se puede cambiar el tamaño del grid si el anaquel tiene muestras colocadas', 400);
       }
     }
@@ -400,7 +404,8 @@ const updateShelf = async (req, res, next) => {
       const currentIds = currentSuppliers.rows.map(s => s.supplier_id);
 
       // Calcular diff: proveedores a agregar y a eliminar
-      const toAdd = supplierIds.filter(id => !currentIds.includes(id));
+      // Se usa 'suppId' para evitar shadowing del outer 'id' (shelf UUID)
+      const toAdd = supplierIds.filter(suppId => !currentIds.includes(suppId));
       const toRemove = currentSuppliers.rows.filter(s => !supplierIds.includes(s.supplier_id)).map(s => s.id);
 
       // Eliminar proveedores que ya no están
