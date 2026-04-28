@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../services/api';
 import Modal from './Modal';
 import { TrashIcon } from '@heroicons/react/24/outline';
+import { DEFAULT_PERMISSIONS, ALL_PERMISSION_KEYS } from '../config/permissions';
 
 // Componentes modulares
 import UserManagementHeader from './UserManagementHeader';
@@ -130,14 +131,14 @@ const UserManagement = ({ isOpen, onClose }) => {
             setMessage({
                 type: 'success',
                 text: createFormData.role === 'operator'
-                    ? 'Usuario operador creado exitosamente. Debe cambiar su contraseña al iniciar sesión.'
+                    ? 'Usuario operador creado exitosamente.'
                     : 'Usuario administrador creado exitosamente'
             });
             setCreateFormData({ username: '', password: '', confirmPassword: '', role: 'operator' });
             setShowCreateForm(false);
             loadUsers();
         } catch (error) {
-            setMessage({ type: 'error', text: error.response?.data?.message || 'Error al crear usuario' });
+            setMessage({ type: 'error', text: error.response?.data?.message || error.message || 'Error al crear usuario' });
         } finally {
             setLoading(false);
         }
@@ -241,6 +242,10 @@ const UserManagement = ({ isOpen, onClose }) => {
                                 currentUser={currentUser}
                                 onChangePassword={setShowPasswordForm}
                                 onDeleteUser={setUserToDelete}
+                                onPermissionsSaved={(uid, perms) => {
+                                    setUsers(prev => prev.map(u => u.id === uid ? { ...u, permissions: perms } : u));
+                                    setMessage({ type: 'success', text: 'Permisos actualizados exitosamente ✓' });
+                                }}
                             />
                         </div>
                     )}

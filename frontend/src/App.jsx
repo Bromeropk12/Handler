@@ -13,6 +13,7 @@ import MovementsPage from './modules/movements/MovementsPage';
 import SuppliersPage from './modules/suppliers/SuppliersPage';
 import MarketLinesPage from './modules/market-lines/MarketLinesPage';
 import BackupPage from './modules/backup/BackupPage';
+import UserManagementPage from './modules/users/UserManagementPage';
 import LoadingSpinner from './components/LoadingSpinner';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -93,6 +94,18 @@ const AppContent = () => {
         }
       >
         <Route index element={<BackupPage />} />
+      </Route>
+
+      {/* Usuarios — Solo administradores */}
+      <Route
+        path="/users"
+        element={
+          <AdminRoute>
+            <MainLayout />
+          </AdminRoute>
+        }
+      >
+        <Route index element={<UserManagementPage />} />
       </Route>
 
       {/* Fallback */}

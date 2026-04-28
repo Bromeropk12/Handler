@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
+const { DEFAULT_PERMISSIONS, PERMISSION_MODULES, ALL_PERMISSIONS } = require('../../config/permissions');
 
 /**
  * Validar fuerza de contraseña (seguridad media)
@@ -199,7 +200,7 @@ const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Verificar que el usuario aún existe
-    const users = await query('SELECT id, username, role FROM users WHERE id = $1', [decoded.id]);
+    const users = await query('SELECT id, username, role, permissions FROM users WHERE id = $1', [decoded.id]);
 
     if (users.rows.length === 0) {
       throw new AppError('Usuario no encontrado', 401);
@@ -233,7 +234,7 @@ const requireAdmin = (req, res, next) => {
 const listUsers = async (req, res, next) => {
   try {
     const users = await query(
-      'SELECT id, username, role, created_at, updated_at FROM users ORDER BY created_at DESC'
+      'SELECT id, username, role, permissions, created_at, updated_at FROM users ORDER BY created_at DESC'
     );
 
     res.json({
@@ -286,21 +287,23 @@ const createUser = async (req, res, next) => {
 
     // Crear usuario
     const newUser = await query(
-      'INSERT INTO users (username, password_hash, secret_password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, username, role, created_at',
-      [username, hashedPassword, hashedSecretPassword, role]
+      'INSERT INTO users (username, password_hash, secret_password_hash, role, permissions) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, role, permissions, created_at',
+      [username, hashedPassword, hashedSecretPassword, role, JSON.stringify(DEFAULT_PERMISSIONS(role))]
     );
 
-    // Log de creación de usuario
-    await query(
-      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
-      [null, 'user_created', req.user.id, JSON.stringify({
-        new_user_id: newUser.rows[0].id,
-        new_username: username,
-        new_role: role,
-        ip: req.ip,
-        timestamp: new Date().toISOString()
-      })]
-    );
+    // Log de creación de usuario (no crítico)
+    try {
+      await query(
+        'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+        [null, 'user_created', req.user.id, JSON.stringify({
+          new_user_id: newUser.rows[0].id,
+          new_username: username,
+          new_role: role,
+          ip: req.ip,
+          timestamp: new Date().toISOString()
+        })]
+      );
+    } catch (_) { /* log no crítico */ }
 
     res.status(201).json({
       success: true,
@@ -524,6 +527,128 @@ const changeUsername = async (req, res, next) => {
 };
 
 /**
+ * Obtener permisos de un usuario
+ */
+const getUserPermissions = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const result = await query('SELECT id, username, role, permissions FROM users WHERE id = $1', [userId]);
+    if (result.rows.length === 0) throw new AppError('Usuario no encontrado', 404);
+    res.json({ success: true, data: { user: result.rows[0] } });
+  } catch (error) { next(error); }
+};
+
+/**
+ * Actualizar permisos de un usuario (solo admin)
+ * No se pueden modificar los permisos del admin que hace la petición
+ */
+const updateUserPermissions = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { permissions } = req.body;
+
+    if (!permissions || typeof permissions !== 'object') {
+      throw new AppError('El objeto de permisos es requerido', 400);
+    }
+
+    // Validar que las claves sean válidas
+    const invalidKeys = Object.keys(permissions).filter(k => !ALL_PERMISSIONS.includes(k));
+    if (invalidKeys.length > 0) {
+      throw new AppError(`Permisos no válidos: ${invalidKeys.join(', ')}`, 400);
+    }
+
+    // Verificar que el usuario existe
+    const userResult = await query('SELECT id, username, role FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) throw new AppError('Usuario no encontrado', 404);
+
+    // Hacer merge con permisos existentes (para actualizar parcialmente)
+    const updated = await query(
+      'UPDATE users SET permissions = permissions || $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, username, role, permissions',
+      [JSON.stringify(permissions), userId]
+    );
+
+    // Log de cambio de permisos
+    try {
+      await query(
+        'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+        [null, 'permissions_updated', req.user.id, JSON.stringify({
+          target_user_id: userId,
+          target_username: userResult.rows[0].username,
+          changed_permissions: permissions,
+          ip: req.ip,
+          timestamp: new Date().toISOString(),
+        })]
+      );
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `Permisos de "${userResult.rows[0].username}" actualizados`,
+      data: { user: updated.rows[0] },
+    });
+  } catch (error) { next(error); }
+};
+
+/**
+ * Reemplazar todos los permisos de un usuario
+ */
+const setUserPermissions = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { permissions } = req.body;
+
+    if (!permissions || typeof permissions !== 'object') {
+      throw new AppError('El objeto de permisos es requerido', 400);
+    }
+
+    const userResult = await query('SELECT id, username, role FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) throw new AppError('Usuario no encontrado', 404);
+
+    const updated = await query(
+      'UPDATE users SET permissions = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, username, role, permissions',
+      [JSON.stringify(permissions), userId]
+    );
+
+    try {
+      await query(
+        'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+        [null, 'permissions_set', req.user.id, JSON.stringify({
+          target_user_id: userId,
+          target_username: userResult.rows[0].username,
+          ip: req.ip,
+          timestamp: new Date().toISOString(),
+        })]
+      );
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `Permisos de "${userResult.rows[0].username}" guardados exitosamente`,
+      data: { user: updated.rows[0] },
+    });
+  } catch (error) { next(error); }
+};
+
+/**
+ * Obtener definición de todos los permisos disponibles (para la UI del checklist)
+ */
+const getPermissionDefinitions = async (req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      data: {
+        modules: PERMISSION_MODULES,
+        allPermissions: ALL_PERMISSIONS,
+        defaults: {
+          admin: DEFAULT_PERMISSIONS('admin'),
+          operator: DEFAULT_PERMISSIONS('operator'),
+        },
+      },
+    });
+  } catch (error) { next(error); }
+};
+
+/**
  * Obtener información del usuario actual
  */
 const getCurrentUser = async (req, res, next) => {
@@ -597,4 +722,8 @@ module.exports = {
   createUser,
   changeUserPassword,
   deleteUser,
+  getUserPermissions,
+  updateUserPermissions,
+  setUserPermissions,
+  getPermissionDefinitions,
 };

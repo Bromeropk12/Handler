@@ -14,6 +14,7 @@ import {
   Squares2X2Icon,
   CubeIcon,
   CircleStackIcon,
+  UsersIcon,
 } from '@heroicons/react/24/outline';
 
 const navItems = [

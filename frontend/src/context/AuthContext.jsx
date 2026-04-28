@@ -98,13 +98,22 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const hasRole = role => {
-    return user?.role === role;
+  const hasRole = role => user?.role === role;
+  const isAdmin = () => hasRole('admin');
+
+  /**
+   * Verificar si el usuario tiene un permiso específico.
+   * Los admins con todos los permisos explícitamente verdaderos siempre pasan.
+   * @param {string} permKey - ej: 'samples.delete'
+   */
+  const hasPermission = (permKey) => {
+    if (!user) return false;
+    const perms = user.permissions || {};
+    return perms[permKey] === true;
   };
 
-  const isAdmin = () => {
-    return hasRole('admin');
-  };
+  const canAny = (...keys) => keys.some(k => hasPermission(k));
+  const canAll = (...keys) => keys.every(k => hasPermission(k));
 
   const value = {
     user,
@@ -115,6 +124,9 @@ export const AuthProvider = ({ children }) => {
     resetPassword,
     hasRole,
     isAdmin,
+    hasPermission,
+    canAny,
+    canAll,
     updateUser,
     refreshUser,
   };

@@ -4,7 +4,12 @@
  */
 
 const express = require('express');
-const { login, resetPassword, getCurrentUser, verifyToken, changePassword, changeUsername, listUsers, createUser, changeUserPassword, deleteUser, requireAdmin } = require('./controller');
+const {
+  login, resetPassword, getCurrentUser, verifyToken, changePassword,
+  changeUsername, listUsers, createUser, changeUserPassword, deleteUser,
+  requireAdmin, getUserPermissions, updateUserPermissions, setUserPermissions,
+  getPermissionDefinitions,
+} = require('./controller');
 
 const router = express.Router();
 
@@ -61,5 +66,29 @@ router.put('/change-username', verifyToken, requireAdmin, changeUsername);
  * Eliminar un usuario (requiere admin)
  */
 router.delete('/users/:userId', verifyToken, requireAdmin, deleteUser);
+
+/**
+ * GET /api/auth/permissions/definitions
+ * Obtener la lista completa de permisos disponibles con descripciones
+ */
+router.get('/permissions/definitions', verifyToken, requireAdmin, getPermissionDefinitions);
+
+/**
+ * GET /api/auth/users/:userId/permissions
+ * Obtener permisos de un usuario específico
+ */
+router.get('/users/:userId/permissions', verifyToken, requireAdmin, getUserPermissions);
+
+/**
+ * PATCH /api/auth/users/:userId/permissions
+ * Actualizar permisos parcialmente (merge)
+ */
+router.patch('/users/:userId/permissions', verifyToken, requireAdmin, updateUserPermissions);
+
+/**
+ * PUT /api/auth/users/:userId/permissions
+ * Reemplazar todos los permisos de un usuario
+ */
+router.put('/users/:userId/permissions', verifyToken, requireAdmin, setUserPermissions);
 
 module.exports = router;

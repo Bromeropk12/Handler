@@ -60,6 +60,10 @@ export const authAPI = {
   createUser: apiCircuitBreaker.wrap('auth/users', data => api.post('/auth/users', data)),
   changeUserPassword: apiCircuitBreaker.wrap('auth/change-user-password', (userId, data) => api.put(`/auth/users/${userId}/password`, data)),
   deleteUser: apiCircuitBreaker.wrap('auth/delete-user', userId => api.delete(`/auth/users/${userId}`)),
+  getUserPermissions: (userId) => api.get(`/auth/users/${userId}/permissions`),
+  updateUserPermissions: (userId, permissions) => api.patch(`/auth/users/${userId}/permissions`, { permissions }),
+  setUserPermissions: (userId, permissions) => api.put(`/auth/users/${userId}/permissions`, { permissions }),
+  getPermissionDefinitions: () => api.get('/auth/permissions/definitions'),
 };
 
 export const samplesAPI = {
