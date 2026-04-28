@@ -16,8 +16,8 @@ const OccupancyChart = ({ marketLines, chartReady }) => {
   const sortedData = [...marketLines].sort((a, b) => b.occupancy - a.occupancy);
 
   return (
-    <div className="h-full min-h-[350px]">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full h-full min-h-[350px]" style={{ minWidth: 0, minHeight: 0 }}>
+      <ResponsiveContainer width="100%" height={350}>
         <BarChart
           data={sortedData}
           margin={{ top: 20, right: 30, left: -10, bottom: 20 }}

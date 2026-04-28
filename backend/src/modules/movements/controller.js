@@ -89,6 +89,10 @@ const getMovements = async (req, res, next) => {
 
         // Si es exportación CSV, obtener todos los datos
         if (export_csv === 'true') {
+            if (req.user.role !== 'admin' && (!req.user.permissions || !req.user.permissions['movements.export'])) {
+                throw new AppError('Acceso denegado. Se requiere permiso: "movements.export"', 403);
+            }
+
             const movementsResult = await query(queryText, params);
 
             // Generar CSV

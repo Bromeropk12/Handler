@@ -338,7 +338,7 @@ const ShelfManagement = () => {
                         <div className="space-y-2">
                           <div className="flex items-center justify-between text-xs">
                             <span className="text-gray-500">Ocupación</span>
-                            <span className={colorScheme.text} font-medium>{shelf.occupancy_percentage || 0}%</span>
+                            <span className={`${colorScheme.text} font-medium`}>{shelf.occupancy_percentage || 0}%</span>
                           </div>
                           <div className="w-full bg-gray-800 rounded-full h-1.5">
                             <div

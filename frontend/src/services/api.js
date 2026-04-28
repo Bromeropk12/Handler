@@ -38,9 +38,17 @@ api.interceptors.response.use(
       window.location.href = '/login';
     }
 
+    // Extraer mensaje de error desde diferentes posibles estructuras del backend
+    let backendMessage = error.response?.data?.error?.message || error.response?.data?.message;
+    
+    // Fallback explícito para errores 403 si el backend no mandó mensaje
+    if (!backendMessage && error.response?.status === 403) {
+      backendMessage = 'Acceso Denegado: No tienes permisos suficientes para realizar esta acción.';
+    }
+
     // Transformar error para mejor manejo
     const customError = {
-      message: error.response?.data?.message || error.message || 'Error desconocido',
+      message: backendMessage || error.message || 'Error desconocido',
       status: error.response?.status || 500,
       data: error.response?.data || null,
     };

@@ -44,6 +44,28 @@ export const AuthProvider = ({ children }) => {
       }
     };
     checkAuth();
+
+    // Polling en segundo plano para refrescar los permisos automáticamente cada 30 segundos
+    const intervalId = setInterval(() => {
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        authAPI.getCurrentUser()
+          .then(response => {
+            const userData = response.data?.data?.user || response.data?.user;
+            if (userData && userData.id) {
+              setUser(userData);
+            }
+          })
+          .catch(() => {
+            // Si el token falló o el usuario fue eliminado, forzar logout
+            localStorage.removeItem('auth_token');
+            setUser(null);
+            setIsAuthenticated(false);
+          });
+      }
+    }, 30000); // 30 segundos
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const updateUser = (userData) => {

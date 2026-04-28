@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { movementsAPI } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { ArrowDownTrayIcon, FunnelIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Modal from '../../components/Modal';
@@ -180,6 +181,7 @@ const MovementsPage = () => {
   const [pagination,    setPagination]    = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
   const [showFilters,   setShowFilters]   = useState(false);
   const [exporting,     setExporting]     = useState(false);
+  const { hasPermission } = useAuth();
 
   // ── Carga de datos ──────────────────────────────────────────────────────
 
@@ -303,14 +305,16 @@ const MovementsPage = () => {
             <FunnelIcon className="w-4 h-4" />
             Filtros{hasActiveFilters ? ' •' : ''}
           </button>
-          <button
-            onClick={handleExportCSV}
-            disabled={exporting}
-            className="btn-primary flex items-center gap-2"
-          >
-            <ArrowDownTrayIcon className="w-4 h-4" />
-            {exporting ? 'Exportando…' : 'Exportar CSV'}
-          </button>
+          {hasPermission('movements.export') && (
+            <button
+              onClick={handleExportCSV}
+              disabled={exporting}
+              className="btn-primary flex items-center gap-2"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4" />
+              {exporting ? 'Exportando…' : 'Exportar CSV'}
+            </button>
+          )}
         </div>
       </div>
 
