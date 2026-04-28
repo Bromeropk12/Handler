@@ -13,6 +13,7 @@ import {
   ChevronRightIcon,
   Squares2X2Icon,
   CubeIcon,
+  CircleStackIcon,
 } from '@heroicons/react/24/outline';
 
 const navItems = [
@@ -65,7 +66,7 @@ const navItems = [
 ];
 
 const Sidebar = ({ collapsed, onToggle }) => {
-  const { logout } = useAuth();
+  const { logout, isAdmin } = useAuth();
   const location = useLocation();
 
   const isActive = (path, exact) => {
@@ -146,6 +147,21 @@ const Sidebar = ({ collapsed, onToggle }) => {
 
         {/* Bottom Section */}
         <div className="border-t border-gray-700/50 py-3 px-3 space-y-1 shrink-0">
+          {/* Backup — solo para administradores */}
+          {isAdmin() && (
+            <NavLink
+              to="/backup"
+              className={`
+                ${isActive('/backup') ? 'sidebar-item-active' : 'sidebar-item'}
+                ${collapsed ? 'justify-center px-0' : ''}
+              `}
+              title={collapsed ? 'Backups' : undefined}
+            >
+              <CircleStackIcon className={`w-5 h-5 shrink-0 ${isActive('/backup') ? 'text-handler-red' : ''}`} />
+              {!collapsed && <span className="truncate">Backups</span>}
+            </NavLink>
+          )}
+
           <button
             onClick={logout}
             className={`sidebar-item w-full text-gray-500 hover:text-danger-400 ${collapsed ? 'justify-center px-0' : ''}`}

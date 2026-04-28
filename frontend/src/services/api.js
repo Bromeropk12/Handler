@@ -180,4 +180,14 @@ export const shelfSuppliersAPI = {
   remove: (id) => api.delete(`/shelf-suppliers/${id}`),
 };
 
+export const backupAPI = {
+  getStatus: () => api.get('/backup/status'),
+  listBackups: () => api.get('/backup/list'),
+  createBackup: () => api.post('/backup/create'),
+  restoreBackup: (data) => api.post('/backup/restore', data),
+  deleteBackup: (filename) => api.delete(`/backup/${encodeURIComponent(filename)}`),
+  syncToOneDrive: () => api.post('/backup/sync-onedrive'),
+};
+
 export default api;
+

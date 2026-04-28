@@ -26,6 +26,8 @@ const suppliersRoutes = require('./modules/suppliers/routes');
 const alertsRoutes = require('./modules/alerts/routes');
 const marketLinesRoutes = require('./modules/market-lines/routes');
 const shelfSuppliersRoutes = require('./modules/shelf-suppliers/routes');
+const backupRoutes = require('./modules/backup/routes');
+const { startBackupScheduler } = require('./services/backupScheduler');
 
 // Importar middlewares
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -147,6 +149,7 @@ app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/alerts', alertsRoutes);
 app.use('/api/market-lines', marketLinesRoutes);
 app.use('/api/shelf-suppliers', shelfSuppliersRoutes);
+app.use('/api/backup', backupRoutes);
 
 // Middleware de manejo de errores
 app.use(notFound);
@@ -158,6 +161,9 @@ app.listen(PORT, HOST, () => {
   loggerInstance.info(`Handler TrackSamples Backend corriendo en ${HOST}:${PORT}`);
   loggerInstance.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   loggerInstance.info(`CORS: Aceptando localhost y IPs de red local (192.168.x.x, 10.x.x.x, 172.16-31.x.x)`);
+
+  // Iniciar scheduler de backups automáticos
+  startBackupScheduler();
 });
 
 // Manejo de señales de terminación

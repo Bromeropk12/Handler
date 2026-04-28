@@ -12,8 +12,26 @@ import DispatchPage from './modules/dispatch/DispatchPage';
 import MovementsPage from './modules/movements/MovementsPage';
 import SuppliersPage from './modules/suppliers/SuppliersPage';
 import MarketLinesPage from './modules/market-lines/MarketLinesPage';
+import BackupPage from './modules/backup/BackupPage';
 import LoadingSpinner from './components/LoadingSpinner';
 import ErrorBoundary from './components/ErrorBoundary';
+
+// Admin-only route wrapper
+const AdminRoute = ({ children }) => {
+  const { isAuthenticated, loading, isAdmin } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-500">
+        <LoadingSpinner size="large" text="Verificando permisos..." />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAdmin()) return <Navigate to="/" replace />;
+  return children;
+};
 
 // Protected route wrapper
 const ProtectedRoute = ({ children }) => {
@@ -63,6 +81,18 @@ const AppContent = () => {
         <Route path="/movements" element={<MovementsPage />} />
         <Route path="/suppliers" element={<SuppliersPage />} />
         <Route path="/market-lines" element={<MarketLinesPage />} />
+      </Route>
+
+      {/* Backup — Solo administradores */}
+      <Route
+        path="/backup"
+        element={
+          <AdminRoute>
+            <MainLayout />
+          </AdminRoute>
+        }
+      >
+        <Route index element={<BackupPage />} />
       </Route>
 
       {/* Fallback */}
