@@ -5,7 +5,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../../middleware/auth');
+const { verifyToken } = require('../auth/controller');
+const { requirePermission } = require('../../middleware/permissions');
 const {
   getExpiredAlerts,
   getExpiringAlerts,
@@ -13,24 +14,24 @@ const {
 } = require('./controller');
 
 // Aplicar middleware de autenticación a todas las rutas
-router.use(authenticate);
+router.use(verifyToken);
 
 /**
  * GET /api/alerts/expired
  * Obtener productos vencidos
  */
-router.get('/expired', getExpiredAlerts);
+router.get('/expired', requirePermission('alerts.view'), getExpiredAlerts);
 
 /**
  * GET /api/alerts/expiring?days=30
  * Obtener productos por vencer
  */
-router.get('/expiring', getExpiringAlerts);
+router.get('/expiring', requirePermission('alerts.view'), getExpiringAlerts);
 
 /**
  * GET /api/alerts/summary
  * Resumen combinado de todas las alertas
  */
-router.get('/summary', getAlertsSummary);
+router.get('/summary', requirePermission('alerts.view'), getAlertsSummary);
 
 module.exports = router;

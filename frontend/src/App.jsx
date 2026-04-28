@@ -53,6 +53,35 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+// Inline "No Access" screen — shown instead of redirecting to avoid infinite loops
+const NoAccess = ({ permission }) => (
+  <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-4 text-center px-6">
+    <div className="w-20 h-20 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-2">
+      <svg className="w-10 h-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+          d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+      </svg>
+    </div>
+    <h2 className="text-xl font-bold text-white">Acceso Denegado</h2>
+    <p className="text-gray-400 text-sm max-w-xs">
+      No tienes permiso para acceder a este módulo.<br/>
+      <span className="text-gray-600 text-xs font-mono mt-1 block">{permission}</span>
+    </p>
+    <p className="text-gray-600 text-xs">Contacta al administrador para solicitar acceso.</p>
+  </div>
+);
+
+// Permission route wrapper — renders NoAccess inline instead of redirecting
+const PermissionRoute = ({ children, requiredPermission }) => {
+  const { hasPermission, loading } = useAuth();
+  // Don't render anything while auth is loading (ProtectedRoute handles the spinner)
+  if (loading) return null;
+  if (!hasPermission(requiredPermission)) {
+    return <NoAccess permission={requiredPermission} />;
+  }
+  return children;
+};
+
 // App content with routes
 const AppContent = () => {
   const { isAuthenticated } = useAuth();
@@ -73,15 +102,15 @@ const AppContent = () => {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/samples" element={<SamplesPage />} />
-        <Route path="/warehouse" element={<WarehousePage />} />
-        <Route path="/shelves" element={<ShelfManagement />} />
-        <Route path="/dispensing" element={<DispensingPage />} />
-        <Route path="/dispatch" element={<DispatchPage />} />
-        <Route path="/movements" element={<MovementsPage />} />
-        <Route path="/suppliers" element={<SuppliersPage />} />
-        <Route path="/market-lines" element={<MarketLinesPage />} />
+        <Route path="/" element={<PermissionRoute requiredPermission="dashboard.view"><DashboardPage /></PermissionRoute>} />
+        <Route path="/samples" element={<PermissionRoute requiredPermission="samples.view"><SamplesPage /></PermissionRoute>} />
+        <Route path="/warehouse" element={<PermissionRoute requiredPermission="warehouse.view"><WarehousePage /></PermissionRoute>} />
+        <Route path="/shelves" element={<PermissionRoute requiredPermission="warehouse.view"><ShelfManagement /></PermissionRoute>} />
+        <Route path="/dispensing" element={<PermissionRoute requiredPermission="dispensing.view"><DispensingPage /></PermissionRoute>} />
+        <Route path="/dispatch" element={<PermissionRoute requiredPermission="dispatch.view"><DispatchPage /></PermissionRoute>} />
+        <Route path="/movements" element={<PermissionRoute requiredPermission="movements.view"><MovementsPage /></PermissionRoute>} />
+        <Route path="/suppliers" element={<PermissionRoute requiredPermission="suppliers.view"><SuppliersPage /></PermissionRoute>} />
+        <Route path="/market-lines" element={<PermissionRoute requiredPermission="market_lines.view"><MarketLinesPage /></PermissionRoute>} />
       </Route>
 
       {/* Backup — Solo administradores */}

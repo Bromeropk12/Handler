@@ -182,7 +182,7 @@ const getDispatchHistory = async (req, res, next) => {
         gs.expiration_date,
         u.username as dispatched_by
       FROM movements m
-      JOIN global_samples gs ON m.sample_id = gs.id
+      LEFT JOIN global_samples gs ON m.sample_id = gs.id
       LEFT JOIN users u ON m.user_id = u.id
       WHERE m.action_type = 'dispatched'
       ORDER BY m.timestamp DESC
@@ -198,9 +198,9 @@ const getDispatchHistory = async (req, res, next) => {
       try { details = JSON.parse(row.details); } catch {}
       return {
         id: row.id,
-        product_name: row.product_name,
-        lot: row.lot,
-        expiration_date: row.expiration_date,
+        product_name: row.product_name || details.product_name || 'Desconocido',
+        lot: row.lot || details.lot || 'Desconocido',
+        expiration_date: row.expiration_date || details.expiration_date || null,
         qr_code: details.qr_code || 'N/A',
         shelf_name: details.shelf_name || 'Sin asignar',
         dispatched_by: row.dispatched_by || details.dispatched_by || 'Sistema',

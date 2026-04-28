@@ -87,8 +87,15 @@ const login = async (req, res, next) => {
       throw new AppError('Usuario o contraseña incorrectos', 401);
     }
 
+    // Cargar permisos actualizados desde la BD
+    const userWithPerms = await query(
+      'SELECT id, username, role, permissions FROM users WHERE id = $1',
+      [user.id]
+    );
+    const fullUser = userWithPerms.rows[0];
+
     // Generar token
-    const token = generateToken(user);
+    const token = generateToken(fullUser);
 
     // Set HTTPOnly Cookie
     res.cookie('auth_token', token, {
@@ -103,11 +110,12 @@ const login = async (req, res, next) => {
       message: 'Login exitoso',
       data: {
         user: {
-          id: user.id,
-          username: user.username,
-          role: user.role
+          id: fullUser.id,
+          username: fullUser.username,
+          role: fullUser.role,
+          permissions: fullUser.permissions || {}
         },
-        token // We keep token in response for backward compatibility but UI should rely on cookie
+        token
       }
     });
 
@@ -355,16 +363,18 @@ const changeUserPassword = async (req, res, next) => {
       [hashedNewPassword, userId]
     );
 
-    // Log de cambio de contraseña por admin
-    await query(
-      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
-      [null, 'admin_password_change', req.user.id, JSON.stringify({
-        target_user_id: userId,
-        target_username: userExists.rows[0].username,
-        ip: req.ip,
-        timestamp: new Date().toISOString()
-      })]
-    );
+    // Log de cambio de contraseña por admin (no crítico)
+    try {
+      await query(
+        'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+        [null, 'admin_password_change', req.user.id, JSON.stringify({
+          target_user_id: userId,
+          target_username: userExists.rows[0].username,
+          ip: req.ip,
+          timestamp: new Date().toISOString()
+        })]
+      );
+    } catch (_) { /* log no crítico */ }
 
     res.json({
       success: true,
@@ -689,16 +699,18 @@ const deleteUser = async (req, res, next) => {
     // Eliminar usuario
     await query('DELETE FROM users WHERE id = $1', [userId]);
 
-    // Log de eliminación de usuario
-    await query(
-      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
-      [null, 'user_deleted', req.user.id, JSON.stringify({
-        deleted_user_id: userId,
-        deleted_username: userExists.rows[0].username,
-        ip: req.ip,
-        timestamp: new Date().toISOString()
-      })]
-    );
+    // Log de eliminación de usuario (no crítico)
+    try {
+      await query(
+        'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+        [null, 'user_deleted', req.user.id, JSON.stringify({
+          deleted_user_id: userId,
+          deleted_username: userExists.rows[0].username,
+          ip: req.ip,
+          timestamp: new Date().toISOString()
+        })]
+      );
+    } catch (_) { /* log no crítico */ }
 
     res.json({
       success: true,

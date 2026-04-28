@@ -5,13 +5,13 @@
 
 const express = require('express');
 const { asyncErrorHandler } = require('../../middleware/errorHandler');
-const {
-  getMovements,
-  getMovementTypes,
-  getMovementsSummary
-} = require('./controller');
+const { getMovements, getMovementTypes, getMovementsSummary } = require('./controller');
+const { verifyToken } = require('../auth/controller');
+const { requirePermission } = require('../../middleware/permissions');
 
 const router = express.Router();
+
+router.use(verifyToken);
 
 /**
  * GET /api/movements
@@ -26,13 +26,13 @@ const router = express.Router();
  * - limit: Elementos por página (default: 50)
  * - export_csv: Exportar como CSV (true/false)
  */
-router.get('/', asyncErrorHandler(getMovements));
+router.get('/', requirePermission('movements.view'), asyncErrorHandler(getMovements));
 
 /**
  * GET /api/movements/types
  * Obtener tipos de movimientos disponibles
  */
-router.get('/types', asyncErrorHandler(getMovementTypes));
+router.get('/types', requirePermission('movements.view'), asyncErrorHandler(getMovementTypes));
 
 /**
  * GET /api/movements/summary
@@ -41,6 +41,6 @@ router.get('/types', asyncErrorHandler(getMovementTypes));
  * - start_date: Fecha de inicio (YYYY-MM-DD)
  * - end_date: Fecha de fin (YYYY-MM-DD)
  */
-router.get('/summary', asyncErrorHandler(getMovementsSummary));
+router.get('/summary', requirePermission('movements.view'), asyncErrorHandler(getMovementsSummary));
 
 module.exports = router;

@@ -5,7 +5,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate, authorize } = require('../../middleware/auth');
+const { verifyToken } = require('../auth/controller');
+const { requirePermission } = require('../../middleware/permissions');
 const {
   getShelfSuppliers,
   addShelfSupplier,
@@ -14,30 +15,30 @@ const {
 } = require('./controller');
 
 // Aplicar middleware de autenticación a todas las rutas
-router.use(authenticate);
+router.use(verifyToken);
 
 /**
  * GET /api/shelf-suppliers/shelf/:shelfId
  * Obtener proveedores de un anaquel
  */
-router.get('/shelf/:shelfId', getShelfSuppliers);
+router.get('/shelf/:shelfId', requirePermission('warehouse.view'), getShelfSuppliers);
 
 /**
  * POST /api/shelf-suppliers
  * Vincular proveedor a anaquel (solo admin)
  */
-router.post('/', authorize('admin'), addShelfSupplier);
+router.post('/', requirePermission('warehouse.edit_shelf'), addShelfSupplier);
 
 /**
  * PUT /api/shelf-suppliers/:id
  * Actualizar proveedor principal (solo admin)
  */
-router.put('/:id', authorize('admin'), updateShelfSupplier);
+router.put('/:id', requirePermission('warehouse.edit_shelf'), updateShelfSupplier);
 
 /**
  * DELETE /api/shelf-suppliers/:id
  * Desvincular proveedor de anaquel (solo admin)
  */
-router.delete('/:id', authorize('admin'), removeShelfSupplier);
+router.delete('/:id', requirePermission('warehouse.edit_shelf'), removeShelfSupplier);
 
 module.exports = router;

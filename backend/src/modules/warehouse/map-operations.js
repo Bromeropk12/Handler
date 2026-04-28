@@ -351,6 +351,21 @@ const autoPlaceSamples = async (req, res, next) => {
           WHERE id = $8
         `, [id, autoPos.x, autoPos.y, autoPos.z, sampleData.width, sampleData.height, sampleData.depth, sampleId]);
 
+        await query(`
+          INSERT INTO movements (sample_id, action_type, user_id, details)
+          VALUES ($1, $2, $3, $4)
+        `, [
+          sampleId,
+          'stored',
+          req.user.id,
+          JSON.stringify({
+            type: 'auto_sample_placement',
+            shelf_id: id,
+            position: { x: autoPos.x, y: autoPos.y, z: autoPos.z },
+            dimensions: `${sampleData.width}x${sampleData.height}x${sampleData.depth}`
+          })
+        ]);
+
         placements.push({
           sample_id: sampleId,
           success: true,

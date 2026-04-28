@@ -23,51 +23,60 @@ const navItems = [
     path: '/',
     icon: ChartBarIcon,
     exact: true,
+    permissionKey: 'dashboard.view',
   },
   {
     label: 'Muestras Globales',
     path: '/samples',
     icon: BeakerIcon,
+    permissionKey: 'samples.view',
   },
   {
     label: 'Dispensación',
     path: '/dispensing',
     icon: EyeDropperIcon,
+    permissionKey: 'dispensing.view',
   },
   {
     label: 'Despachos',
     path: '/dispatch',
     icon: TruckIcon,
+    permissionKey: 'dispatch.view',
   },
   {
     label: 'Almacén',
     path: '/warehouse',
     icon: BuildingStorefrontIcon,
+    permissionKey: 'warehouse.view',
   },
   {
     label: 'Anaqueles',
     path: '/shelves',
     icon: CubeIcon,
+    permissionKey: 'warehouse.view',
   },
   {
     label: 'Movimientos',
     path: '/movements',
     icon: ClipboardDocumentListIcon,
+    permissionKey: 'movements.view',
   },
   {
     label: 'Proveedores',
     path: '/suppliers',
     icon: Squares2X2Icon,
+    permissionKey: 'suppliers.view',
   },
   {
     label: 'Líneas de Mercado',
     path: '/market-lines',
     icon: Squares2X2Icon,
+    permissionKey: 'market_lines.view',
   },
 ];
 
 const Sidebar = ({ collapsed, onToggle }) => {
-  const { logout, isAdmin } = useAuth();
+  const { logout, isAdmin, hasPermission } = useAuth();
   const location = useLocation();
 
   const isActive = (path, exact) => {
@@ -115,7 +124,7 @@ const Sidebar = ({ collapsed, onToggle }) => {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto scrollbar-hide py-4 px-3">
           <div className="space-y-1">
-            {navItems.map(item => {
+            {navItems.filter(item => !item.permissionKey || hasPermission(item.permissionKey)).map(item => {
               const Icon = item.icon;
               const active = isActive(item.path, item.exact);
 

@@ -5,7 +5,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate, authorize } = require('../../middleware/auth');
+const { verifyToken } = require('../auth/controller');
+const { requirePermission } = require('../../middleware/permissions');
 const {
   createShelf,
   getShelves,
@@ -22,24 +23,24 @@ const {
 } = require('./controller');
 
 // Aplicar middleware de autenticación a todas las rutas
-router.use(authenticate);
+router.use(verifyToken);
 
 // CRUD de Anaqueles
-router.post('/', authorize('admin'), createShelf);           // Crear anaquel
-router.get('/', getShelves);                                  // Listar anaqueles con filtros
-router.get('/:id', getShelfById);                             // Detalle de anaquel
-router.put('/:id', authorize('admin'), updateShelf);         // Actualizar anaquel
-router.delete('/:id', authorize('admin'), deleteShelf);      // Eliminar anaquel
+router.post('/', requirePermission('warehouse.create_shelf'), createShelf);           // Crear anaquel
+router.get('/', requirePermission('warehouse.view'), getShelves);                                  // Listar anaqueles con filtros
+router.get('/:id', requirePermission('warehouse.view'), getShelfById);                             // Detalle de anaquel
+router.put('/:id', requirePermission('warehouse.edit_shelf'), updateShelf);         // Actualizar anaquel
+router.delete('/:id', requirePermission('warehouse.delete_shelf'), deleteShelf);      // Eliminar anaquel
 
 // Operaciones del Mapa 2D
-router.get('/:id/map', getShelfMap);                          // Obtener mapa completo
-router.post('/:id/place-sample', authorize('operator'), placeSample);    // Colocar muestra
-router.post('/:id/auto-place', authorize('admin'), autoPlaceSamples);    // Auto-colocar múltiples
-router.put('/:id/move-sample', authorize('operator'), moveSample);       // Mover muestra
-router.delete('/:id/remove-sample', authorize('operator'), removeSample); // Quitar muestra
+router.get('/:id/map', requirePermission('warehouse.view'), getShelfMap);                          // Obtener mapa completo
+router.post('/:id/place-sample', requirePermission('warehouse.place_sample'), placeSample);    // Colocar muestra
+router.post('/:id/auto-place', requirePermission('warehouse.place_sample'), autoPlaceSamples);    // Auto-colocar múltiples
+router.put('/:id/move-sample', requirePermission('warehouse.move_sample'), moveSample);       // Mover muestra
+router.delete('/:id/remove-sample', requirePermission('warehouse.remove_sample'), removeSample); // Quitar muestra
 
 // Desfragmentación
-router.post('/:id/defragment', authorize('admin'), defragmentShelf);              // Calcular plan de desfragmentación
-router.post('/:id/defragment/confirm', authorize('admin'), confirmDefragMove);    // Confirmar y ejecutar un movimiento
+router.post('/:id/defragment', requirePermission('warehouse.defragment'), defragmentShelf);              // Calcular plan de desfragmentación
+router.post('/:id/defragment/confirm', requirePermission('warehouse.defragment'), confirmDefragMove);    // Confirmar y ejecutar un movimiento
 
 module.exports = router;

@@ -17,6 +17,7 @@ const {
   getSuppliers,
 } = require('./controller');
 const { verifyToken, requireAdmin } = require('../auth/controller');
+const { requirePermission } = require('../../middleware/permissions');
 
 const router = express.Router();
 
@@ -57,42 +58,42 @@ const upload = multer({
  * GET /api/samples
  * Listar muestras globales con filtros
  */
-router.get('/', verifyToken, getBulkSamples);
+router.get('/', verifyToken, requirePermission('samples.view'), getBulkSamples);
 
 /**
  * GET /api/samples/market-lines
  * Obtener líneas de mercado disponibles
  */
-router.get('/market-lines', verifyToken, getMarketLines);
+router.get('/market-lines', verifyToken, requirePermission('samples.view'), getMarketLines);
 
 /**
  * GET /api/samples/suppliers
  * Obtener proveedores disponibles
  */
-router.get('/suppliers', verifyToken, getSuppliers);
+router.get('/suppliers', verifyToken, requirePermission('samples.view'), getSuppliers);
 
 /**
  * GET /api/samples/:id
  * Obtener muestra global por ID
  */
-router.get('/:id', verifyToken, getBulkSampleById);
+router.get('/:id', verifyToken, requirePermission('samples.view'), getBulkSampleById);
 
 /**
  * POST /api/samples
  * Crear nueva muestra global con upload opcional de CoA
  */
-router.post('/', verifyToken, upload.single('coa_file'), createBulkSample);
+router.post('/', verifyToken, requirePermission('samples.create'), upload.single('coa_file'), createBulkSample);
 
 /**
  * PUT /api/samples/:id
  * Actualizar muestra global
  */
-router.put('/:id', verifyToken, requireAdmin, upload.single('coa_file'), updateBulkSample);
+router.put('/:id', verifyToken, requirePermission('samples.edit'), upload.single('coa_file'), updateBulkSample);
 
 /**
  * DELETE /api/samples/:id
  * Eliminar muestra global
  */
-router.delete('/:id', verifyToken, requireAdmin, deleteBulkSample);
+router.delete('/:id', verifyToken, requirePermission('samples.delete'), deleteBulkSample);
 
 module.exports = router;

@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const { getSuppliers, createSupplier, updateSupplier, deleteSupplier, uploadSupplierLogo } = require('./controller');
 const { verifyToken, requireAdmin } = require('../auth/controller');
+const { requirePermission } = require('../../middleware/permissions');
 
 const router = express.Router();
 
@@ -37,10 +38,10 @@ const logoUpload = multer({
   }
 });
 
-router.get('/', verifyToken, getSuppliers);
-router.post('/', verifyToken, requireAdmin, createSupplier);
-router.put('/:id', verifyToken, requireAdmin, updateSupplier);
-router.delete('/:id', verifyToken, requireAdmin, deleteSupplier);
-router.post('/:id/logo', verifyToken, requireAdmin, logoUpload.single('logo'), uploadSupplierLogo);
+router.get('/', verifyToken, requirePermission('suppliers.view'), getSuppliers);
+router.post('/', verifyToken, requirePermission('suppliers.create'), createSupplier);
+router.put('/:id', verifyToken, requirePermission('suppliers.edit'), updateSupplier);
+router.delete('/:id', verifyToken, requirePermission('suppliers.delete'), deleteSupplier);
+router.post('/:id/logo', verifyToken, requirePermission('suppliers.edit'), logoUpload.single('logo'), uploadSupplierLogo);
 
 module.exports = router;

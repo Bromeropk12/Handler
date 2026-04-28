@@ -18,21 +18,24 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        // No hay token, mostrar login
+        setLoading(false);
+        return;
+      }
       try {
-        const token = localStorage.getItem('auth_token');
-        if (token) {
-          const response = await authAPI.getCurrentUser();
-          const userData = response.data.user;
-          if (userData.role === 'admin') {
-            setUser(userData);
-            setIsAuthenticated(true);
-          } else {
-            localStorage.removeItem('auth_token');
-            setUser(null);
-            setIsAuthenticated(false);
-          }
+        // El backend responde: { success, data: { user } }
+        const response = await authAPI.getCurrentUser();
+        const userData = response.data?.data?.user || response.data?.user;
+        if (!userData || !userData.id) {
+          // La respuesta no contiene un usuario válido
+          throw new Error('Respuesta de usuario inválida');
         }
+        setUser(userData);
+        setIsAuthenticated(true);
       } catch (_error) {
+        // Token inválido, expirado o usuario eliminado → limpiar y pedir login
         localStorage.removeItem('auth_token');
         setUser(null);
         setIsAuthenticated(false);
@@ -50,7 +53,8 @@ export const AuthProvider = ({ children }) => {
   const refreshUser = async () => {
     try {
       const response = await authAPI.getCurrentUser();
-      const userData = response.data.user;
+      const userData = response.data?.data?.user || response.data?.user;
+      if (!userData || !userData.id) throw new Error('Respuesta inválida');
       setUser(userData);
       return { success: true, user: userData };
     } catch (error) {
@@ -103,11 +107,13 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * Verificar si el usuario tiene un permiso específico.
-   * Los admins con todos los permisos explícitamente verdaderos siempre pasan.
+   * Los admins SIEMPRE tienen todos los permisos (bypass total).
    * @param {string} permKey - ej: 'samples.delete'
    */
   const hasPermission = (permKey) => {
     if (!user) return false;
+    // Admins always have full access regardless of permissions column
+    if (user.role === 'admin') return true;
     const perms = user.permissions || {};
     return perms[permKey] === true;
   };
