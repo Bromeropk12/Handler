@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import Badge from '../../components/Badge';
 import Modal from '../../components/Modal';
@@ -36,6 +37,7 @@ const GHS_PICTOGRAM_MAP = {
 const ALL_PICTOGRAMS = Object.keys(GHS_PICTOGRAM_MAP);
 
 const SamplesPage = () => {
+  const location = useLocation();
   const [samples, setSamples] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -82,6 +84,16 @@ const SamplesPage = () => {
     });
     setCoaFile(null);
   };
+
+  // Efecto para leer query params de la URL (cuando vienes desde el dashboard)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const searchParam = params.get('search');
+    const filterParam = params.get('filter');
+
+    if (searchParam) setSearchTerm(searchParam);
+    if (filterParam) setFilters(prev => ({ ...prev, status: filterParam }));
+  }, [location.search]);
 
   const loadSamples = async (page = 1) => {
     try {
@@ -360,6 +372,12 @@ const SamplesPage = () => {
     if (filters.status === 'pending') matchesStatus = s.total_units === 0;
     else if (filters.status === 'dispensed') matchesStatus = s.total_units > 0;
     else if (filters.status === 'expired') matchesStatus = new Date(s.expiration_date) < new Date();
+    else if (filters.status === 'warning') {
+      const expDate = new Date(s.expiration_date);
+      const now = new Date();
+      const diffDays = (expDate - now) / (1000 * 60 * 60 * 24);
+      matchesStatus = diffDays >= 0 && diffDays <= 30;
+    }
 
     return matchesSearch && matchesMarketLine && matchesDangerClass && matchesStatus;
   });
@@ -917,7 +935,8 @@ const SamplesPage = () => {
             <select className="select" value={filters.status} onChange={e => setFilters(prev => ({ ...prev, status: e.target.value }))}>
               <option value="">Todos</option>
               <option value="pending">Pendiente por dispensar</option>
-              <option value="dispensed">Ya dispensada</option>
+              <option value="dispensed">Ya dispensada / Almacenada</option>
+              <option value="warning">Por Vencer (30 días)</option>
               <option value="expired">Vencidas</option>
             </select>
           </div>

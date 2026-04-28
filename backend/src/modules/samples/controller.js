@@ -196,11 +196,19 @@ const getBulkSamples = async (req, res, next) => {
       paramIndex++;
     }
 
-    if (status === 'available') {
-      whereConditions.push('gs.available_units > 0');
-    } else if (status === 'empty') {
-      whereConditions.push('gs.available_units = 0');
-    }
+      if (status === 'available') {
+        whereConditions.push('gs.available_units > 0');
+      } else if (status === 'empty') {
+        whereConditions.push('gs.available_units = 0');
+      } else if (status === 'pending') {
+        whereConditions.push('gs.total_units = 0');
+      } else if (status === 'dispensed') {
+        whereConditions.push('gs.total_units > 0');
+      } else if (status === 'expired') {
+        whereConditions.push('gs.expiration_date < CURRENT_DATE');
+      } else if (status === 'warning') {
+        whereConditions.push("gs.expiration_date >= CURRENT_DATE AND gs.expiration_date <= CURRENT_DATE + INTERVAL '30 days'");
+      }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
