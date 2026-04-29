@@ -93,7 +93,7 @@ const detectOneDrivePath = () => {
 const exportDatabaseToJSON = async () => {
   const tables = [
     'users',
-    'samples',
+    'global_samples',
     'dispensed_samples',
     'shelves',
     'shelf_positions',
@@ -247,6 +247,9 @@ const createBackup = async (req, res, next) => {
  * Restaurar backup (requiere contraseña del admin)
  */
 const restoreBackup = async (req, res, next) => {
+  const { pool } = require('../../services/database');
+  const client = await pool.connect();
+
   try {
     const { filename, password } = req.body;
 
@@ -254,7 +257,7 @@ const restoreBackup = async (req, res, next) => {
       throw new AppError('Nombre de archivo y contraseña son requeridos', 400);
     }
 
-    // Verificar contraseña del admin
+    // Verificar contraseña del admin (fuera de la transacción)
     const userResult = await query(
       'SELECT password_hash FROM users WHERE id = $1',
       [req.user.id]
@@ -273,7 +276,7 @@ const restoreBackup = async (req, res, next) => {
       throw new AppError('Archivo de backup no encontrado', 404);
     }
 
-    // Leer backup
+    // Leer y parsear backup
     const raw = fs.readFileSync(filePath, 'utf8');
     let backupData;
     try {
@@ -282,25 +285,41 @@ const restoreBackup = async (req, res, next) => {
       throw new AppError('El archivo de backup está corrupto o no es válido', 400);
     }
 
-    // ── Restaurar tabla por tabla ──
-    // IMPORTANTE: El orden importa por las foreign keys
+    // ── Compatibilidad hacia atrás ──
+    // Backups antiguos guardaban 'samples' en vez de 'global_samples'
+    if (backupData.tables) {
+      if (!backupData.tables['global_samples'] && backupData.tables['samples']) {
+        backupData.tables['global_samples'] = backupData.tables['samples'];
+        delete backupData.tables['samples'];
+      }
+    }
+
+    // Columnas auto-generadas que PostgreSQL calcula solo (no se pueden insertar)
+    const GENERATED_COLUMNS = {
+      shelves: ['total_capacity'],
+    };
+
+    // Orden de restauración respetando estrictamente foreign keys
     const restoreOrder = [
       'users',
       'market_lines',
       'suppliers',
-      'samples',
-      'shelves',
+      'shelves',           // shelves depends on market_lines
+      'shelf_suppliers',   // depends on shelves, suppliers
+      'global_samples',    // depends on market_lines, suppliers, shelves
+      'dispensed_samples', // depends on global_samples, shelves
       'shelf_positions',
       'shelf_occupancy',
-      'shelf_suppliers',
-      'dispensed_samples',
       'dispatches',
       'dispatch_items',
-      'movements',
+      'movements',         // depends on users
       'alerts',
     ];
 
-    const stats = { restored: {}, skipped: [] };
+    const stats = { restored: {}, skipped: [], errors: [] };
+
+    // ── Iniciar transacción atómica ──
+    await client.query('BEGIN');
 
     for (const table of restoreOrder) {
       const rows = backupData.tables?.[table];
@@ -309,27 +328,50 @@ const restoreBackup = async (req, res, next) => {
         continue;
       }
 
-      try {
-        // Truncar tabla primero (en cascada)
-        await query(`TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE`);
-
-        // Insertar filas
-        for (const row of rows) {
-          const cols = Object.keys(row);
-          const vals = Object.values(row);
-          const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
-          await query(
-            `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
-            vals
-          );
-        }
-        stats.restored[table] = rows.length;
-      } catch (err) {
-        stats.skipped.push(`${table} (${err.message})`);
+      // Verificar si la tabla existe en la BD actual antes de intentar truncar
+      const tableExists = await client.query(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1)",
+        [table]
+      );
+      
+      if (!tableExists.rows[0].exists) {
+        stats.skipped.push(`${table} (no existe en BD)`);
+        continue;
       }
+
+      // Truncar tabla (dentro de la transacción)
+      await client.query(`TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE`);
+
+      let insertedCount = 0;
+      for (const rawRow of rows) {
+        // Clonar para no mutar el original
+        const row = { ...rawRow };
+
+        // Eliminar columnas auto-generadas
+        const generatedCols = GENERATED_COLUMNS[table] || [];
+        for (const col of generatedCols) {
+          delete row[col];
+        }
+
+        const cols = Object.keys(row);
+        if (cols.length === 0) continue;
+
+        const vals = Object.values(row);
+        const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+
+        await client.query(
+          `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
+          vals
+        );
+        insertedCount++;
+      }
+      stats.restored[table] = insertedCount;
     }
 
-    // Log de restauración
+    // Confirmar transacción
+    await client.query('COMMIT');
+
+    // Log de restauración (fuera de la transacción principal)
     try {
       await query(
         'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
@@ -349,7 +391,11 @@ const restoreBackup = async (req, res, next) => {
       data: { stats, backupDate: backupData.generatedAt },
     });
   } catch (error) {
+    // Rollback total si algo falla
+    try { await client.query('ROLLBACK'); } catch (_) {}
     next(error);
+  } finally {
+    client.release();
   }
 };
 

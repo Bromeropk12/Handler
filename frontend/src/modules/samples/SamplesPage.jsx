@@ -17,6 +17,7 @@ import {
   CheckCircleIcon,
   DocumentCheckIcon,
   CloudArrowUpIcon,
+  BarsArrowDownIcon,
 } from '@heroicons/react/24/outline';
 
 const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
@@ -85,6 +86,10 @@ const SamplesPage = () => {
     setCoaFile(null);
   };
 
+  const [sortAlphabetical, setSortAlphabetical] = useState(() => {
+    return localStorage.getItem('handler_sort_alpha') === 'true';
+  });
+
   // Efecto para leer query params de la URL (cuando vienes desde el dashboard)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -108,6 +113,7 @@ const SamplesPage = () => {
       if (filters.market_line_id) params.market_line_id = filters.market_line_id;
       if (filters.ghs_danger_class) params.ghs_danger_class = filters.ghs_danger_class;
       if (filters.status) params.status = filters.status;
+      if (sortAlphabetical) params.sort = 'alphabetical';
 
       const [samplesResp, mlResp, suppResp] = await Promise.all([
         samplesAPI.getBulkSamples(params),
@@ -135,7 +141,7 @@ const SamplesPage = () => {
 
   // Recargar datos cuando cambia página, búsqueda o filtros
   useEffect(() => {
-    const hasSearchOrFilters = searchTerm || filters.market_line_id || filters.ghs_danger_class || filters.status;
+    const hasSearchOrFilters = searchTerm || filters.market_line_id || filters.ghs_danger_class || filters.status || sortAlphabetical;
 
     // Si hay búsqueda/filtros y no estamos en página 1, resetear
     if (hasSearchOrFilters && currentPage !== 1) {
@@ -145,7 +151,7 @@ const SamplesPage = () => {
 
     // Cargar datos para la página actual
     loadSamples(currentPage);
-  }, [currentPage, searchTerm, filters]);
+  }, [currentPage, searchTerm, filters, sortAlphabetical]);
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -646,9 +652,23 @@ const SamplesPage = () => {
             <FunnelIcon className="w-4 h-4 mr-2" />
             Filtros
           </button>
+          <button
+            onClick={() => {
+              const newVal = !sortAlphabetical;
+              setSortAlphabetical(newVal);
+              localStorage.setItem('handler_sort_alpha', newVal ? 'true' : 'false');
+            }}
+            className={`btn-ghost ${sortAlphabetical ? 'text-blue-400 bg-blue-500/10' : ''}`}
+            title="Ordenar alfabéticamente de la A a la Z (Persistente)"
+          >
+            <BarsArrowDownIcon className="w-4 h-4 mr-2" />
+            {sortAlphabetical ? 'Orden: A-Z' : 'Ordenar A-Z'}
+          </button>
           {(filters.market_line_id || filters.ghs_danger_class || filters.status) && (
             <button
-              onClick={() => setFilters({ market_line_id: '', ghs_danger_class: '', status: '' })}
+              onClick={() => {
+                setFilters({ market_line_id: '', ghs_danger_class: '', status: '' });
+              }}
               className="text-xs text-gray-400 hover:text-white"
             >
               Limpiar filtros

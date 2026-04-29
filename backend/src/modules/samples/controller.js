@@ -164,7 +164,8 @@ const getBulkSamples = async (req, res, next) => {
       limit = 10,
       search,
       market_line_id,
-      status // 'available', 'empty', 'all'
+      status, // 'available', 'empty', 'all'
+      sort    // 'alphabetical'
     } = req.query;
 
     // Validar y convertir parámetros
@@ -212,6 +213,11 @@ const getBulkSamples = async (req, res, next) => {
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
+    let orderByClause = 'ORDER BY gs.created_at DESC';
+    if (sort === 'alphabetical') {
+      orderByClause = 'ORDER BY gs.name ASC, gs.created_at DESC';
+    }
+
     const queryText = `
       SELECT
         gs.*,
@@ -228,7 +234,7 @@ const getBulkSamples = async (req, res, next) => {
       LEFT JOIN market_lines ml ON gs.market_line_id = ml.id
       LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
       ${whereClause}
-      ORDER BY gs.created_at DESC
+      ${orderByClause}
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
 
