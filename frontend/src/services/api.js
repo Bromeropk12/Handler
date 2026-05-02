@@ -199,6 +199,8 @@ export const backupAPI = {
   restoreBackup:  (data) => api.post('/backup/restore',   data, { timeout: 300000 }),
   deleteBackup:   (filename) => api.delete(`/backup/${encodeURIComponent(filename)}`),
   syncToOneDrive: () => api.post('/backup/sync-onedrive', null, { timeout: 300000 }),
+  getSettings:    () => api.get('/backup/settings'),
+  updateSettings: (data) => api.put('/backup/settings', data),
 };
 
 export default api;

@@ -94,18 +94,10 @@ const runSchedulerCheck = async () => {
 
 /**
  * Iniciar el scheduler de backups
+ * (Desactivado en Vercel porque Serverless no soporta setInterval persistente)
  */
 const startBackupScheduler = () => {
-  console.log(`[SCHEDULER] 🕐 Iniciando scheduler de backups...`);
-  console.log(`[SCHEDULER]    - Intervalo: cada ${BACKUP_INTERVAL_DAYS} días`);
-  console.log(`[SCHEDULER]    - Hora programada: ${BACKUP_HOUR_BOGOTA}:00pm hora Bogotá`);
-  console.log(`[SCHEDULER]    - Verificación: cada hora`);
-
-  // Primera verificación al iniciar (por si el servidor estuvo apagado durante el tiempo de backup)
-  setTimeout(() => runSchedulerCheck(), 5000);
-
-  // Verificar cada hora
-  setInterval(() => runSchedulerCheck(), CHECK_INTERVAL_MS);
+  console.log(`[SCHEDULER] Scheduler desactivado en entorno Vercel Serverless.`);
 };
 
-module.exports = { startBackupScheduler, runSchedulerCheck };
+module.exports = { startBackupScheduler, runSchedulerCheck: async () => {} };

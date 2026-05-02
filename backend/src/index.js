@@ -43,16 +43,11 @@ const loggerInstance = winston.createLogger({
   ),
   defaultMeta: { service: 'handler-track-samples-backend' },
   transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' }),
+    new winston.transports.Console({
+      format: winston.format.simple(),
+    })
   ],
 });
-
-if (config.nodeEnv !== 'production') {
-  loggerInstance.add(new winston.transports.Console({
-    format: winston.format.simple(),
-  }));
-}
 
 // Crear aplicación Express
 const app = express();

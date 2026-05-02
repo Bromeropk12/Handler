@@ -12,8 +12,6 @@ const { AppError } = require('../../middleware/errorHandler');
 //  CONFIGURACIÓN
 // ─────────────────────────────────────────
 const MAX_BACKUPS = 3;          // Máximo 3 backups → ~60 días
-const BACKUP_INTERVAL_DAYS = 20;
-const BACKUP_HOUR_BOGOTA = 12;  // 12pm hora Bogotá (UTC-5)
 
 // ─────────────────────────────────────────
 //  UTILIDADES
@@ -332,13 +330,24 @@ const getBackupStatus = async (req, res, next) => {
     const countResult = await query('SELECT COUNT(*) FROM backups');
 
     const now = new Date();
+    // Leer config
+    let intervalDays = 20;
+    let hour = 12;
+    try {
+      const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
+      if (configRes.rows.length > 0) {
+        intervalDays = configRes.rows[0].value.interval_days || 20;
+        hour = configRes.rows[0].value.hour || 12;
+      }
+    } catch (_) {}
+
     let daysSinceLast = null;
     let isDue = true;
 
     if (result.rows.length > 0) {
       const ms = now.getTime() - new Date(result.rows[0].created_at).getTime();
       daysSinceLast = Math.floor(ms / (1000 * 60 * 60 * 24));
-      isDue = daysSinceLast >= BACKUP_INTERVAL_DAYS;
+      isDue = daysSinceLast >= intervalDays;
     }
 
     res.json({
@@ -346,12 +355,13 @@ const getBackupStatus = async (req, res, next) => {
       data: {
         totalBackups: parseInt(countResult.rows[0].count),
         maxBackups: MAX_BACKUPS,
-        intervalDays: BACKUP_INTERVAL_DAYS,
+        intervalDays: intervalDays,
+        hour: hour,
         isDue,
         daysSinceLast,
         lastBackup: result.rows.length > 0 ? result.rows[0].created_at : null,
         storageType: 'supabase-cloud',
-        schedulerInfo: `Backup automático cada ${BACKUP_INTERVAL_DAYS} días a las 12:00pm hora Bogotá`,
+        schedulerInfo: `Backup automático cada ${intervalDays} días a las ${hour}:00 hora Bogotá`,
       },
     });
   } catch (error) {
@@ -367,20 +377,88 @@ const syncToOneDrive = async (req, res) => {
   });
 };
 
-// Función interna para backup automático (scheduler)
-const createAutomaticBackup = async () => {
+/**
+ * Obtener la configuración actual de backups
+ */
+const getSettings = async (req, res, next) => {
   try {
-    const filename = generateBackupFilename();
-    const data = await exportDatabaseToJSON();
-    data.manual = false;
-    data.createdBy = 'system-scheduler';
+    const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
+    const config = configRes.rows.length > 0 ? configRes.rows[0].value : { interval_days: 20, hour: 12 };
+    res.json({ success: true, data: config });
+  } catch (err) {
+    next(err);
+  }
+};
 
-    const jsonStr = JSON.stringify(data);
+/**
+ * Actualizar la configuración de backups
+ */
+const updateSettings = async (req, res, next) => {
+  try {
+    const { interval_days, hour } = req.body;
+    if (!interval_days || typeof interval_days !== 'number' || interval_days < 1) {
+      throw new AppError('interval_days debe ser un número positivo', 400);
+    }
+    if (typeof hour !== 'number' || hour < 0 || hour > 23) {
+      throw new AppError('hour debe estar entre 0 y 23', 400);
+    }
+
+    const value = JSON.stringify({ interval_days, hour });
+    
+    await query(`
+      INSERT INTO settings (key, value)
+      VALUES ('backup_config', $1::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = $1::jsonb, updated_at = CURRENT_TIMESTAMP
+    `, [value]);
+
+    res.json({ success: true, message: 'Configuración guardada exitosamente' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Endpoint de Vercel Cron
+ */
+const runCronJob = async (req, res, next) => {
+  try {
+    // Leer config
+    let intervalDays = 20;
+    let hour = 12;
+    try {
+      const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
+      if (configRes.rows.length > 0) {
+        intervalDays = configRes.rows[0].value.interval_days || 20;
+        hour = configRes.rows[0].value.hour || 12;
+      }
+    } catch (_) {}
+
+    // 1. Validar hora (Opcional - se omite para compatibilidad con plan Hobby de Vercel)
+    // El backup se ejecutará en la primera oportunidad una vez cumplido el intervalo de días.
+    const now = new Date();
+    const bogota = new Date(now.getTime() - 5 * 60 * 60 * 1000);
+    const currentHour = bogota.getUTCHours();
+    console.log(`[CRON] Verificando backup. Hora Bogotá: ${currentHour}, Intervalo: ${intervalDays} días`);
+
+    // 2. Validar intervalo de días
+    const result = await query('SELECT created_at FROM backups ORDER BY created_at DESC LIMIT 1');
+    if (result.rows.length > 0) {
+      const lastDate = new Date(result.rows[0].created_at);
+      const daysSinceLast = (now - lastDate) / (1000 * 60 * 60 * 24);
+      if (daysSinceLast < intervalDays) {
+        return res.json({ success: true, message: `Aún no han pasado ${intervalDays} días desde el último backup.` });
+      }
+    }
+
+    // Crear el backup
+    const filename = generateBackupFilename();
+    const fullData = await exportDatabaseToJSON();
+    const jsonStr = JSON.stringify(fullData);
     const sizeBytes = Buffer.byteLength(jsonStr, 'utf8');
 
     await query(
       'INSERT INTO backups (filename, size_bytes, data, created_by, manual) VALUES ($1, $2, $3::jsonb, $4, $5)',
-      [filename, sizeBytes, jsonStr, 'system-scheduler', false]
+      [filename, sizeBytes, jsonStr, 'vercel-cron', false]
     );
 
     // Rotar
@@ -392,11 +470,10 @@ const createAutomaticBackup = async () => {
       }
     }
 
-    console.log(`[BACKUP] Backup automático creado en Supabase: ${filename}`);
-    return { success: true, filename };
+    return res.json({ success: true, message: 'Backup automático generado', filename });
   } catch (err) {
-    console.error('[BACKUP] Error en backup automático:', err.message);
-    return { success: false, error: err.message };
+    console.error('[CRON] Error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
@@ -407,7 +484,7 @@ module.exports = {
   deleteBackup,
   syncToOneDrive,
   getBackupStatus,
-  createAutomaticBackup,
-  BACKUP_INTERVAL_DAYS,
-  BACKUP_HOUR_BOGOTA,
+  getSettings,
+  updateSettings,
+  runCronJob,
 };

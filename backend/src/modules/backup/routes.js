@@ -16,8 +16,20 @@ const { verifyToken, requireAdmin } = require('../auth/controller');
 
 const router = express.Router();
 
-// Todas las rutas de backup requieren token + rol admin
+// Rutas públicas / cron (Protegidas por Vercel Cron Secret)
+const { runCronJob, getSettings, updateSettings } = require('./controller');
+router.get('/cron', runCronJob);
+
+// Todas las demás rutas de backup requieren token + rol admin
 router.use(verifyToken, requireAdmin);
+
+/**
+ * GET /api/backup/settings
+ * PUT /api/backup/settings
+ */
+router.route('/settings')
+  .get(getSettings)
+  .put(updateSettings);
 
 /**
  * GET /api/backup/status

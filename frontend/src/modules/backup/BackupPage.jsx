@@ -129,29 +129,31 @@ const RestoreModal = ({ backup, onConfirm, onCancel, loading }) => {
 };
 
 // ─── Restore Progress Overlay ───────────────────────────────────────────────
-const RestoreProgressOverlay = ({ elapsed }) => (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm">
-    <div className="bg-surface-400 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-8 text-center space-y-5">
-      <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto">
-        <ArrowPathIcon className="w-9 h-9 text-amber-400 animate-spin" />
-      </div>
-      <div>
-        <h3 className="text-white font-bold text-lg">Restaurando base de datos...</h3>
-        <p className="text-gray-400 text-sm mt-1">
-          Este proceso puede tardar entre <strong className="text-white">30 y 90 segundos</strong>.<br />
-          No cierre la aplicación.
+const RestoreProgressOverlay = ({ elapsed }) => {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm">
+      <div className="bg-surface-400 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-8 text-center space-y-5">
+        <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto">
+          <ArrowPathIcon className="w-9 h-9 text-amber-400 animate-spin" />
+        </div>
+        <div>
+          <h3 className="text-white font-bold text-lg">Restaurando base de datos...</h3>
+          <p className="text-gray-400 text-sm mt-1">
+            Este proceso puede tardar entre <strong className="text-white">30 y 90 segundos</strong>.<br />
+            No cierre la aplicación.
+          </p>
+        </div>
+        <div className="bg-surface-300 rounded-xl px-6 py-3">
+          <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Tiempo transcurrido</p>
+          <p className="text-2xl font-mono font-bold text-amber-400">{elapsed}s</p>
+        </div>
+        <p className="text-gray-500 text-xs">
+          ⚠️ La sesión se reiniciará automáticamente al finalizar
         </p>
       </div>
-      <div className="bg-surface-300 rounded-xl px-6 py-3">
-        <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Tiempo transcurrido</p>
-        <p className="text-2xl font-mono font-bold text-amber-400">{elapsed}s</p>
-      </div>
-      <p className="text-gray-500 text-xs">
-        ⚠️ La sesión se reiniciará automáticamente al finalizar
-      </p>
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 const BackupPage = () => {
@@ -162,6 +164,10 @@ const BackupPage = () => {
   const [notification, setNotif]    = useState(null);
   const [restoreTarget, setRestore] = useState(null);
   const [restoreElapsed, setElapsed] = useState(0);
+  
+  // Settings state
+  const [settings, setSettings] = useState({ interval_days: 20, hour: 12 });
+  const [isEditingSettings, setIsEditing] = useState(false);
 
   const notify = (type, msg) => {
     setNotif({ type, msg });
@@ -171,12 +177,14 @@ const BackupPage = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [statusRes, listRes] = await Promise.all([
+      const [statusRes, listRes, settingsRes] = await Promise.all([
         backupAPI.getStatus(),
         backupAPI.listBackups(),
+        backupAPI.getSettings(),
       ]);
       setStatus(statusRes.data.data);
       setBackups(listRes.data.data.backups);
+      setSettings(settingsRes.data.data);
     } catch (err) {
       notify('danger', err.message || 'Error al cargar información de backups');
     } finally {
@@ -185,6 +193,21 @@ const BackupPage = () => {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const handleUpdateSettings = async (e) => {
+    e.preventDefault();
+    setAction('settings');
+    try {
+      await backupAPI.updateSettings(settings);
+      notify('success', 'Configuración de backup actualizada correctamente');
+      setIsEditing(false);
+      loadData();
+    } catch (err) {
+      notify('danger', err.message || 'Error al actualizar configuración');
+    } finally {
+      setAction('');
+    }
+  };
 
   // ── Crear Backup ──────────────────────────────────────────────────────────
   const handleCreate = async () => {
@@ -305,24 +328,34 @@ const BackupPage = () => {
       )}
 
       {/* ── Encabezado ── */}
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-handler-red/30 to-handler-red/10 border border-handler-red/30 flex items-center justify-center">
-          <CircleStackIcon className="w-7 h-7 text-handler-red" />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-handler-red/30 to-handler-red/10 border border-handler-red/30 flex items-center justify-center">
+            <CircleStackIcon className="w-7 h-7 text-handler-red" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Sistema de Backups</h1>
+            <p className="text-gray-400 text-sm">Respaldo y restauración de la base de datos — Solo Administradores</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-white">Sistema de Backups</h1>
-          <p className="text-gray-400 text-sm">Respaldo y restauración de la base de datos — Solo Administradores</p>
-        </div>
+        <button
+          onClick={loadData}
+          disabled={loading}
+          className="btn-secondary px-4 py-2 flex items-center gap-2"
+        >
+          <ArrowPathIcon className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          Recargar
+        </button>
       </div>
 
       {/* ── Aviso importante ── */}
       <Alert type="info">
-        <p className="font-semibold mb-1">ℹ️ Cómo funciona el sistema de backups</p>
+        <p className="font-semibold mb-1">ℹ️ Cómo funciona el sistema de backups cloud</p>
         <ul className="text-sm space-y-1 list-disc list-inside">
-          <li>El sistema genera un backup <strong>automático cada 20 días a las 12:00pm</strong> (hora Bogotá).</li>
-          <li>Se conservan hasta <strong>3 backups</strong> (≈ 60 días de historial). El más antiguo se elimina automáticamente.</li>
-          <li>Los backups se guardan en la carpeta <code className="bg-black/30 px-1 rounded text-xs">Handler/backups/</code> del programa.</li>
-          <li>Puede sincronizarlos con <strong>OneDrive</strong> usando el botón de nube.</li>
+          <li>El sistema genera un backup <strong>automático según la configuración establecida</strong> (actualmente cada {status?.intervalDays} días).</li>
+          <li>Los respaldos se guardan de forma segura en la base de datos de <strong>Supabase</strong>.</li>
+          <li>Se conservan hasta <strong>3 backups</strong>. El más antiguo se elimina automáticamente.</li>
+          <li>Usted puede descargar o restaurar cualquier backup del historial en cualquier momento.</li>
         </ul>
       </Alert>
 
@@ -331,173 +364,211 @@ const BackupPage = () => {
           <ArrowPathIcon className="w-8 h-8 text-handler-red animate-spin" />
         </div>
       ) : (
-        <>
-          {/* ── Tarjetas de estado ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Backups guardados */}
-            <div className="bg-surface-400 border border-gray-700/50 rounded-xl p-4 space-y-1">
-              <p className="text-gray-400 text-xs uppercase tracking-wider">Backups Guardados</p>
-              <p className="text-3xl font-bold text-white">{status?.totalBackups ?? 0}<span className="text-gray-500 text-lg">/{status?.maxBackups ?? 3}</span></p>
-            </div>
-            {/* Último backup */}
-            <div className="bg-surface-400 border border-gray-700/50 rounded-xl p-4 space-y-1 col-span-2">
-              <p className="text-gray-400 text-xs uppercase tracking-wider">Último Backup</p>
-              <p className="text-white font-semibold text-sm">{formatDate(status?.lastBackup)}</p>
-              <p className="text-gray-500 text-xs">{status?.daysSinceLast !== null ? `Hace ${status.daysSinceLast} día(s)` : 'Sin backups'}</p>
-            </div>
-            {/* Estado scheduler */}
-            <div className={`border rounded-xl p-4 space-y-1 ${status?.isDue ? 'bg-amber-900/20 border-amber-600/40' : 'bg-green-900/20 border-green-600/40'}`}>
-              <p className="text-gray-400 text-xs uppercase tracking-wider">Estado</p>
-              <p className={`font-bold text-sm ${status?.isDue ? 'text-amber-400' : 'text-green-400'}`}>
-                {status?.isDue ? '⚠️ Backup pendiente' : '✅ Al día'}
-              </p>
-            </div>
-          </div>
-
-          {/* ── Acciones principales ── */}
-          <div className="bg-surface-400 border border-gray-700/50 rounded-xl p-6">
-            <h2 className="text-white font-semibold mb-4 flex items-center gap-2">
-              <ArrowDownTrayIcon className="w-5 h-5 text-handler-red" />
-              Acciones de Backup
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              {/* Crear backup */}
-              <button
-                onClick={handleCreate}
-                disabled={!!actionLoading}
-                className="flex items-center gap-2 bg-handler-red hover:bg-red-700 disabled:opacity-50 text-white font-medium px-5 py-2.5 rounded-lg transition-colors"
-              >
-                {actionLoading === 'create'
-                  ? <ArrowPathIcon className="w-5 h-5 animate-spin" />
-                  : <CircleStackIcon className="w-5 h-5" />}
-                Crear Backup Ahora
-              </button>
-
-              {/* Sincronizar OneDrive */}
-              <button
-                onClick={handleOneDrive}
-                disabled={!!actionLoading || !status?.oneDriveAvailable}
-                title={!status?.oneDriveAvailable ? 'OneDrive no detectado en este equipo' : 'Copiar backups a OneDrive'}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium px-5 py-2.5 rounded-lg transition-colors"
-              >
-                {actionLoading === 'onedrive'
-                  ? <ArrowPathIcon className="w-5 h-5 animate-spin" />
-                  : <CloudArrowUpIcon className="w-5 h-5" />}
-                {status?.oneDriveAvailable ? 'Sincronizar con OneDrive' : 'OneDrive no disponible'}
-              </button>
-
-              {/* Recargar */}
-              <button
-                onClick={loadData}
-                disabled={loading}
-                className="flex items-center gap-2 btn-secondary px-5 py-2.5"
-              >
-                <ArrowPathIcon className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-                Actualizar
-              </button>
-            </div>
-
-            {/* Info OneDrive */}
-            {status?.oneDriveAvailable && status?.oneDrivePath && (
-              <p className="mt-3 text-xs text-gray-500 flex items-center gap-1">
-                <FolderOpenIcon className="w-4 h-4" />
-                OneDrive detectado: <span className="text-blue-400">{status.oneDrivePath}</span>
-              </p>
-            )}
-            {!status?.oneDriveAvailable && (
-              <Alert type="warning">
-                <strong>OneDrive no detectado.</strong> Para usar la sincronización en la nube, instale y configure OneDrive en Windows 11. Los backups locales seguirán funcionando con normalidad.
-              </Alert>
-            )}
-          </div>
-
-          {/* ── Tabla de backups ── */}
-          <div className="bg-surface-400 border border-gray-700/50 rounded-xl overflow-hidden">
-            <div className="p-5 border-b border-gray-700/50 flex items-center gap-2">
-              <ClockIcon className="w-5 h-5 text-handler-red" />
-              <h2 className="text-white font-semibold">Historial de Backups</h2>
-              <span className="ml-auto text-xs text-gray-500">Máximo {status?.maxBackups ?? 3} archivos — ~60 días</span>
-            </div>
-
-            {backups.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-gray-500 gap-3">
-                <CircleStackIcon className="w-12 h-12 opacity-30" />
-                <p>No hay backups disponibles</p>
-                <p className="text-xs">Haga clic en "Crear Backup Ahora" para generar el primero.</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Columna Izquierda: Estado y Configuración */}
+          <div className="lg:col-span-1 space-y-6">
+            
+            {/* Tarjetas de estado rápido */}
+            <div className="space-y-4">
+              <div className="bg-surface-400 border border-gray-700/50 rounded-xl p-4">
+                <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Último Backup</p>
+                <p className="text-white font-bold">{formatDate(status?.lastBackup)}</p>
+                <p className="text-gray-500 text-xs mt-1">
+                  {status?.daysSinceLast !== undefined && status?.daysSinceLast !== null ? `Hace ${status?.daysSinceLast} día(s)` : 'Sin historial'}
+                </p>
               </div>
-            ) : (
-              <div className="divide-y divide-gray-700/30">
-                {backups.map((b, idx) => (
-                  <div
-                    key={b.filename}
-                    className={`flex items-center gap-4 px-5 py-4 hover:bg-surface-300/30 transition-colors ${b.isOldest && backups.length === 3 ? 'border-l-2 border-amber-500/50' : ''}`}
+
+              <div className={`border rounded-xl p-4 ${status?.isDue ? 'bg-amber-900/20 border-amber-600/40' : 'bg-green-900/20 border-green-600/40'}`}>
+                <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Estado de Frecuencia</p>
+                <p className={`font-bold ${status?.isDue ? 'text-amber-400' : 'text-green-400'}`}>
+                  {status?.isDue ? '⚠️ Requiere Respaldo' : '✅ Protegido'}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Siguiente en: {(status?.intervalDays || 0) - (status?.daysSinceLast || 0)} días</p>
+              </div>
+            </div>
+
+            {/* Configuración del Scheduler */}
+            <div className="bg-surface-400 border border-gray-700/50 rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-white font-semibold flex items-center gap-2 text-sm uppercase tracking-wider">
+                  <ClockIcon className="w-4 h-4 text-blue-400" />
+                  Programación
+                </h3>
+                {!isEditingSettings && (
+                  <button 
+                    onClick={() => setIsEditing(true)}
+                    className="text-xs text-handler-red hover:underline"
                   >
-                    {/* Ícono */}
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${idx === 0 ? 'bg-green-500/20' : 'bg-gray-700/50'}`}>
-                      <CircleStackIcon className={`w-5 h-5 ${idx === 0 ? 'text-green-400' : 'text-gray-400'}`} />
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium truncate">{b.filename}</p>
-                      <p className="text-gray-400 text-xs">
-                        {formatDate(b.createdAt)} · {b.sizeMB} MB
-                        {idx === 0 && <span className="ml-2 bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded text-xs">Más reciente</span>}
-                        {b.isOldest && backups.length === 3 && <span className="ml-2 bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded text-xs">Se eliminará en el próximo backup</span>}
-                      </p>
-                    </div>
-
-                    {/* Acciones */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => setRestore(b)}
-                        disabled={!!actionLoading}
-                        title="Restaurar este backup"
-                        className="flex items-center gap-1.5 text-xs bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 border border-amber-600/30 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        <ArrowPathIcon className="w-4 h-4" />
-                        Restaurar
-                      </button>
-                      <button
-                        onClick={() => handleDelete(b.filename)}
-                        disabled={!!actionLoading}
-                        title="Eliminar este backup"
-                        className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {actionLoading === `delete-${b.filename}`
-                          ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                          : <TrashIcon className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                    Editar
+                  </button>
+                )}
               </div>
-            )}
+
+              {isEditingSettings ? (
+                <form onSubmit={handleUpdateSettings} className="space-y-4">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Cada cuántos días:</label>
+                    <input 
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={settings.interval_days}
+                      onChange={e => setSettings({...settings, interval_days: parseInt(e.target.value)})}
+                      className="w-full bg-surface-300 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Hora (0-23):</label>
+                    <input 
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={settings.hour}
+                      onChange={e => setSettings({...settings, hour: parseInt(e.target.value)})}
+                      className="w-full bg-surface-300 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-1 italic">* Hora de Bogotá (UTC-5)</p>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button 
+                      type="button"
+                      onClick={() => { setIsEditing(false); setSettings({ interval_days: status.intervalDays, hour: status.hour }); }}
+                      className="flex-1 text-xs bg-gray-700 hover:bg-gray-600 text-white py-1.5 rounded"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      type="submit"
+                      disabled={actionLoading === 'settings'}
+                      className="flex-1 text-xs bg-handler-red hover:bg-red-700 text-white py-1.5 rounded flex items-center justify-center gap-2"
+                    >
+                      {actionLoading === 'settings' ? <ArrowPathIcon className="w-3 h-3 animate-spin" /> : 'Guardar'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between py-2 border-b border-gray-700/50">
+                    <span className="text-sm text-gray-400">Frecuencia</span>
+                    <span className="text-sm text-white font-medium">{status?.intervalDays} días</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-b border-gray-700/50">
+                    <span className="text-sm text-gray-400">Hora programada</span>
+                    <span className="text-sm text-white font-medium">{status?.hour}:00 Bog</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 leading-relaxed italic">
+                    El sistema verificará cada hora si es el momento de realizar el respaldo automático basado en estos parámetros.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Acciones Rápidas */}
+            <div className="bg-surface-400 border border-gray-700/50 rounded-xl p-5 space-y-3">
+               <button
+                  onClick={handleCreate}
+                  disabled={!!actionLoading}
+                  className="w-full flex items-center justify-center gap-2 bg-handler-red hover:bg-red-700 disabled:opacity-50 text-white font-medium py-3 rounded-lg transition-colors text-sm"
+                >
+                  {actionLoading === 'create'
+                    ? <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                    : <CircleStackIcon className="w-5 h-5" />}
+                  Generar Respaldo Ahora
+                </button>
+            </div>
+
           </div>
 
-          {/* ── Información del scheduler ── */}
-          <div className="bg-surface-400 border border-gray-700/50 rounded-xl p-5 space-y-2">
-            <h3 className="text-white font-semibold flex items-center gap-2">
-              <ClockIcon className="w-5 h-5 text-blue-400" />
-              Backup Automático
-            </h3>
-            <p className="text-gray-400 text-sm">{status?.schedulerInfo}</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 text-sm text-gray-400">
-              <div className="flex items-center gap-2">
-                <span className="text-green-400">●</span>
-                Intervalo: cada <strong className="text-white ml-1">{status?.intervalDays} días</strong>
+          {/* Columna Derecha: Historial */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-surface-400 border border-gray-700/50 rounded-xl overflow-hidden shadow-sm">
+              <div className="p-5 border-b border-gray-700/50 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ClockIcon className="w-5 h-5 text-handler-red" />
+                  <h2 className="text-white font-semibold">Historial de Resguardos</h2>
+                </div>
+                <span className="text-[10px] uppercase tracking-tighter text-gray-500 bg-gray-800 px-2 py-1 rounded">
+                  Max: {status?.maxBackups ?? 3} Archivos
+                </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-blue-400">●</span>
-                Hora programada: <strong className="text-white ml-1">12:00pm hora Bogotá</strong>
-              </div>
-              <div className="flex items-center gap-2">
-                <FolderOpenIcon className="w-4 h-4" />
-                <span className="text-xs text-gray-500 truncate">{status?.backupDir}</span>
-              </div>
+
+              {backups.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-gray-500 gap-4">
+                  <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center">
+                    <CircleStackIcon className="w-8 h-8 opacity-20" />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-medium text-gray-400">Sin respaldos disponibles</p>
+                    <p className="text-xs mt-1">Los backups automáticos aparecerán aquí.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-700/30">
+                  {backups.map((b, idx) => (
+                    <div
+                      key={b.filename}
+                      className="group flex items-center gap-4 px-6 py-5 hover:bg-surface-300/20 transition-colors"
+                    >
+                      {/* Ícono de Estado */}
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-all ${idx === 0 ? 'bg-green-500/10 border-green-500/30' : 'bg-surface-300 border-gray-600'}`}>
+                        <CircleStackIcon className={`w-5 h-5 ${idx === 0 ? 'text-green-400' : 'text-gray-400'}`} />
+                      </div>
+
+                      {/* Información del Backup */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-white text-sm font-bold truncate group-hover:text-handler-red transition-colors">{b.filename}</p>
+                          {idx === 0 && (
+                            <span className="text-[9px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">Actual</span>
+                          )}
+                        </div>
+                        <p className="text-gray-400 text-xs flex items-center gap-3">
+                          <span className="flex items-center gap-1"><ClockIcon className="w-3 h-3" /> {formatDate(b.createdAt)}</span>
+                          <span className="flex items-center gap-1 font-mono uppercase opacity-70 tracking-widest">{b.sizeMB} MB</span>
+                        </p>
+                      </div>
+
+                      {/* Acciones */}
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button
+                          onClick={() => setRestore(b)}
+                          disabled={!!actionLoading}
+                          className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 px-4 py-2 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                        >
+                          <ArrowPathIcon className="w-3.5 h-3.5" />
+                          Restaurar
+                        </button>
+                        <button
+                          onClick={() => handleDelete(b.filename)}
+                          disabled={!!actionLoading}
+                          className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
+                        >
+                          {actionLoading === `delete-${b.filename}`
+                            ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                            : <TrashIcon className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-blue-900/10 border border-blue-500/20 rounded-xl p-5 flex gap-4">
+               <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+                 <ShieldCheckIcon className="w-6 h-6 text-blue-400" />
+               </div>
+               <div>
+                 <h4 className="text-blue-200 text-sm font-bold mb-1">Seguridad de Datos</h4>
+                 <p className="text-blue-300/60 text-xs leading-relaxed">
+                   Todos los respaldos están cifrados y almacenados en la infraestructura cloud de Supabase. 
+                   La restauración de datos requiere privilegios de administrador de sistema.
+                 </p>
+               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

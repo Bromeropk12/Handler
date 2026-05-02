@@ -47,7 +47,7 @@ const dbLogger = winston.createLogger({
     winston.format.json()
   ),
   transports: [
-    new winston.transports.File({ filename: 'logs/database.log' }),
+    new winston.transports.Console()
   ],
 });
 
