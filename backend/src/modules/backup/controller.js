@@ -1,12 +1,9 @@
 /**
  * Backup Controller - Handler TrackSamples
- * Sistema de respaldo automático de base de datos
- * Solo accesible para administradores
+ * Sistema de respaldo de base de datos en la nube (Supabase)
+ * Compatible con entornos serverless (Vercel) y locales
  */
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
 const bcrypt = require('bcryptjs');
 const { query } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
@@ -18,17 +15,6 @@ const MAX_BACKUPS = 3;          // Máximo 3 backups → ~60 días
 const BACKUP_INTERVAL_DAYS = 20;
 const BACKUP_HOUR_BOGOTA = 12;  // 12pm hora Bogotá (UTC-5)
 
-// Directorio raíz del programa (Handler/)
-const PROJECT_ROOT = path.resolve(__dirname, '../../../../../');
-const BACKUP_DIR = path.join(PROJECT_ROOT, 'backups');
-
-// Asegurar que el directorio de backups existe
-const ensureBackupDir = () => {
-  if (!fs.existsSync(BACKUP_DIR)) {
-    fs.mkdirSync(BACKUP_DIR, { recursive: true });
-  }
-};
-
 // ─────────────────────────────────────────
 //  UTILIDADES
 // ─────────────────────────────────────────
@@ -38,53 +24,9 @@ const ensureBackupDir = () => {
  */
 const generateBackupFilename = () => {
   const now = new Date();
-  // Convertir a hora Bogotá (UTC-5)
   const bogota = new Date(now.getTime() - 5 * 60 * 60 * 1000);
   const ts = bogota.toISOString().replace(/[:.]/g, '-').slice(0, 19);
   return `backup_handler_${ts}.json`;
-};
-
-/**
- * Listar backups existentes ordenados por fecha (más reciente primero)
- */
-const listBackupFiles = () => {
-  ensureBackupDir();
-  const files = fs.readdirSync(BACKUP_DIR)
-    .filter(f => f.startsWith('backup_handler_') && f.endsWith('.json'))
-    .map(f => {
-      const full = path.join(BACKUP_DIR, f);
-      const stat = fs.statSync(full);
-      return {
-        filename: f,
-        fullPath: full,
-        sizeBytes: stat.size,
-        createdAt: stat.mtime,
-      };
-    })
-    .sort((a, b) => b.createdAt - a.createdAt); // más reciente primero
-  return files;
-};
-
-/**
- * Detectar ruta de OneDrive en Windows 11
- */
-const detectOneDrivePath = () => {
-  // Intentar desde variables de entorno primero
-  const env = process.env.OneDrive || process.env.OneDriveConsumer || process.env.OneDriveCommercial;
-  if (env && fs.existsSync(env)) return env;
-
-  // Rutas típicas de Windows 11
-  const username = os.userInfo().username;
-  const candidates = [
-    path.join('C:\\Users', username, 'OneDrive'),
-    path.join('C:\\Users', username, 'OneDrive - Personal'),
-    path.join('C:\\Users', username, 'OneDrive - Handler'),
-    path.join('C:\\Users', username, 'OneDrive for Business'),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return null;
 };
 
 /**
@@ -96,19 +38,14 @@ const exportDatabaseToJSON = async () => {
     'global_samples',
     'dispensed_samples',
     'shelves',
-    'shelf_positions',
-    'shelf_occupancy',
+    'shelf_suppliers',
     'suppliers',
     'market_lines',
     'movements',
-    'dispatches',
-    'dispatch_items',
-    'shelf_suppliers',
-    'alerts',
   ];
 
   const data = {
-    version: '1.0',
+    version: '2.0',
     generatedAt: new Date().toISOString(),
     timezone: 'America/Bogota',
     tables: {},
@@ -120,10 +57,9 @@ const exportDatabaseToJSON = async () => {
 
   for (const table of tables) {
     try {
-      const result = await query(`SELECT * FROM ${table} ORDER BY id`);
+      const result = await query(`SELECT * FROM ${table} ORDER BY created_at NULLS LAST`);
       data.tables[table] = result.rows;
     } catch (err) {
-      // Tabla puede no existir en todas las versiones
       data.tables[table] = [];
     }
   }
@@ -136,45 +72,41 @@ const exportDatabaseToJSON = async () => {
 
 /**
  * GET /api/backup/list
- * Listar todos los backups disponibles
  */
 const listBackups = async (req, res, next) => {
   try {
-    const files = listBackupFiles();
-    const oneDrivePath = detectOneDrivePath();
-    const oneDriveBackupDir = oneDrivePath ? path.join(oneDrivePath, 'Handler_Backups') : null;
+    const result = await query(
+      'SELECT id, filename, size_bytes, created_by, manual, created_at FROM backups ORDER BY created_at DESC LIMIT 10'
+    );
+
+    const backups = result.rows.map((b, i) => ({
+      id: b.id,
+      filename: b.filename,
+      sizeMB: b.size_bytes ? (b.size_bytes / 1024 / 1024).toFixed(2) : '—',
+      createdAt: b.created_at,
+      createdBy: b.created_by,
+      manual: b.manual,
+      isOldest: i === result.rows.length - 1,
+    }));
 
     // Calcular próximo backup
-    const now = new Date();
-    const lastBackup = files.length > 0 ? files[0].createdAt : null;
     let nextBackup = null;
-
-    if (lastBackup) {
-      const next = new Date(lastBackup.getTime() + BACKUP_INTERVAL_DAYS * 24 * 60 * 60 * 1000);
-      // Ajustar a las 12pm Bogotá
-      next.setUTCHours(BACKUP_HOUR_BOGOTA + 5, 0, 0, 0); // 17 UTC = 12 Bogotá
+    if (backups.length > 0) {
+      const last = new Date(backups[0].createdAt);
+      const next = new Date(last.getTime() + BACKUP_INTERVAL_DAYS * 24 * 60 * 60 * 1000);
+      next.setUTCHours(BACKUP_HOUR_BOGOTA + 5, 0, 0, 0);
       nextBackup = next.toISOString();
     }
-
-    const backupList = files.map((f, i) => ({
-      id: i + 1,
-      filename: f.filename,
-      sizeMB: (f.sizeBytes / 1024 / 1024).toFixed(2),
-      createdAt: f.createdAt.toISOString(),
-      isOldest: i === files.length - 1,
-    }));
 
     res.json({
       success: true,
       data: {
-        backups: backupList,
-        backupDir: BACKUP_DIR,
+        backups,
         maxBackups: MAX_BACKUPS,
         intervalDays: BACKUP_INTERVAL_DAYS,
         nextBackupScheduled: nextBackup,
-        oneDriveAvailable: !!oneDrivePath,
-        oneDrivePath: oneDriveBackupDir,
-        totalBackups: files.length,
+        totalBackups: backups.length,
+        storageType: 'supabase-cloud',
       },
     });
   } catch (error) {
@@ -184,31 +116,33 @@ const listBackups = async (req, res, next) => {
 
 /**
  * POST /api/backup/create
- * Crear backup manualmente (solo admin)
  */
 const createBackup = async (req, res, next) => {
   try {
-    ensureBackupDir();
-
     const filename = generateBackupFilename();
-    const filePath = path.join(BACKUP_DIR, filename);
 
     // Exportar BD
     const data = await exportDatabaseToJSON();
     data.createdBy = req.user.username;
     data.manual = true;
 
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
-    const stat = fs.statSync(filePath);
+    const jsonStr = JSON.stringify(data);
+    const sizeBytes = Buffer.byteLength(jsonStr, 'utf8');
 
-    // ── Rotar: eliminar backups que superen MAX_BACKUPS ──
-    const allFiles = listBackupFiles();
+    // Guardar en Supabase
+    await query(
+      'INSERT INTO backups (filename, size_bytes, data, created_by, manual) VALUES ($1, $2, $3::jsonb, $4, $5)',
+      [filename, sizeBytes, jsonStr, req.user.username, true]
+    );
+
+    // Rotar: eliminar backups que superen MAX_BACKUPS
+    const allBackups = await query('SELECT id FROM backups ORDER BY created_at DESC');
     const deleted = [];
-    if (allFiles.length > MAX_BACKUPS) {
-      const toDelete = allFiles.slice(MAX_BACKUPS); // los más antiguos
+    if (allBackups.rows.length > MAX_BACKUPS) {
+      const toDelete = allBackups.rows.slice(MAX_BACKUPS);
       for (const old of toDelete) {
-        fs.unlinkSync(old.fullPath);
-        deleted.push(old.filename);
+        const delRes = await query('DELETE FROM backups WHERE id = $1 RETURNING filename', [old.id]);
+        if (delRes.rows[0]) deleted.push(delRes.rows[0].filename);
       }
     }
 
@@ -218,7 +152,7 @@ const createBackup = async (req, res, next) => {
         'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
         [null, 'backup_created', req.user.id, JSON.stringify({
           filename,
-          sizeMB: (stat.size / 1024 / 1024).toFixed(2),
+          sizeMB: (sizeBytes / 1024 / 1024).toFixed(2),
           deletedOldBackups: deleted,
           ip: req.ip,
           timestamp: new Date().toISOString(),
@@ -228,13 +162,13 @@ const createBackup = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: 'Backup creado exitosamente',
+      message: 'Backup creado exitosamente en la nube',
       data: {
         filename,
-        sizeMB: (stat.size / 1024 / 1024).toFixed(2),
-        createdAt: stat.mtime.toISOString(),
+        sizeMB: (sizeBytes / 1024 / 1024).toFixed(2),
+        createdAt: new Date().toISOString(),
         deletedOldBackups: deleted,
-        backupDir: BACKUP_DIR,
+        storageType: 'supabase-cloud',
       },
     });
   } catch (error) {
@@ -244,7 +178,6 @@ const createBackup = async (req, res, next) => {
 
 /**
  * POST /api/backup/restore
- * Restaurar backup (requiere contraseña del admin)
  */
 const restoreBackup = async (req, res, next) => {
   const { pool } = require('../../services/database');
@@ -257,36 +190,26 @@ const restoreBackup = async (req, res, next) => {
       throw new AppError('Nombre de archivo y contraseña son requeridos', 400);
     }
 
-    // Verificar contraseña del admin (fuera de la transacción)
+    // Verificar contraseña del admin
     const userResult = await query(
       'SELECT password_hash FROM users WHERE id = $1',
       [req.user.id]
     );
-    if (userResult.rows.length === 0) {
-      throw new AppError('Usuario no encontrado', 404);
-    }
+    if (userResult.rows.length === 0) throw new AppError('Usuario no encontrado', 404);
+
     const isValid = await bcrypt.compare(password, userResult.rows[0].password_hash);
-    if (!isValid) {
-      throw new AppError('Contraseña incorrecta. La restauración fue cancelada por seguridad.', 401);
-    }
+    if (!isValid) throw new AppError('Contraseña incorrecta. La restauración fue cancelada por seguridad.', 401);
 
-    // Verificar que el archivo existe
-    const filePath = path.join(BACKUP_DIR, path.basename(filename));
-    if (!fs.existsSync(filePath)) {
-      throw new AppError('Archivo de backup no encontrado', 404);
-    }
+    // Buscar backup en Supabase
+    const backupResult = await query(
+      'SELECT data FROM backups WHERE filename = $1',
+      [filename]
+    );
+    if (backupResult.rows.length === 0) throw new AppError('Backup no encontrado en la nube', 404);
 
-    // Leer y parsear backup
-    const raw = fs.readFileSync(filePath, 'utf8');
-    let backupData;
-    try {
-      backupData = JSON.parse(raw);
-    } catch {
-      throw new AppError('El archivo de backup está corrupto o no es válido', 400);
-    }
+    const backupData = backupResult.rows[0].data;
 
-    // ── Compatibilidad hacia atrás ──
-    // Backups antiguos guardaban 'samples' en vez de 'global_samples'
+    // Compatibilidad hacia atrás
     if (backupData.tables) {
       if (!backupData.tables['global_samples'] && backupData.tables['samples']) {
         backupData.tables['global_samples'] = backupData.tables['samples'];
@@ -294,31 +217,21 @@ const restoreBackup = async (req, res, next) => {
       }
     }
 
-    // Columnas auto-generadas que PostgreSQL calcula solo (no se pueden insertar)
-    const GENERATED_COLUMNS = {
-      shelves: ['total_capacity'],
-    };
+    const GENERATED_COLUMNS = { shelves: ['total_capacity'] };
 
-    // Orden de restauración respetando estrictamente foreign keys
     const restoreOrder = [
       'users',
       'market_lines',
       'suppliers',
-      'shelves',           // shelves depends on market_lines
-      'shelf_suppliers',   // depends on shelves, suppliers
-      'global_samples',    // depends on market_lines, suppliers, shelves
-      'dispensed_samples', // depends on global_samples, shelves
-      'shelf_positions',
-      'shelf_occupancy',
-      'dispatches',
-      'dispatch_items',
-      'movements',         // depends on users
-      'alerts',
+      'shelves',
+      'shelf_suppliers',
+      'global_samples',
+      'dispensed_samples',
+      'movements',
     ];
 
     const stats = { restored: {}, skipped: [], errors: [] };
 
-    // ── Iniciar transacción atómica ──
     await client.query('BEGIN');
 
     for (const table of restoreOrder) {
@@ -328,30 +241,22 @@ const restoreBackup = async (req, res, next) => {
         continue;
       }
 
-      // Verificar si la tabla existe en la BD actual antes de intentar truncar
       const tableExists = await client.query(
         "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1)",
         [table]
       );
-      
       if (!tableExists.rows[0].exists) {
         stats.skipped.push(`${table} (no existe en BD)`);
         continue;
       }
 
-      // Truncar tabla (dentro de la transacción)
       await client.query(`TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE`);
 
       let insertedCount = 0;
       for (const rawRow of rows) {
-        // Clonar para no mutar el original
         const row = { ...rawRow };
-
-        // Eliminar columnas auto-generadas
         const generatedCols = GENERATED_COLUMNS[table] || [];
-        for (const col of generatedCols) {
-          delete row[col];
-        }
+        for (const col of generatedCols) delete row[col];
 
         const cols = Object.keys(row);
         if (cols.length === 0) continue;
@@ -368,10 +273,9 @@ const restoreBackup = async (req, res, next) => {
       stats.restored[table] = insertedCount;
     }
 
-    // Confirmar transacción
     await client.query('COMMIT');
 
-    // Log de restauración (fuera de la transacción principal)
+    // Log de restauración
     try {
       await query(
         'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
@@ -391,7 +295,6 @@ const restoreBackup = async (req, res, next) => {
       data: { stats, backupDate: backupData.generatedAt },
     });
   } catch (error) {
-    // Rollback total si algo falla
     try { await client.query('ROLLBACK'); } catch (_) {}
     next(error);
   } finally {
@@ -401,18 +304,13 @@ const restoreBackup = async (req, res, next) => {
 
 /**
  * DELETE /api/backup/:filename
- * Eliminar un backup específico
  */
 const deleteBackup = async (req, res, next) => {
   try {
     const { filename } = req.params;
-    const filePath = path.join(BACKUP_DIR, path.basename(filename));
+    const result = await query('DELETE FROM backups WHERE filename = $1 RETURNING id', [filename]);
 
-    if (!fs.existsSync(filePath)) {
-      throw new AppError('Archivo de backup no encontrado', 404);
-    }
-
-    fs.unlinkSync(filePath);
+    if (result.rows.length === 0) throw new AppError('Backup no encontrado', 404);
 
     res.json({
       success: true,
@@ -424,62 +322,21 @@ const deleteBackup = async (req, res, next) => {
 };
 
 /**
- * POST /api/backup/sync-onedrive
- * Copiar todos los backups a la carpeta de OneDrive
- */
-const syncToOneDrive = async (req, res, next) => {
-  try {
-    const oneDrivePath = detectOneDrivePath();
-
-    if (!oneDrivePath) {
-      throw new AppError(
-        'OneDrive no encontrado en este equipo. Asegúrese de que OneDrive esté instalado y sincronizado.',
-        404
-      );
-    }
-
-    const oneDriveBackupDir = path.join(oneDrivePath, 'Handler_Backups');
-    if (!fs.existsSync(oneDriveBackupDir)) {
-      fs.mkdirSync(oneDriveBackupDir, { recursive: true });
-    }
-
-    const files = listBackupFiles();
-    const copied = [];
-
-    for (const f of files) {
-      const dest = path.join(oneDriveBackupDir, f.filename);
-      fs.copyFileSync(f.fullPath, dest);
-      copied.push(f.filename);
-    }
-
-    res.json({
-      success: true,
-      message: `${copied.length} backup(s) sincronizados con OneDrive`,
-      data: {
-        oneDrivePath: oneDriveBackupDir,
-        copiedFiles: copied,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
  * GET /api/backup/status
- * Estado del sistema de backups y configuración del scheduler
  */
 const getBackupStatus = async (req, res, next) => {
   try {
-    const files = listBackupFiles();
-    const oneDrivePath = detectOneDrivePath();
-    const now = new Date();
+    const result = await query(
+      'SELECT created_at FROM backups ORDER BY created_at DESC LIMIT 1'
+    );
+    const countResult = await query('SELECT COUNT(*) FROM backups');
 
+    const now = new Date();
     let daysSinceLast = null;
     let isDue = true;
 
-    if (files.length > 0) {
-      const ms = now.getTime() - files[0].createdAt.getTime();
+    if (result.rows.length > 0) {
+      const ms = now.getTime() - new Date(result.rows[0].created_at).getTime();
       daysSinceLast = Math.floor(ms / (1000 * 60 * 60 * 24));
       isDue = daysSinceLast >= BACKUP_INTERVAL_DAYS;
     }
@@ -487,15 +344,13 @@ const getBackupStatus = async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        totalBackups: files.length,
+        totalBackups: parseInt(countResult.rows[0].count),
         maxBackups: MAX_BACKUPS,
         intervalDays: BACKUP_INTERVAL_DAYS,
         isDue,
         daysSinceLast,
-        lastBackup: files.length > 0 ? files[0].createdAt.toISOString() : null,
-        backupDir: BACKUP_DIR,
-        oneDriveAvailable: !!oneDrivePath,
-        oneDrivePath,
+        lastBackup: result.rows.length > 0 ? result.rows[0].created_at : null,
+        storageType: 'supabase-cloud',
         schedulerInfo: `Backup automático cada ${BACKUP_INTERVAL_DAYS} días a las 12:00pm hora Bogotá`,
       },
     });
@@ -504,33 +359,40 @@ const getBackupStatus = async (req, res, next) => {
   }
 };
 
-// ─────────────────────────────────────────
-//  FUNCIÓN INTERNA: Crear backup automático
-//  (llamada por el scheduler)
-// ─────────────────────────────────────────
+// Stub para compatibilidad con rutas que usaban OneDrive
+const syncToOneDrive = async (req, res) => {
+  res.json({
+    success: false,
+    message: 'La sincronización con OneDrive no está disponible en el entorno cloud. Los backups se guardan directamente en Supabase.',
+  });
+};
+
+// Función interna para backup automático (scheduler)
 const createAutomaticBackup = async () => {
   try {
-    ensureBackupDir();
     const filename = generateBackupFilename();
-    const filePath = path.join(BACKUP_DIR, filename);
-
     const data = await exportDatabaseToJSON();
     data.manual = false;
     data.createdBy = 'system-scheduler';
 
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    const jsonStr = JSON.stringify(data);
+    const sizeBytes = Buffer.byteLength(jsonStr, 'utf8');
 
-    // Rotar backups
-    const allFiles = listBackupFiles();
-    if (allFiles.length > MAX_BACKUPS) {
-      const toDelete = allFiles.slice(MAX_BACKUPS);
+    await query(
+      'INSERT INTO backups (filename, size_bytes, data, created_by, manual) VALUES ($1, $2, $3::jsonb, $4, $5)',
+      [filename, sizeBytes, jsonStr, 'system-scheduler', false]
+    );
+
+    // Rotar
+    const allBackups = await query('SELECT id FROM backups ORDER BY created_at DESC');
+    if (allBackups.rows.length > MAX_BACKUPS) {
+      const toDelete = allBackups.rows.slice(MAX_BACKUPS);
       for (const old of toDelete) {
-        fs.unlinkSync(old.fullPath);
-        console.log(`[BACKUP] Backup antiguo eliminado: ${old.filename}`);
+        await query('DELETE FROM backups WHERE id = $1', [old.id]);
       }
     }
 
-    console.log(`[BACKUP] Backup automático creado: ${filename}`);
+    console.log(`[BACKUP] Backup automático creado en Supabase: ${filename}`);
     return { success: true, filename };
   } catch (err) {
     console.error('[BACKUP] Error en backup automático:', err.message);
@@ -546,7 +408,6 @@ module.exports = {
   syncToOneDrive,
   getBackupStatus,
   createAutomaticBackup,
-  listBackupFiles,
   BACKUP_INTERVAL_DAYS,
   BACKUP_HOUR_BOGOTA,
 };

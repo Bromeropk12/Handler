@@ -74,38 +74,37 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:", "http://localhost:3001", "http://127.0.0.1:3001"],
-      connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001"],
+      imgSrc: ["'self'", "data:", "blob:", "http://localhost:3001", "http://127.0.0.1:3001", "https://*.vercel.app"],
+      connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001", "https://*.vercel.app"],
     },
   },
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS: Permitir localhost y IPs de red local (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+// CORS: Permitir localhost, IPs locales y dominios de Vercel
 const allowedOrigins = [
-  config.frontendUrl, // localhost:3000
+  config.frontendUrl,
   'http://localhost:3000',
   'http://127.0.0.1:3000',
 ];
 
-// Agregar IPs de red local si están configuradas
+// Dominios de Vercel y producción desde variable de entorno
 if (process.env.ALLOWED_ORIGINS) {
   allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()));
 }
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Permitir requests sin origin (como mobile apps o curl)
     if (!origin) return callback(null, true);
-    
-    // Verificar si es localhost o IP de red local
+
     const isLocalhost = origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
     const isPrivateIP = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(origin);
-    
-    if (isLocalhost || isPrivateIP || allowedOrigins.includes(origin)) {
+    const isVercel = /^https:\/\/.*\.vercel\.app$/.test(origin);
+
+    if (isLocalhost || isPrivateIP || isVercel || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    
+
     callback(new Error('Origen no permitido por CORS'));
   },
   credentials: true,

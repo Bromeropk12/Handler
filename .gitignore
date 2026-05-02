@@ -339,3 +339,4 @@ docuementacion/*.pdf
 # Mantener el directorio logs pero no su contenido
 logs/
 !logs/.gitkeep
+.vercel
