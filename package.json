@@ -6,20 +6,18 @@
   "scripts": {
     "install:all": "cd backend && pnpm install && cd ../frontend && npm install",
 
-    "start": "npx concurrently --kill-others --names \"DB,BACKEND,REACT,ELECTRON\" -c \"bgYellow.bold,bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"npm run start:db\" \"npm run start:backend\" \"npm run start:react\" \"npm run start:electron\"",
+    "start": "npx concurrently --kill-others --names \"BACKEND,REACT,ELECTRON\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"npm run start:backend\" \"npm run start:react\" \"npm run start:electron\"",
 
-    "start:full": "npx concurrently --kill-others --names \"DB,BACKEND,REACT,ELECTRON\" -c \"bgYellow.bold,bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"npm run start:db\" \"npm run start:backend\" \"npm run start:react\" \"npm run start:electron\"",
+    "start:full": "npx concurrently --kill-others --names \"BACKEND,REACT,ELECTRON\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"npm run start:backend\" \"npm run start:react\" \"npm run start:electron\"",
 
     "start:no-db": "npx concurrently --kill-others --names \"BACKEND,REACT,ELECTRON\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"npm run start:backend\" \"npm run start:react\" \"npm run start:electron\"",
 
-    "start:web": "npx concurrently --kill-others --names \"DB,BACKEND,FRONT\" -c \"bgYellow.bold,bgBlue.bold,bgGreen.bold\" \"npm run start:db\" \"npm run start:backend\" \"npm run start:react\"",
+    "start:web": "npx concurrently --kill-others --names \"BACKEND,FRONT\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run start:backend\" \"npm run start:react\"",
 
-    "start:db": "cd database && docker compose up",
     "start:backend": "cd backend && pnpm dev",
     "start:react": "cd frontend && npm start",
     "start:electron": "cd frontend && npm run electron:wait",
 
-    "build:exe": "cd frontend && npm run electron:build",
-    "clean": "cd database && docker compose down -v"
+    "build:exe": "cd frontend && npm run electron:build"
   }
 }

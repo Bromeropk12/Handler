@@ -128,6 +128,31 @@ const RestoreModal = ({ backup, onConfirm, onCancel, loading }) => {
   );
 };
 
+// ─── Restore Progress Overlay ───────────────────────────────────────────────
+const RestoreProgressOverlay = ({ elapsed }) => (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm">
+    <div className="bg-surface-400 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-8 text-center space-y-5">
+      <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto">
+        <ArrowPathIcon className="w-9 h-9 text-amber-400 animate-spin" />
+      </div>
+      <div>
+        <h3 className="text-white font-bold text-lg">Restaurando base de datos...</h3>
+        <p className="text-gray-400 text-sm mt-1">
+          Este proceso puede tardar entre <strong className="text-white">30 y 90 segundos</strong>.<br />
+          No cierre la aplicación.
+        </p>
+      </div>
+      <div className="bg-surface-300 rounded-xl px-6 py-3">
+        <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Tiempo transcurrido</p>
+        <p className="text-2xl font-mono font-bold text-amber-400">{elapsed}s</p>
+      </div>
+      <p className="text-gray-500 text-xs">
+        ⚠️ La sesión se reiniciará automáticamente al finalizar
+      </p>
+    </div>
+  </div>
+);
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 const BackupPage = () => {
   const [status, setStatus]         = useState(null);
@@ -136,10 +161,11 @@ const BackupPage = () => {
   const [actionLoading, setAction]  = useState('');
   const [notification, setNotif]    = useState(null);
   const [restoreTarget, setRestore] = useState(null);
+  const [restoreElapsed, setElapsed] = useState(0);
 
   const notify = (type, msg) => {
     setNotif({ type, msg });
-    setTimeout(() => setNotif(null), 6000);
+    setTimeout(() => setNotif(null), 8000);
   };
 
   const loadData = useCallback(async () => {
@@ -178,15 +204,37 @@ const BackupPage = () => {
   // ── Restaurar Backup ──────────────────────────────────────────────────────
   const handleRestore = async (filename, password) => {
     setAction('restore');
+    setElapsed(0);
+    setRestore(null); // Cerrar modal de confirmación
+
+    // Iniciar contador de tiempo
+    const startTime = Date.now();
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
     try {
       const res = await backupAPI.restoreBackup({ filename, password });
-      setRestore(null);
-      notify('success', res.data.message);
-      loadData();
-    } catch (err) {
-      notify('danger', err.message || 'Error al restaurar el backup. Verifique su contraseña.');
-    } finally {
+      clearInterval(timer);
       setAction('');
+      notify('success', `✅ ${res.data.message} — La sesión se cerrará en 3 segundos para aplicar los cambios.`);
+      // Logout automático tras restaurar (los IDs de BD cambian)
+      setTimeout(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.href = '/';
+      }, 3000);
+    } catch (err) {
+      clearInterval(timer);
+      setAction('');
+      const msg = err.response?.data?.message || err.message || '';
+      if (msg.toLowerCase().includes('contraseña') || msg.toLowerCase().includes('password')) {
+        notify('danger', '❌ Contraseña incorrecta. La restauración fue cancelada por seguridad.');
+      } else if (msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('network')) {
+        notify('warning', '⚠️ La restauración tardó demasiado, pero puede haber completado en el servidor. Recarga la aplicación y verifica los datos antes de volver a intentar.');
+      } else {
+        notify('danger', `Error al restaurar: ${msg || 'Error desconocido. Intente de nuevo.'}`);
+      }
     }
   };
 
@@ -231,7 +279,13 @@ const BackupPage = () => {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      {/* Modales */}
+
+      {/* Overlay bloqueante durante restauración */}
+      {actionLoading === 'restore' && (
+        <RestoreProgressOverlay elapsed={restoreElapsed} />
+      )}
+
+      {/* Modal de confirmación de restauración */}
       {restoreTarget && (
         <RestoreModal
           backup={restoreTarget}

@@ -3,7 +3,7 @@ import { apiCircuitBreaker } from './circuitBreaker';
 
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3001/api',
-  timeout: 10000,
+  timeout: 120000,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -193,13 +193,12 @@ export const shelfSuppliersAPI = {
 };
 
 export const backupAPI = {
-  getStatus: () => api.get('/backup/status'),
-  listBackups: () => api.get('/backup/list'),
-  createBackup: () => api.post('/backup/create'),
-  restoreBackup: (data) => api.post('/backup/restore', data),
-  deleteBackup: (filename) => api.delete(`/backup/${encodeURIComponent(filename)}`),
-  syncToOneDrive: () => api.post('/backup/sync-onedrive'),
+  getStatus:      () => api.get('/backup/status'),
+  listBackups:    () => api.get('/backup/list'),
+  createBackup:   () => api.post('/backup/create',        null, { timeout: 300000 }),
+  restoreBackup:  (data) => api.post('/backup/restore',   data, { timeout: 300000 }),
+  deleteBackup:   (filename) => api.delete(`/backup/${encodeURIComponent(filename)}`),
+  syncToOneDrive: () => api.post('/backup/sync-onedrive', null, { timeout: 300000 }),
 };
 
 export default api;
-
