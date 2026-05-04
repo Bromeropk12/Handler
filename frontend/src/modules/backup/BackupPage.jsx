@@ -413,8 +413,8 @@ const BackupPage = () => {
                       type="number"
                       min="1"
                       max="365"
-                      value={settings.interval_days}
-                      onChange={e => setSettings({...settings, interval_days: parseInt(e.target.value)})}
+                      value={settings.interval_days || ''}
+                      onChange={e => setSettings({...settings, interval_days: e.target.value === '' ? '' : parseInt(e.target.value)})}
                       className="w-full bg-surface-300 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
                     />
                   </div>
@@ -424,8 +424,8 @@ const BackupPage = () => {
                       type="number"
                       min="0"
                       max="23"
-                      value={settings.hour}
-                      onChange={e => setSettings({...settings, hour: parseInt(e.target.value)})}
+                      value={settings.hour !== undefined ? settings.hour : ''}
+                      onChange={e => setSettings({...settings, hour: e.target.value === '' ? '' : parseInt(e.target.value)})}
                       className="w-full bg-surface-300 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
                     />
                     <p className="text-[10px] text-gray-500 mt-1 italic">* Hora de Bogotá (UTC-5)</p>

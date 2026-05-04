@@ -195,10 +195,10 @@ export const shelfSuppliersAPI = {
 export const backupAPI = {
   getStatus:      () => api.get('/backup/status'),
   listBackups:    () => api.get('/backup/list'),
-  createBackup:   () => api.post('/backup/create',        null, { timeout: 300000 }),
+  createBackup:   () => api.post('/backup/create',        {}, { timeout: 300000 }),
   restoreBackup:  (data) => api.post('/backup/restore',   data, { timeout: 300000 }),
   deleteBackup:   (filename) => api.delete(`/backup/${encodeURIComponent(filename)}`),
-  syncToOneDrive: () => api.post('/backup/sync-onedrive', null, { timeout: 300000 }),
+  syncToOneDrive: () => api.post('/backup/sync-onedrive', {}, { timeout: 300000 }),
   getSettings:    () => api.get('/backup/settings'),
   updateSettings: (data) => api.put('/backup/settings', data),
 };

@@ -87,12 +87,23 @@ const listBackups = async (req, res, next) => {
       isOldest: i === result.rows.length - 1,
     }));
 
+    // Leer config
+    let intervalDays = 20;
+    let hour = 12;
+    try {
+      const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
+      if (configRes.rows.length > 0) {
+        intervalDays = configRes.rows[0].value.interval_days || 20;
+        hour = configRes.rows[0].value.hour || 12;
+      }
+    } catch (_) {}
+
     // Calcular próximo backup
     let nextBackup = null;
     if (backups.length > 0) {
       const last = new Date(backups[0].createdAt);
-      const next = new Date(last.getTime() + BACKUP_INTERVAL_DAYS * 24 * 60 * 60 * 1000);
-      next.setUTCHours(BACKUP_HOUR_BOGOTA + 5, 0, 0, 0);
+      const next = new Date(last.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+      next.setUTCHours(hour + 5, 0, 0, 0); // Ajustar a UTC usando hora local (Bogotá UTC-5)
       nextBackup = next.toISOString();
     }
 
@@ -101,7 +112,7 @@ const listBackups = async (req, res, next) => {
       data: {
         backups,
         maxBackups: MAX_BACKUPS,
-        intervalDays: BACKUP_INTERVAL_DAYS,
+        intervalDays: intervalDays,
         nextBackupScheduled: nextBackup,
         totalBackups: backups.length,
         storageType: 'supabase-cloud',
@@ -382,6 +393,14 @@ const syncToOneDrive = async (req, res) => {
  */
 const getSettings = async (req, res, next) => {
   try {
+    // Asegurar que la tabla existe
+    await query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key VARCHAR(50) PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
     const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
     const config = configRes.rows.length > 0 ? configRes.rows[0].value : { interval_days: 20, hour: 12 };
     res.json({ success: true, data: config });
@@ -402,6 +421,15 @@ const updateSettings = async (req, res, next) => {
     if (typeof hour !== 'number' || hour < 0 || hour > 23) {
       throw new AppError('hour debe estar entre 0 y 23', 400);
     }
+
+    // Asegurar que la tabla existe
+    await query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key VARCHAR(50) PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
     const value = JSON.stringify({ interval_days, hour });
     
