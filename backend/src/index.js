@@ -94,11 +94,13 @@ app.use(cors({
 
     const isLocalhost = origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
     const isPrivateIP = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(origin);
+    const isVercel = origin.endsWith('.vercel.app');
 
-    if (isLocalhost || isPrivateIP || allowedOrigins.includes(origin)) {
+    if (isLocalhost || isPrivateIP || isVercel || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
+    console.warn(`[CORS] Origen bloqueado: ${origin}`);
     callback(new Error('Origen no permitido por CORS'));
   },
   credentials: true,
