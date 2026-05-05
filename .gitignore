@@ -276,9 +276,9 @@ notes.md
 # ==========================================
 
 # Archivos que puedan contener contraseñas
-*password*
-*secret*
-*credential*
+*password.txt
+*secret.txt
+*credentials.json
 
 # SSH keys
 .ssh/
