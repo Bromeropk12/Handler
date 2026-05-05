@@ -1,249 +1,99 @@
-# 🚀 Handler TrackSamples
+# 🚀 Handler TrackSamples (Warehouse Management System)
 
-Sistema completo de gestión de inventario de muestras químicas con trazabilidad SGA (Sistema Globalmente Armonizado).
+Sistema experto de gestión de inventario de muestras químicas con **Trazabilidad Integral**, validación automatizada mediante normativas **SGA/GHS (Sistema Globalmente Armonizado)**, y visualización táctica mediante un **Gemelo Digital 3D**.
 
-## 📊 Estado del Proyecto
-- ✅ **100% Completado** - Sistema completamente funcional e integrado
-- 🔒 **Seguro** - Sin inyecciones SQL, RLS habilitado, código auditado
-- 🎨 **Moderno** - UI/UX premium con TailwindCSS
-- 🏗️ **Arquitectura** - Modular y escalable (< 500 líneas por archivo)
-- 🛡️ **Supabase Compliant** - Cumple estándares de seguridad de Supabase
-- 🔗 **Integridad Total** - Base de datos completamente normalizada
-
-## 🎯 Inicio Rápido
-
-### 🚀 **Un Solo Comando para Todo**
-```bash
-# Ejecuta este archivo y el sistema completo se inicia automáticamente:
-iniciar-sistema.bat
-```
-
-**¿Qué hace automáticamente?**
-- ✅ Instala `pnpm` y `concurrently` (si hace falta)
-- ✅ Instala todas las dependencias de Backend y Frontend
-- ✅ Levanta PostgreSQL con Docker
-- ✅ Inicia backend (en el puerto 3001) y frontend (en el puerto 3000)
-- ✅ Unifica todos los procesos (Docker, Backend, Frontend) en una misma consola
-
-### 👤 Credenciales de Prueba
-- **Usuario:** `admin`
-- **Contraseña:** `admin123`
-
-### 🛑 Detener Sistema
-Para detener **todo el sistema** al mismo tiempo (Base de Datos, Backend y Frontend):
-1. Ve a la consola donde ejecutaste `iniciar-sistema.bat`
-2. Presiona `Ctrl + C`
-3. Todos los servidores se apagarán con gracia y seguridad automáticamente.
-
-### 🔄 Reiniciar Base de Datos
-```bash
-# Para reiniciar BD con RLS aplicado:
-reiniciar-db.bat
-```
-
-### 🔒 Aplicar RLS Manualmente
-```bash
-# Para aplicar políticas RLS a BD existente:
-database/scripts/apply-rls.bat
-```
-
-##  Documentación Completa
-
-- **[Guía de Prueba Detallada](README-PROBAR-SISTEMA.md)** - Pasos manuales y troubleshooting
-- **[Plan de Proyecto](plans/plan-completo.md)** - Arquitectura y estado detallado
-- **[Frontend Docs](frontend/README.md)** - Documentación específica del frontend
-
-## 🏗️ Arquitectura del Sistema
-
-### Backend (Node.js + PostgreSQL)
-```
-backend/
-├── APIs RESTful completas con JWT
-├── Algoritmos SGA de compatibilidad química
-├── Tests exhaustivos (11/11 pasando)
-├── Arquitectura modular por dominio
-└── PostgreSQL con schemas validados
-```
-
-### Frontend (React + TailwindCSS)
-```
-frontend/
-├── Navegación jerárquica completa
-├── Mapa 2D interactivo con CSS Grid
-├── UI moderna con animaciones
-├── Código 100% limpio (0 warnings)
-└── Arquitectura modular con hooks
-```
-
-### Base de Datos
-```
-database/
-├── PostgreSQL en Docker
-├── 14 anaqueles físicos preconfigurados
-├── 7 proveedores principales incluidos
-├── Tabla suppliers completa con datos
-├── Relaciones normalizadas
-├── RLS (Row Level Security) habilitado ✅
-└── 21 Políticas de seguridad implementadas ✅
-```
-
-## 🎯 Características Principales
-
-### ✅ **Funcionalidades Core**
-- **Autenticación JWT** segura con recuperación de contraseña
-- **Gestión de Muestras** (bulk + dispensación individual)
-- **Mapa 2D Interactivo** con algoritmos SGA automáticos
-- **Sistema de Trazabilidad** completo con logs
-- **QR Codes** con metadata JSON
-- **Validaciones SGA** de compatibilidad química
-
-### ✅ **Características Técnicas**
-- **Backend Robusto** - APIs RESTful, middleware, validaciones
-- **Frontend Moderno** - React 18, hooks, Context API
-- **Base de Datos** - PostgreSQL con Docker, schemas optimizados
-- **Testing Completo** - Jest + Supertest, 11 tests pasando
-- **Código Limpio** - ESLint 0 warnings, Prettier automático
-- **Performance** - Optimizado, < 500ms consultas
-- **Responsive** - Funciona en móvil, tablet y desktop
-
-## 🔒 Seguridad y Cumplimiento
-
-### ✅ **Supabase Security Compliance 100%**
-- **RLS Habilitado**: Row Level Security en **7 tablas** ✅
-- **Políticas Restrictivas**: **21 políticas específicas** aplicadas ✅
-- **Sin Políticas Permisivas**: Eliminadas políticas `USING (true)` problemáticas ✅
-- **Control Granular**: Acceso basado en roles y estados ✅
-- **Auditoría Completa**: 0 vulnerabilidades detectadas ✅
-- **MCP Supabase**: Configuración aplicada vía API oficial ✅
-- **Linter Compliant**: Pasa todas las verificaciones de seguridad ✅
-- **Tabla Proveedores**: Agregada con RLS completo ✅
-
-### ✅ **Políticas RLS Implementadas (21 políticas totales)**
-```
-users:         Solo acceso a datos propios
-market_lines:  Solo lectura para usuarios autenticados
-global_samples: Control de acceso por rol admin
-shelves:       Gestión restringida a administradores
-dispensed_samples: Acceso controlado con lógica de negocio
-movements:     Log inmutable con acceso de solo lectura
-suppliers:     Gestión completa restringida a administradores
-```
-
-### 🔧 **Resolución de Problemas de RLS**
-
-Si Supabase aún reporta errores de RLS:
-
-#### **Reiniciar Base de Datos Completa**
-```bash
-# Ejecuta este script para reiniciar todo con RLS aplicado:
-reiniciar-db.bat
-```
-
-#### **Aplicar RLS Manualmente**
-```bash
-# Si la BD ya existe, aplica RLS con:
-database/scripts/apply-rls.bat
-```
-
-#### **Verificar Estado RLS**
-```bash
-# Conectar a PostgreSQL y verificar:
-docker exec -it handler-track-samples-db psql -U handler_user -d handler_tracksamples
-
-# Dentro de PostgreSQL:
-SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public';
-\q
-```
-
-### 🛠️ **Configuración de VSCode**
-
-#### **Problemas de TailwindCSS Resueltos**
-Si ves advertencias sobre `@tailwind` o `@apply`:
-
-1. **Instala extensiones requeridas:**
-   - Tailwind CSS IntelliSense
-   - CSS IntelliSense
-   - HTML CSS Class Completion
-
-2. **Reinicia VSCode completamente** después de instalar
-
-3. **Las advertencias desaparecerán automáticamente**
-
-#### **Resolución de Errores de Configuración**
-Si ves errores sobre valores no aceptados en `settings.json`:
-
-1. **Cierra VSCode completamente**
-2. **Elimina la carpeta `.vscode` del proyecto** (opcional)
-3. **Reabre VSCode** - las configuraciones se regenerarán automáticamente
-4. **Las extensiones se reinstalarán automáticamente**
-
-#### **Verificación Final**
-Después de reiniciar VSCode:
-- ✅ No debe haber errores en `settings.json`
-- ✅ TailwindCSS debe funcionar sin advertencias
-- ✅ ESLint debe funcionar correctamente
-- ✅ Formateo automático debe estar activo
-
-#### **Archivo .vscode/settings.json Corregido**
-- ✅ Configuraciones duplicadas eliminadas
-- ✅ Valores inválidos corregidos
-- ✅ Formateo automático configurado
-- ✅ ESLint integrado activado
-
-##  Stack Tecnológico
-
-| Componente | Tecnología | Versión |
-|------------|------------|---------|
-| **Backend** | Node.js + Express | 18+ |
-| **Frontend** | React + TailwindCSS | 18 + 3.3 |
-| **Base de Datos** | PostgreSQL + RLS | 15+ |
-| **Contenedor** | Docker + Docker Compose | Latest |
-| **Gestor Paquetes** | pnpm | Latest |
-| **Testing** | Jest + Supertest | Latest |
-
-## 📊 Métricas de Calidad
-
-- **Cobertura de Tests:** 11/11 tests pasando ✅
-- **Limpieza de Código:** 0 errores ESLint, 0 warnings ✅
-- **Arquitectura:** Modular, < 500 líneas por archivo ✅
-- **Seguridad:** Sin inyecciones SQL, código auditado ✅
-- **Performance:** Consultas < 500ms ✅
-- **Mantenibilidad:** Código bien documentado ✅
-
-## 🚀 Próximos Pasos Opcionales
-
-- [ ] Tema claro/oscuro opcional
-- [ ] Algoritmo de desfragmentación automática
-- [ ] Tests end-to-end con Cypress
-- [ ] Empaquetado Tauri para Windows 11
-- [ ] Dashboard con analytics avanzados
-
-## 📞 Soporte
-
-Para soporte técnico:
-1. Revisa la **[Guía de Prueba](README-PROBAR-SISTEMA.md)**
-2. Verifica logs en las terminales abiertas
-3. Contacta al equipo de desarrollo
-
-## 📋 Checklist de Inicio
-
-### Verificación Previa
-- [x] Node.js v18+ instalado
-- [x] pnpm instalado
-- [x] Docker y Docker Compose instalados
-- [x] Puertos 3000, 3001, 5432 libres
-
-### Inicio del Sistema
-- [ ] Ejecutar `iniciar-sistema.bat`
-- [ ] Esperar que se complete la inicialización
-- [ ] Abrir http://localhost:3000
-- [ ] Iniciar sesión con admin/admin123
-- [ ] Explorar el sistema completo
+Desarrollado como solución tecnológica para la optimización logística e industrial.
 
 ---
 
-## 🎉 ¡Listo para Usar!
+## 📊 Estado del Proyecto
+- ✅ **100% Completado** - Sistema completamente funcional e integrado como Aplicación de Escritorio nativa.
+- 🔒 **Seguro** - Autenticación JWT, políticas de seguridad a nivel de fila (RLS) y encriptación de credenciales.
+- 🎨 **Interfaz Industrial** - UI/UX premium diseñada específicamente para la reducción de fatiga visual en entornos de bodega (Industrial Dark Theme).
+- 🏗️ **Arquitectura Autónoma** - Cliente-Servidor local sin dependencia de internet, garantizando máxima resiliencia.
 
-**Handler TrackSamples** es un sistema empresarial completo y moderno para la gestión de muestras químicas. Con solo ejecutar un archivo, tienes todo funcionando automáticamente.
+## 🎯 Características Diferenciadoras
 
-**¡Disfruta probando el sistema! 🚀**
+### 🧪 Motor de Compatibilidad Química (GHS)
+El corazón de la seguridad industrial de Handler. Un algoritmo en tiempo real que cruza matrices de compatibilidad química antes de permitir el almacenamiento. Previene proactivamente reacciones químicas peligrosas, bloqueando ubicaciones de estantes si se detectan incompatibilidades entre reactivos (Ej. Inflamables vs Comburentes).
+
+### 🧊 Gemelo Digital 3D (Digital Twin)
+Visualización espacial exacta de los estantes y niveles del almacén renderizada mediante aceleración de hardware (WebGL/Three.js).
+- **Cálculo Volumétrico Real:** Muestra visualmente el porcentaje de ocupación en $m^3$.
+- **Semaforización:** Códigos de color automáticos para identificar muestras próximas a caducar o niveles con alertas de incompatibilidad.
+
+### 📦 Gestión de Inventario Avanzada
+- **Global a Dispensado:** Capacidad de registrar tanques maestros (Muestras Globales) y subdividirlos en recipientes menores (Muestras Dispensadas/Hijas) preservando el Certificado de Análisis (CoA).
+- **Códigos QR Universales:** Etiquetado automatizado y rastreo mediante lectores de código de barras/QR en terminales de bodega.
+
+---
+
+## 🏗️ Arquitectura del Sistema
+
+El sistema opera bajo un modelo **Cliente-Servidor de Escritorio** completamente aislado y autónomo.
+
+### 🖥️ Capa de Presentación y Empaquetado (Electron + React)
+- Aplicación de escritorio nativa compilada con **Electron**.
+- Interfaz dinámica construida con **React.js 18** y estilizada con **TailwindCSS**.
+- Motor de renderizado espacial basado en **Three.js**.
+
+### ⚙️ Capa Lógica (Node.js + Express)
+- Servidor RESTful local operando en segundo plano.
+- Tareas programadas (Cron Jobs) internas para respaldos automatizados.
+- Controladores de validación matemática (capacidades métricas) y matriz GHS.
+
+### 🗄️ Capa de Datos (Docker + PostgreSQL)
+- Contenedor aislado de base de datos relacional.
+- Cumplimiento estricto con **Row Level Security (RLS)** y políticas de acceso.
+- Estructura normalizada sin inyecciones SQL.
+
+---
+
+##  Stack Tecnológico
+
+| Componente | Tecnología | Propósito |
+|------------|------------|-----------|
+| **Empaquetado** | Electron.js | Aplicación de escritorio nativa (Windows) |
+| **Frontend** | React + TailwindCSS | UI/UX Dinámica y Responsiva |
+| **Gráficos 3D** | Three.js | Gemelo Digital y Renderizado WebGL |
+| **Backend** | Node.js + Express | Lógica de Negocio y API RESTful local |
+| **Base de Datos** | PostgreSQL 15+ | Almacenamiento Relacional Seguro |
+| **Orquestación** | Docker + Compose | Aislamiento y Portabilidad de BD |
+
+---
+
+## 🚀 Guía de Inicio y Despliegue Local
+
+Al ser una aplicación diseñada para operar de forma autónoma en una terminal de bodega, el despliegue es "Plug and Play".
+
+### 1. Iniciar la Base de Datos (Docker)
+Asegúrate de tener Docker Engine ejecutándose.
+```bash
+# Entra a la carpeta de la base de datos y levanta el contenedor
+cd database
+docker-compose up -d
+```
+
+### 2. Iniciar el Sistema (Modo Desarrollo)
+Si cuentas con el entorno de desarrollo preparado:
+```bash
+# Ejecuta el script automatizado en la raíz del proyecto
+iniciar-sistema.bat
+```
+Este comando levantará los servidores backend y el entorno de React simultáneamente.
+
+### 3. Credenciales de Administrador por Defecto
+- **Usuario:** `admin`
+- **Contraseña:** `admin123`
+
+---
+
+## 🔒 Auditoría y Seguridad
+- **Políticas RLS:** Más de 21 políticas de seguridad implementadas nativamente en la base de datos.
+- **Trazabilidad Absoluta:** La tabla `movements` registra irrevocablemente quién, cuándo y dónde movió cada muestra química.
+- **Respaldos (Backups):** Módulo de respaldo automatizado capaz de generar *snapshots* JSON del inventario y restaurar el sistema en caso de catástrofes.
+
+---
+
+## 👨‍💻 Acerca del Desarrollo
+Este sistema fue desarrollado integralmente para satisfacer las altas exigencias de control y seguridad requeridas en almacenes de compuestos químicos logísticos, aplicando las mejores prácticas de **Ingeniería de Software**, metodologías ágiles (Scrum) y principios de diseño modular (Domain-Driven Design).

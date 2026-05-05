@@ -1,7 +1,7 @@
 /**
  * Backup Controller - Handler TrackSamples
- * Sistema de respaldo de base de datos en la nube (Supabase)
- * Compatible con entornos serverless (Vercel) y locales
+ * Sistema de respaldo de base de datos
+ * Compatible con entornos locales y de escritorio
  */
 
 const bcrypt = require('bcryptjs');
@@ -446,7 +446,7 @@ const updateSettings = async (req, res, next) => {
 };
 
 /**
- * Endpoint de Vercel Cron
+ * Endpoint de Cron Local
  */
 const runCronJob = async (req, res, next) => {
   try {
@@ -461,7 +461,7 @@ const runCronJob = async (req, res, next) => {
       }
     } catch (_) {}
 
-    // 1. Validar hora (Opcional - se omite para compatibilidad con plan Hobby de Vercel)
+    // 1. Validar hora (Se permite flexibilidad local)
     // El backup se ejecutará en la primera oportunidad una vez cumplido el intervalo de días.
     const now = new Date();
     const bogota = new Date(now.getTime() - 5 * 60 * 60 * 1000);
@@ -486,7 +486,7 @@ const runCronJob = async (req, res, next) => {
 
     await query(
       'INSERT INTO backups (filename, size_bytes, data, created_by, manual) VALUES ($1, $2, $3::jsonb, $4, $5)',
-      [filename, sizeBytes, jsonStr, 'vercel-cron', false]
+      [filename, sizeBytes, jsonStr, 'local-cron', false]
     );
 
     // Rotar

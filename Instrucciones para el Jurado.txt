@@ -1,0 +1,20 @@
+Instrucciones para el Jurado de trabajo de grado:
+
+	
+	paso 1: Abrir la aplicación de escritorio Handler (o ingresar a http://localhost:3000 si ejecuta el entorno local)
+
+		Credenciales Administrador:
+		(  user:     admin1
+		   password: @Admin1 )   
+		No copiar y pegar porque la app bloquea esta acción por seguridad. 
+
+         No se pueden cargar certificados CoA, YA QUE SOLO ESTA DISEÑADO PARA MANEJARSE EN LOCAL 
+		algunas imagenes no pueden cargar ya que las carga directamente la base de datos de docker en local 
+	 
+
+
+			
+
+   
+
+	

@@ -16,7 +16,7 @@ const { verifyToken, requireAdmin } = require('../auth/controller');
 
 const router = express.Router();
 
-// Rutas públicas / cron (Protegidas por Vercel Cron Secret)
+// Rutas públicas / cron local
 const { runCronJob, getSettings, updateSettings } = require('./controller');
 router.get('/cron', runCronJob);
 

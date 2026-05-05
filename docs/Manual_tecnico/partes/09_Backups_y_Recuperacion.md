@@ -124,6 +124,6 @@ Retorna la lista de los últimos 10 backups (ordenados por fecha descendente) co
 - `filename`: Nombre del archivo con timestamp.
 - `sizeMB`: Tamaño del backup en megabytes.
 - `createdAt`: Fecha y hora de creación (UTC).
-- `createdBy`: Usuario o sistema que lo creó (`admin` o `vercel-cron`).
+- `createdBy`: Usuario o sistema que lo creó (`admin` o `local-cron`).
 - `manual`: `true` si fue creado manualmente, `false` si fue automático.
 - `nextBackupScheduled`: Fecha/hora calculada del próximo backup automático.

@@ -69,21 +69,21 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:", "http://localhost:3001", "http://127.0.0.1:3001", "https://*.vercel.app"],
-      connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001", "https://*.vercel.app"],
+      imgSrc: ["'self'", "data:", "blob:", "http://localhost:3001", "http://127.0.0.1:3001"],
+      connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001"],
     },
   },
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS: Permitir localhost, IPs locales y dominios de Vercel
+// CORS: Permitir localhost y IPs locales
 const allowedOrigins = [
   config.frontendUrl,
   'http://localhost:3000',
   'http://127.0.0.1:3000',
 ];
 
-// Dominios de Vercel y producción desde variable de entorno
+// Dominios adicionales desde variable de entorno
 if (process.env.ALLOWED_ORIGINS) {
   allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()));
 }
@@ -94,9 +94,8 @@ app.use(cors({
 
     const isLocalhost = origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
     const isPrivateIP = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(origin);
-    const isVercel = /^https:\/\/.*\.vercel\.app$/.test(origin);
 
-    if (isLocalhost || isPrivateIP || isVercel || allowedOrigins.includes(origin)) {
+    if (isLocalhost || isPrivateIP || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
