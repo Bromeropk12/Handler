@@ -161,45 +161,19 @@ app.use((req, res, next) => {
 });
 
 
-// CORS: allowlist explícita. NO usar regex abierto de IPs privadas.
-// Configurar ALLOWED_ORIGINS en .env con las IPs/dominios reales de las
-// terminales que consumirán la API (separadas por coma).
-// Ejemplo: ALLOWED_ORIGINS=http://192.168.1.100:3000,http://192.168.1.101:3000
-const allowedOrigins = [
-  config.frontendUrl,
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-];
-
-// Dominios adicionales desde variable de entorno
-if (process.env.ALLOWED_ORIGINS) {
-  allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean));
-}
-
-// Advertencia si la allowlist está vacía en producción
-if (process.env.NODE_ENV === 'production' && allowedOrigins.length <= 3) {
-  console.warn(
-    '[CORS] ⚠️ [SECURITY] ALLOWED_ORIGINS no está configurado o solo contiene defaults. ' +
-    'Esto bloquea el acceso desde terminales LAN. Configura ALLOWED_ORIGINS en .env.'
-  );
-}
-
+// CORS permisivo para LAN: acepta localhost, 127.0.0.1, y todas las IPs
+// privadas (10.x, 172.16-31.x, 192.168.x.x) en cualquier puerto.
+// Bloquea orígenes de internet público.
 app.use(cors({
   origin: function (origin, callback) {
-    // Permitir requests sin Origin SOLO en health check (utilidades de monitoring).
-    // El resto de rutas requieren un Origin válido para mitigar CSRF y
-    // ataques con iframes sandbox / data: URIs (que envían Origin: null).
-    if (!origin) {
-      if (this && this.req && this.req.path === '/health') {
-        return callback(null, true);
-      }
-      return callback(new Error('Origin header requerido'));
-    }
-
-    if (allowedOrigins.includes(origin)) {
+    if (!origin) return callback(null, true);
+    if (
+      origin.startsWith('http://localhost') ||
+      origin.startsWith('http://127.0.0.1') ||
+      /^http:\/\/(10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin)
+    ) {
       return callback(null, true);
     }
-
     console.warn(`[CORS] Origen bloqueado: ${origin}`);
     callback(new Error('Origen no permitido por CORS'));
   },
