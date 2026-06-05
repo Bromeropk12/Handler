@@ -13,6 +13,29 @@ const notFound = (req, res, next) => {
 };
 
 /**
+ * Lista de campos sensibles que NUNCA deben aparecer en logs.
+ * Si se añaden a un body o query, se redactan a '[REDACTED]'.
+ */
+const SENSITIVE_FIELDS = new Set([
+  'password', 'currentPassword', 'newPassword', 'confirmPassword',
+  'secretPassword', 'adminPassword', 'token', 'auth_token', 'authorization',
+  'jwt', 'jwt_secret', 'JWT_SECRET', 'cookie', 'cookies',
+]);
+
+const sanitize = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  const out = Array.isArray(obj) ? [...obj] : { ...obj };
+  for (const key of Object.keys(out)) {
+    if (SENSITIVE_FIELDS.has(key)) {
+      out[key] = '[REDACTED]';
+    } else if (typeof out[key] === 'object' && out[key] !== null) {
+      out[key] = sanitize(out[key]);
+    }
+  }
+  return out;
+};
+
+/**
  * Middleware para manejo de errores
  */
 const errorHandler = (logger) => (error, req, res, next) => {
@@ -27,12 +50,12 @@ const errorHandler = (logger) => (error, req, res, next) => {
       method: req.method,
       ip: req.ip,
       userAgent: req.get('User-Agent'),
-      body: req.body,
-      params: req.params,
-      query: req.query,
+      body: sanitize(req.body),
+      params: sanitize(req.params),
+      query: sanitize(req.query),
     });
   } else if (statusCode === 400) {
-    console.error('### 400 BAD REQUEST ###:', message, req.body);
+    console.error('### 400 BAD REQUEST ###:', message, sanitize(req.body));
   }
 
   // Errores específicos de PostgreSQL

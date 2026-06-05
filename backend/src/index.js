@@ -128,14 +128,19 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
+      // 'unsafe-inline' solo en styles es necesario para React/CSS-in-JS.
+      // Si rompe algo en producción, mover a nonces/hashes.
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       styleSrcElem: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      // 'none' bloqueaba onsubmit="..." en setup_page.html — ahora usamos addEventListener
+      // 'unsafe-eval' eliminado: previene ejecución de eval()/new Function() vía XSS.
+      // 'unsafe-inline' solo se permite en development (para HMR de webpack); en prod se omite.
+      scriptSrc: process.env.NODE_ENV === 'production'
+        ? ["'self'"]
+        : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       scriptSrcAttr: ["'none'"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", "ws:", "wss:"],
       formAction: ["'self'"],
       upgradeInsecureRequests: null,
     },
@@ -145,8 +150,21 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
+// Permissions-Policy: deshabilita features del navegador que la app no necesita.
+// Reduce superficie de ataque si se inyecta código malicioso vía XSS.
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy',
+    'camera=(self), microphone=(self), geolocation=(), usb=(), payment=(), ' +
+    'magnetometer=(), gyroscope=(), accelerometer=(), interest-cohort=()'
+  );
+  next();
+});
 
-// CORS: Permitir localhost y IPs locales
+
+// CORS: allowlist explícita. NO usar regex abierto de IPs privadas.
+// Configurar ALLOWED_ORIGINS en .env con las IPs/dominios reales de las
+// terminales que consumirán la API (separadas por coma).
+// Ejemplo: ALLOWED_ORIGINS=http://192.168.1.100:3000,http://192.168.1.101:3000
 const allowedOrigins = [
   config.frontendUrl,
   'http://localhost:3000',
@@ -155,17 +173,30 @@ const allowedOrigins = [
 
 // Dominios adicionales desde variable de entorno
 if (process.env.ALLOWED_ORIGINS) {
-  allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()));
+  allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean));
+}
+
+// Advertencia si la allowlist está vacía en producción
+if (process.env.NODE_ENV === 'production' && allowedOrigins.length <= 3) {
+  console.warn(
+    '[CORS] ⚠️ [SECURITY] ALLOWED_ORIGINS no está configurado o solo contiene defaults. ' +
+    'Esto bloquea el acceso desde terminales LAN. Configura ALLOWED_ORIGINS en .env.'
+  );
 }
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
+    // Permitir requests sin Origin SOLO en health check (utilidades de monitoring).
+    // El resto de rutas requieren un Origin válido para mitigar CSRF y
+    // ataques con iframes sandbox / data: URIs (que envían Origin: null).
+    if (!origin) {
+      if (this && this.req && this.req.path === '/health') {
+        return callback(null, true);
+      }
+      return callback(new Error('Origin header requerido'));
+    }
 
-    const isLocalhost = origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
-    const isPrivateIP = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(origin);
-
-    if (isLocalhost || isPrivateIP || allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
@@ -203,11 +234,25 @@ console.log(`[DEBUG] Directorio CoA: ${coaDir}`);
 app.get('/uploads/coa/:filename', async (req, res, next) => {
   try {
     const { query } = require('./services/database');
+    const { resolveSafeFilePath, resolveSafePath } = require('./utils/pathSecurity');
     const result = await query("SELECT value FROM settings WHERE key = 'coa_base_dir'");
-    const activeCoaDir = result.rows.length > 0
-      ? result.rows[0].value
-      : coaDir;
-    res.sendFile(path.join(activeCoaDir, req.params.filename), (err) => {
+    let activeCoaDir = coaDir;
+    if (result.rows.length > 0) {
+      try {
+        activeCoaDir = resolveSafePath(result.rows[0].value);
+      } catch (err) {
+        console.warn(`[security] coa_base_dir en BD es inseguro: ${err.message}`);
+        return res.status(403).json({ success: false, error: 'Configuración de directorio CoA inválida' });
+      }
+    }
+    // FIX #11: defensa en profundidad — el filename no debe escapar del directorio base
+    let safeFilePath;
+    try {
+      safeFilePath = resolveSafeFilePath(activeCoaDir, req.params.filename);
+    } catch (err) {
+      return res.status(403).json({ success: false, error: 'Nombre de archivo inválido' });
+    }
+    res.sendFile(safeFilePath, (err) => {
       if (err) next();
     });
   } catch {
@@ -245,13 +290,13 @@ if (process.env.SETUP_MODE === 'true') {
   });
 }
 
-// Documentación Swagger (solo si se cargó correctamente)
-if (swaggerUi && swaggerSpec) {
+// Documentación Swagger — solo en development (expone estructura interna)
+if (swaggerUi && swaggerSpec && process.env.NODE_ENV !== 'production') {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customSiteTitle: 'Handler TrackSamples API Docs',
   }));
 } else {
-  app.get('/api-docs', (_req, res) => res.status(503).send('Documentación API no disponible en este entorno.'));
+  app.get('/api-docs', (_req, res) => res.status(404).send('Not Found'));
 }
 
 // Rutas de la API (solo en modo normal, no durante setup inicial)

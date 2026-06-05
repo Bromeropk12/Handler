@@ -10,16 +10,31 @@ const fs = require('fs').promises;
 const path = require('path');
 
 let _cachedCoaBaseDir = null;
+let _cacheTimestamp = 0;
+const CACHE_TTL_MS = 60_000; // 1 min: balance entre seguridad y rendimiento
 
 const getCoaBaseDir = async () => {
+  const { resolveSafePath } = require('../../utils/pathSecurity');
+  const now = Date.now();
+  if (_cachedCoaBaseDir && (now - _cacheTimestamp) < CACHE_TTL_MS) {
+    return _cachedCoaBaseDir;
+  }
   try {
     const result = await query("SELECT value FROM settings WHERE key = 'coa_base_dir'");
     if (result.rows.length > 0) {
-      _cachedCoaBaseDir = result.rows[0].value;
-      return path.resolve(_cachedCoaBaseDir);
+      const raw = result.rows[0].value;
+      // FIX #11: si el valor en BD no es seguro, hacer fallback a la config por defecto
+      try {
+        _cachedCoaBaseDir = resolveSafePath(raw);
+      } catch (err) {
+        console.warn(`[security] coa_base_dir en BD es inseguro (${err.message}); usando config por defecto`);
+        _cachedCoaBaseDir = resolveSafePath(config.coa.baseDir);
+      }
+      _cacheTimestamp = now;
+      return _cachedCoaBaseDir;
     }
   } catch {}
-  return path.resolve(config.coa.baseDir);
+  return resolveSafePath(config.coa.baseDir);
 };
 
 // Pictogramas GHS válidos (los 9 del sistema SGA)
@@ -211,13 +226,21 @@ const getBulkSamples = async (req, res, next) => {
       paramIndex++;
     }
 
+      // FIX #13: documentar la semántica de cada filtro y añadir alias explícito.
+      //   available   → aún tiene frascos hijos disponibles (available_units > 0)
+      //   empty       → todos los frascos hijos fueron consumidos (available_units = 0)
+      //   pending     → aún no se ha subdividido (total_units = 0, sin hijos generados)
+      //   subdivided  → ya fue subdividido (total_units > 0). Alias claro de 'dispensed'.
+      //   dispensed   → alias legacy de 'subdivided' (mantener compat con frontend).
+      //   expired     → fecha de expiración ya pasó
+      //   warning     → expira en los próximos 30 días
       if (status === 'available') {
         whereConditions.push('gs.available_units > 0');
       } else if (status === 'empty') {
         whereConditions.push('gs.available_units = 0');
       } else if (status === 'pending') {
         whereConditions.push('gs.total_units = 0');
-      } else if (status === 'dispensed') {
+      } else if (status === 'subdivided' || status === 'dispensed') {
         whereConditions.push('gs.total_units > 0');
       } else if (status === 'expired') {
         whereConditions.push('gs.expiration_date < CURRENT_DATE');

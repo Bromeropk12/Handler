@@ -1,18 +1,61 @@
-const { query, transaction } = require('../../services/database');
+const { query, transaction, pool } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { v4: uuidv4 } = require('uuid');
 const { findAutoPlacement, parseDimensions } = require('../warehouse/validations');
 
+const SHORT_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function generateShortCode(length = 7) {
+  return Array.from({ length }, () =>
+    SHORT_CHARS[Math.floor(Math.random() * SHORT_CHARS.length)]
+  ).join('');
+}
+
+/**
+ * Genera un qr_code que NO existe actualmente en la BD.
+ * Implementa retry con backoff para evitar race conditions.
+ *
+ * Importante: en escenarios concurrentes, dos requests pueden pasar la
+ * verificación pre-INSERT antes de que la otra haya commiteado. Por eso
+ * el INSERT depende del UNIQUE constraint del schema. Si choca, hacemos
+ * retry (el UNIQUE INDEX garantiza cero duplicados).
+ */
+async function generateUniqueQrCode(client, subSampleIndex) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = `${generateShortCode(7)}-${subSampleIndex}`;
+    try {
+      const existing = await client.query(
+        'SELECT 1 FROM dispensed_samples WHERE qr_code = $1',
+        [candidate]
+      );
+      if (existing.rows.length === 0) {
+        return candidate;
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+  // Si tras 20 intentos no encontramos uno único, lanzamos error explícito
+  // en lugar de continuar con un código potencialmente duplicado.
+  throw new AppError(
+    'No se pudo generar un código QR único tras 20 intentos. Reintente la operación.',
+    500
+  );
+}
+
 /**
  * Subdividir un Bulk Sample en Muestras Hijas (Dispensación)
- * 
+ *
  * Cambios clave vs versión anterior:
  * - BLOQUEA re-dispensación: si el bulk ya tiene total_units > 0, error
  * - Recibe child_dimensions del request (tamaño del frasco hijo, NO del bulk)
  * - Peso correcto: weight_per_unit es el peso de cada frasco hijo
  * - QR data enriquecido con pictogramas y señal
+ * - (FIX #9) Verificación de unicidad de QR code DENTRO de la transacción
+ *   para evitar race conditions en dispensaciones concurrentes.
  */
 const subdivideBulkSample = async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const { global_sample_id, weight_per_unit, child_dimensions, shelf_id } = req.body;
     const number_of_units = parseInt(req.body.number_of_units, 10);
@@ -23,7 +66,7 @@ const subdivideBulkSample = async (req, res, next) => {
     if (!child_dimensions) throw new AppError('Las dimensiones del frasco hijo son requeridas', 400);
 
     // Verificar que el bulk existe
-    const bulkCheck = await query(`
+    const bulkCheck = await client.query(`
       SELECT gs.*, sup.name as supplier_name, sup.logo_path as supplier_logo_path,
              COALESCE(gs.dispensed_size, '1x1x1') as dispensed_size
       FROM global_samples gs
@@ -49,27 +92,18 @@ const subdivideBulkSample = async (req, res, next) => {
     const childHeight = dims.height;
     const childDepth = dims.depth || 1;
 
+    await client.query('BEGIN');
+
     const txQueries = [];
     const generatedSamples = [];
 
     // Generar cada muestra dispensada
     for (let i = 0; i < number_of_units; i++) {
-      // Generar código corto único (7 chars alfanumérico aleatorio + secuencia hija)
-      // Ejemplo: "A3K9M2X-1", "B7NP4QZ-2" — no expone el lote en la etiqueta
-      const SHORT_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      let shortBase = '';
-      let qrCode = '';
-      let attempts = 0;
-      do {
-        shortBase = Array.from({ length: 7 }, () =>
-          SHORT_CHARS[Math.floor(Math.random() * SHORT_CHARS.length)]
-        ).join('');
-        qrCode = `${shortBase}-${i + 1}`;
-        // Verificar unicidad (evitar colisiones extremadamente raras)
-        const existing = await query('SELECT 1 FROM dispensed_samples WHERE qr_code = $1', [qrCode]);
-        if (existing.rows.length === 0) break;
-        attempts++;
-      } while (attempts < 10);
+      // Generar código corto único DENTRO de la transacción (FIX #9).
+      // La verificación + INSERT corren sobre el mismo client con BEGIN activo,
+      // garantizando que otras transacciones no puedan insertar el mismo código
+      // hasta que commiteemos. El UNIQUE INDEX en qr_code es la red de seguridad final.
+      const qrCode = await generateUniqueQrCode(client, i + 1);
 
       // QR data enriquecido para la etiqueta
       const qrData = {
@@ -133,8 +167,13 @@ const subdivideBulkSample = async (req, res, next) => {
       ]
     });
 
-    // Ejecutar transacción
-    const txResult = await transaction(txQueries);
+    // Ejecutar queries en la transacción activa
+    const txResult = [];
+    for (const { query: sql, params = [] } of txQueries) {
+      const r = await client.query(sql, params);
+      txResult.push(r);
+    }
+    await client.query('COMMIT');
 
     // Extraer IDs de las muestras creadas
     const sampleIds = txResult
@@ -146,13 +185,13 @@ const subdivideBulkSample = async (req, res, next) => {
     let shelvesQuery;
     if (shelf_id) {
       shelvesQuery = await query(`
-        SELECT 
+        SELECT
           sh.*,
           (SELECT COUNT(*) FROM dispensed_samples ds WHERE ds.shelf_id = sh.id AND ds.status = 'stored') as occupied_cells
         FROM shelves sh
         WHERE sh.id = $1
         UNION ALL
-        SELECT 
+        SELECT
           sh.*,
           (SELECT COUNT(*) FROM dispensed_samples ds WHERE ds.shelf_id = sh.id AND ds.status = 'stored') as occupied_cells
         FROM shelves sh
@@ -161,7 +200,7 @@ const subdivideBulkSample = async (req, res, next) => {
       `, [shelf_id, bulk.market_line_id]);
     } else {
       shelvesQuery = await query(`
-        SELECT 
+        SELECT
           sh.*,
           (SELECT COUNT(*) FROM dispensed_samples ds WHERE ds.shelf_id = sh.id AND ds.status = 'stored') as occupied_cells
         FROM shelves sh
@@ -309,7 +348,10 @@ const subdivideBulkSample = async (req, res, next) => {
     });
 
   } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
     next(error);
+  } finally {
+    client.release();
   }
 };
 

@@ -35,19 +35,25 @@ const upload = multer({
   },
 });
 
+router.use(verifyToken, requireAdmin);
+
 /**
  * @openapi
  * /api/backup/cron:
  *   get:
- *     summary: Ejecutar backup programado (cron)
+ *     summary: Ejecutar backup programado (cron) — solo admin
  *     tags: [Backup]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Backup ejecutado
+ *       401:
+ *         description: Token requerido
+ *       403:
+ *         description: Se requiere rol de administrador
  */
 router.get('/cron', runCronJob);
-
-router.use(verifyToken, requireAdmin);
 
 /**
  * @openapi

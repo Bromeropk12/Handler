@@ -5,6 +5,7 @@
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { query } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { DEFAULT_PERMISSIONS, PERMISSION_MODULES, ALL_PERMISSIONS } = require('../../config/permissions');
@@ -43,6 +44,15 @@ const validatePasswordStrength = (password) => {
   return { valid: true };
 };
 
+/**
+ * Helper: rounds de bcrypt seguros. Acepta env BCRYPT_ROUNDS en [4, 15],
+ * por defecto 12. Previene NaN o valores fuera de rango.
+ */
+const getBcryptRounds = () => {
+  const n = parseInt(process.env.BCRYPT_ROUNDS, 10);
+  return (Number.isFinite(n) && n >= 4 && n <= 15) ? n : 12;
+};
+
 // Generar JWT token
 const generateToken = (user) => {
   return jwt.sign(
@@ -52,7 +62,7 @@ const generateToken = (user) => {
       role: user.role
     },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
+    { algorithm: 'HS256', expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
   );
 };
 
@@ -102,7 +112,7 @@ const login = async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       maxAge: 8 * 60 * 60 * 1000, // 8 hours
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+      sameSite: 'lax'
     });
 
     res.json({
@@ -164,7 +174,7 @@ const resetPassword = async (req, res, next) => {
     }
 
     // Hash de la nueva contraseña
-    const hashedPassword = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+    const hashedPassword = await bcrypt.hash(newPassword, getBcryptRounds());
 
     // Actualizar contraseña
     await query(
@@ -205,7 +215,7 @@ const verifyToken = async (req, res, next) => {
       throw new AppError('Token de autorización requerido', 401);
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
     // Verificar que el usuario aún existe
     const users = await query('SELECT id, username, role, permissions FROM users WHERE id = $1', [decoded.id]);
@@ -259,12 +269,13 @@ const listUsers = async (req, res, next) => {
 
 /**
  * Crear nuevo usuario (solo admin)
- * Los administradores pueden crear usuarios sin validación de contraseña
- * Los operadores creados deberán cambiar su contraseña con validación
+ * Valida fortaleza de contraseña también para admin (seguridad)
+ * Si el admin necesita bypass explícito, debe pasar `forceWeakPassword: true`
+ * (queda registrado en audit log).
  */
 const createUser = async (req, res, next) => {
   try {
-    const { username, password, role } = req.body;
+    const { username, password, role, forceWeakPassword = false } = req.body;
 
     // Validaciones básicas
     if (!username || !password || !role) {
@@ -275,8 +286,14 @@ const createUser = async (req, res, next) => {
       throw new AppError('El rol debe ser "admin" o "operator"', 400);
     }
 
-    // Nota: Los administradores pueden crear usuarios con cualquier contraseña
-    // Los operadores tendrán que cambiar su contraseña después con validación completa
+    // Aplicar validación de fortaleza a TODOS los roles (admin y operator)
+    // a menos que el admin que crea solicite bypass explícito.
+    if (!forceWeakPassword) {
+      const passwordValidation = validatePasswordStrength(password);
+      if (!passwordValidation.valid) {
+        throw new AppError(passwordValidation.message, 400);
+      }
+    }
 
     // Verificar que el username no existe
     const existingUser = await query(
@@ -288,10 +305,11 @@ const createUser = async (req, res, next) => {
       throw new AppError('El nombre de usuario ya existe', 409);
     }
 
-    // Generar contraseña secreta aleatoria (para recuperación)
-    const secretPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
-    const hashedPassword = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS) || 12);
-    const hashedSecretPassword = await bcrypt.hash(secretPassword, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+    // Generar contraseña secreta aleatoria (para recuperación) - crypto-seguro
+    const secretPassword = crypto.randomBytes(16).toString('hex');
+    const bcryptRounds = getBcryptRounds();
+    const hashedPassword = await bcrypt.hash(password, bcryptRounds);
+    const hashedSecretPassword = await bcrypt.hash(secretPassword, bcryptRounds);
 
     // Crear usuario
     const newUser = await query(
@@ -307,6 +325,7 @@ const createUser = async (req, res, next) => {
           new_user_id: newUser.rows[0].id,
           new_username: username,
           new_role: role,
+          weak_password_bypass: !!forceWeakPassword,
           ip: req.ip,
           timestamp: new Date().toISOString()
         })]
@@ -331,18 +350,24 @@ const createUser = async (req, res, next) => {
 
 /**
  * Cambiar contraseña de otro usuario (solo admin)
- * Los administradores pueden cambiar cualquier contraseña sin validación
+ * Valida fortaleza por defecto. El admin puede forzar bypass con `forceWeakPassword: true`
+ * (queda auditado en movements).
  */
 const changeUserPassword = async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const { newPassword } = req.body;
+    const { newPassword, forceWeakPassword = false } = req.body;
 
     if (!newPassword) {
       throw new AppError('La nueva contraseña es requerida', 400);
     }
 
-    // Nota: Los administradores pueden cambiar cualquier contraseña sin validación
+    if (!forceWeakPassword) {
+      const passwordValidation = validatePasswordStrength(newPassword);
+      if (!passwordValidation.valid) {
+        throw new AppError(passwordValidation.message, 400);
+      }
+    }
 
     // Verificar que el usuario existe
     const userExists = await query(
@@ -355,7 +380,7 @@ const changeUserPassword = async (req, res, next) => {
     }
 
     // Hash de la nueva contraseña
-    const hashedNewPassword = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+    const hashedNewPassword = await bcrypt.hash(newPassword, getBcryptRounds());
 
     // Actualizar contraseña
     await query(
@@ -370,6 +395,7 @@ const changeUserPassword = async (req, res, next) => {
         [null, 'admin_password_change', req.user.id, JSON.stringify({
           target_user_id: userId,
           target_username: userExists.rows[0].username,
+          weak_password_bypass: !!forceWeakPassword,
           ip: req.ip,
           timestamp: new Date().toISOString()
         })]
@@ -430,7 +456,7 @@ const changePassword = async (req, res, next) => {
     }
 
     // Hash de la nueva contraseña
-    const hashedNewPassword = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS) || 12);
+    const hashedNewPassword = await bcrypt.hash(newPassword, getBcryptRounds());
 
     // Actualizar contraseña
     await query(

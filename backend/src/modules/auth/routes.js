@@ -1,4 +1,5 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const {
   login, resetPassword, getCurrentUser, verifyToken, changePassword,
   changeUsername, listUsers, createUser, changeUserPassword, deleteUser,
@@ -7,6 +8,37 @@ const {
 } = require('./controller');
 
 const router = express.Router();
+
+// ─── Rate-limit estricto para endpoints de autenticación ───
+// Protege contra fuerza bruta y credential stuffing.
+// 10 intentos cada 15 minutos por IP. 5 reset-password/hora.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,             // 15 minutos
+  max: 10,                                // 10 intentos por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      message: 'Demasiados intentos de autenticación. Por favor intente en 15 minutos.',
+    },
+  },
+  skipSuccessfulRequests: true,           // Solo contar intentos fallidos
+});
+
+const resetPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,              // 1 hora
+  max: 5,                                  // 5 resets por hora por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      message: 'Demasiados intentos de recuperación de contraseña. Intente en 1 hora.',
+    },
+  },
+  skipSuccessfulRequests: true,
+});
 
 /**
  * @openapi
@@ -30,8 +62,10 @@ const router = express.Router();
  *         description: Login exitoso, devuelve token JWT
  *       401:
  *         description: Credenciales inválidas
+ *       429:
+ *         description: Demasiados intentos. Reintente en 15 minutos.
  */
-router.post('/login', login);
+router.post('/login', authLimiter, login);
 
 /**
  * @openapi
@@ -57,8 +91,10 @@ router.post('/login', login);
  *         description: Contraseña restablecida
  *       403:
  *         description: Contraseña secreta incorrecta
+ *       429:
+ *         description: Demasiados intentos de reset. Reintente en 1 hora.
  */
-router.post('/reset-password', resetPassword);
+router.post('/reset-password', resetPasswordLimiter, resetPassword);
 
 /**
  * @openapi

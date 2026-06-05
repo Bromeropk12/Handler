@@ -304,8 +304,21 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     const ses = session.defaultSession;
-    ses.setPermissionCheckHandler(() => false);
-    ses.setPermissionRequestHandler((wc, p, callback) => callback(false));
+
+    const ALLOWED_PERMISSIONS = new Set([
+      'media',              // cámara/micrófono para escaneo de QR
+      'mediaKeySystem',     // DRM (no usado pero inofensivo)
+      'notifications',      // notificaciones nativas
+    ]);
+
+    ses.setPermissionCheckHandler((_wc, permission) => {
+      return ALLOWED_PERMISSIONS.has(permission);
+    });
+
+    ses.setPermissionRequestHandler((_wc, permission, callback) => {
+      callback(ALLOWED_PERMISSIONS.has(permission));
+    });
+
     createMainWindow();
   });
 

@@ -38,6 +38,7 @@ yarn.lock
 .env.test.local
 .env.production.local
 .env.*.local
+.env.backup
 
 # Archivos con credenciales y certificados
 *.key
@@ -283,6 +284,19 @@ notes.md
 *password.txt
 *secret.txt
 *credentials.json
+
+# Archivo de recuperación admin (backdoor si se commitea)
+admin-recovery.json
+
+# Archivos con hashes bcrypt
+*hash*.txt
+*.hash.txt
+
+# Scripts de desarrollo con credenciales
+backend/test_hash.js
+backend/gen-hash.js
+backend/reset-admin.js
+backend/UsersBriannDownloads*
 
 # SSH keys
 .ssh/

@@ -114,8 +114,22 @@ const getMovements = async (req, res, next) => {
 
             const csvRows = [csvHeaders.join(';')];
 
+            // FIX #12: helper para escapar campos CSV según RFC 4180.
+            //  - Si el valor contiene ;, ", \n o \r, se envuelve en comillas dobles
+            //  - Las comillas dobles internas se duplican
+            //  - Esto previene "CSV injection" y columnas corridas en Excel/LibreOffice
+            const csvEscape = (val) => {
+                if (val === null || val === undefined) return '';
+                const s = String(val);
+                if (s === '') return '';
+                if (/[;"\n\r]/.test(s)) {
+                    return `"${s.replace(/"/g, '""')}"`;
+                }
+                return s;
+            };
+
             movementsResult.rows.forEach(row => {
-                const details = row.details ? JSON.stringify(row.details).replace(/;/g, ',') : '';
+                const details = row.details ? JSON.stringify(row.details) : '';
                 const rowData = [
                     row.id,
                     row.timestamp ? new Date(row.timestamp).toISOString().split('T')[0] : '',
@@ -129,7 +143,7 @@ const getMovements = async (req, res, next) => {
                     row.market_line_name || '',
                     row.user_id || '',
                     row.user_name || '',
-                    `"${details}"`
+                    csvEscape(details)
                 ];
                 csvRows.push(rowData.join(';'));
             });

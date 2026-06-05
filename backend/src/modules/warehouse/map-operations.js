@@ -133,6 +133,24 @@ const placeSample = async (req, res, next) => {
     sampleData.height = dimensions.height;
     sampleData.depth = dimensions.depth;
 
+    // FIX #10: placeSample solo coloca muestras NO UBICADAS (shelf_id = NULL).
+    // Si la muestra ya está en OTRO anaquel, rechazamos con 409 para forzar al
+    // cliente a usar el endpoint explícito /move-sample, que registra la
+    // trazabilidad de movimientos cross-shelf y valida misma línea de mercado.
+    if (sampleData.shelf_id !== null && sampleData.shelf_id !== undefined) {
+      if (String(sampleData.shelf_id) === String(id)) {
+        // Ya está en ESTE anaquel: refrescar posición (caso válido de re-colocación).
+        // No es cross-shelf, continúa flujo normal.
+      } else {
+        throw new AppError(
+          `La muestra ya está ubicada en el anaquel #${sampleData.shelf_id}. ` +
+          `Para moverla a otro anaquel use el endpoint PUT /api/warehouse/${sampleData.shelf_id}/move-sample ` +
+          `con { sample_id, target_shelf_id: ${id}, new_position_x, new_position_y, new_position_z }.`,
+          409
+        );
+      }
+    }
+
     if (position_x === undefined || position_y === undefined || position_z === undefined) {
       const autoPos = await findAutoPlacement(shelf.rows[0], sampleData);
       position_x = autoPos.x;

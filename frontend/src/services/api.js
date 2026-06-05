@@ -15,12 +15,17 @@ const api = axios.create({
 
 // Api config done
 
-// Interceptor para agregar token JWT a las peticiones
+// Interceptor para agregar token JWT a las peticiones.
+// La cookie httpOnly (seteada por el backend) viaja automáticamente vía withCredentials.
+// Este Authorization header es un fallback opcional para clientes que aún lo usen.
 api.interceptors.request.use(
   config => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Solo para compatibilidad: si quedó algún token en localStorage de versiones
+    // antiguas, lo seguimos enviando. NO escribir tokens nuevos aquí — el backend
+    // emite cookie httpOnly que es el método seguro.
+    const legacyToken = localStorage.getItem('auth_token');
+    if (legacyToken) {
+      config.headers.Authorization = `Bearer ${legacyToken}`;
     }
     return config;
   },
@@ -36,7 +41,8 @@ api.interceptors.response.use(
   },
   error => {
     if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
-      // Token expirado o inválido
+      // Token expirado o inválido. Limpiar cualquier token legacy en localStorage
+      // (la cookie httpOnly la limpia el backend al caducar).
       localStorage.removeItem('auth_token');
       window.location.href = '/login';
     }

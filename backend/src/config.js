@@ -3,6 +3,8 @@
  * Validación y gestión de variables de entorno
  */
 
+const crypto = require('crypto');
+
 const requiredEnvVars = [
   'NODE_ENV',
   'PORT',
@@ -22,8 +24,23 @@ const optionalEnvVars = {
   RATE_LIMIT_MAX_REQUESTS: 5000
 };
 
+// Secretos conocidos como inseguros. Se rechazan en TODOS los entornos.
+const KNOWN_WEAK_SECRETS = new Set([
+  'handler-track-samples-jwt-secret-key-2024-very-secure-random-string-change-in-production',
+  'handler-track-samples-jwt-secret-key-local-2026-cambiar-en-produccion',
+  'secret',
+  'changeme',
+  'jwt_secret',
+  'mysecret',
+  'supersecret',
+  '',
+]);
+
+const MIN_JWT_SECRET_LENGTH = 32;
+
 /**
  * Valida que todas las variables de entorno requeridas estén presentes
+ * y que el JWT_SECRET sea criptográficamente fuerte.
  */
 function validateEnvironment() {
   const missing = requiredEnvVars.filter(envVar => !process.env[envVar]);
@@ -35,17 +52,35 @@ function validateEnvironment() {
     return;
   }
 
-  // Validaciones específicas
-  if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
-    console.warn('⚠️  JWT_SECRET es muy corta. Se recomienda al menos 32 caracteres para producción.');
+  // ─── Validación estricta de JWT_SECRET (en todos los entornos) ───
+  const secret = process.env.JWT_SECRET || '';
+
+  if (secret.length < MIN_JWT_SECRET_LENGTH) {
+    throw new Error(
+      `JWT_SECRET demasiado corto (${secret.length} chars). Mínimo requerido: ${MIN_JWT_SECRET_LENGTH}. ` +
+      `Genera uno con: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
+    );
   }
 
-  const defaultSecrets = [
-    'handler-track-samples-jwt-secret-key-2024-very-secure-random-string-change-in-production',
-    'handler-track-samples-jwt-secret-key-local-2026-cambiar-en-produccion'
-  ];
-  if (process.env.NODE_ENV === 'production' && defaultSecrets.includes(process.env.JWT_SECRET)) {
-    throw new Error('JWT_SECRET no puede usar el valor por defecto en producción');
+  if (KNOWN_WEAK_SECRETS.has(secret)) {
+    throw new Error(
+      `JWT_SECRET es un valor conocido/débil. Esto permite a cualquier atacante forjar tokens. ` +
+      `Genera uno nuevo: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
+    );
+  }
+
+  // Detectar secretos de baja entropía (todos hex/charset predecible)
+  const uniqueChars = new Set(secret).size;
+  if (uniqueChars < 16) {
+    console.warn(
+      `⚠️  [SECURITY] JWT_SECRET tiene baja entropía (${uniqueChars} caracteres únicos). ` +
+      `Recomendado: cadena aleatoria criptográfica de 64+ chars hex/base64.`
+    );
+  }
+
+  // Log de éxito solo en desarrollo (no exponer en prod)
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[CONFIG] ✓ JWT_SECRET validado (${secret.length} chars, ${uniqueChars} únicos).`);
   }
 }
 

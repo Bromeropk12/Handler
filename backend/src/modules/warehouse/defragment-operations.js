@@ -4,12 +4,20 @@
  *
  * POST /api/warehouse/:id/defragment        → Calcular movimientos (sin ejecutar)
  * POST /api/warehouse/:id/defragment/confirm → Confirmar y ejecutar un movimiento
+ *
+ * IMPORTANTE: Antes de ejecutar un movimiento se valida:
+ *   1. Límites del grid (no salir del anaquel)
+ *   2. Colisión con otras muestras (no superposición)
+ *   3. Compatibilidad SGA con vecinos (no mezclar químicos incompatibles)
+ * Si la posición destino viola cualquiera de las 3 reglas, se rechaza
+ * el movimiento. Esto previene que la desfragmentación anule el feature
+ * principal de seguridad del sistema.
  */
 
 const { query } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { calculateDefragmentation3D } = require('../../utils/defragmentation');
-const { parseDimensions } = require('./validations');
+const { parseDimensions, getNeighbors, areCompatible } = require('./validations');
 
 /**
  * POST /api/warehouse/:id/defragment
@@ -176,26 +184,66 @@ const confirmDefragMove = async (req, res, next) => {
     const height = sample.height || dims.height;
     const depth = sample.depth || dims.depth;
 
-    // Verificar que el destino no colisione con otras muestras
-    const collision = await query(`
-      SELECT id FROM dispensed_samples
-      WHERE shelf_id = $1 AND status = 'stored' AND id != $2
-        AND position_x < $3 + $4 AND position_x + width > $3
-        AND position_y < $5 + $6 AND position_y + height > $5
-        AND position_z < $7 + $8 AND position_z + depth > $7
-    `, [id, sample_id, to_x, width, to_y, height, finalZ, depth]);
-
-    if (collision.rows.length > 0) {
+    // ─── Validar límites del grid ───
+    const shelf = shelfResult.rows[0];
+    if (to_x < 0 || to_y < 0 || finalZ < 0 ||
+        to_x + width > shelf.grid_width ||
+        to_y + height > shelf.grid_height ||
+        finalZ + depth > shelf.shelf_depth) {
       throw new AppError(
-        `La posición destino (Columna ${to_x + 1}, Nivel ${to_y + 1}, Prof ${finalZ + 1}) está ocupada por otra muestra`,
-        409
+        `La posición destino (Col ${to_x + 1}, Nivel ${to_y + 1}, Prof ${finalZ + 1}) excede los límites del anaquel`,
+        400
       );
     }
 
-    // Verificar límites del grid
-    const shelf = shelfResult.rows[0];
-    if (to_x < 0 || to_y < 0 || finalZ < 0 || to_x + width > shelf.grid_width || to_y + height > shelf.grid_height || finalZ + depth > shelf.shelf_depth) {
-      throw new AppError('La posición destino excede los límites del anaquel', 400);
+    // ─── Validar colisión con otras muestras ───
+    // Usamos la misma lógica de overlap AABB que validations.validatePlacement
+    const collision = await query(`
+      SELECT id, position_x, position_y, position_z,
+             COALESCE(width, 1) AS width,
+             COALESCE(height, 1) AS height,
+             COALESCE(depth, 1) AS depth
+      FROM dispensed_samples
+      WHERE shelf_id = $1 AND status = 'stored' AND id != $2
+        AND position_x IS NOT NULL AND position_y IS NOT NULL AND position_z IS NOT NULL
+    `, [id, sample_id]);
+
+    const target = { x: to_x, y: to_y, z: finalZ, w: width, h: height, d: depth };
+    for (const c of collision.rows) {
+      const box = {
+        x: c.position_x, y: c.position_y, z: c.position_z,
+        w: c.width, h: c.height, d: c.depth,
+      };
+      const overlap = !(
+        target.x + target.w <= box.x ||
+        box.x + box.w <= target.x ||
+        target.y + target.h <= box.y ||
+        box.y + box.h <= target.y ||
+        target.z + target.d <= box.z ||
+        box.z + box.d <= target.z
+      );
+      if (overlap) {
+        throw new AppError(
+          `La posición destino (Columna ${to_x + 1}, Nivel ${to_y + 1}, Prof ${finalZ + 1}) está ocupada por otra muestra`,
+          409
+        );
+      }
+    }
+
+    // ─── Validar compatibilidad SGA con vecinos (FIX #8) ───
+    // Sin esta validación, la desfragmentación podría colocar Inflamable
+    // junto a Comburente, anulando el principal feature de seguridad.
+    const neighbors = await getNeighbors(
+      id, to_x, to_y, finalZ, width, height, depth
+    );
+    for (const neighbor of neighbors) {
+      if (!areCompatible(sample.ghs_danger_class, neighbor.ghs_danger_class)) {
+        throw new AppError(
+          `Incompatibilidad SGA en la posición destino: "${sample.ghs_danger_class}" no puede estar adyacente a "${neighbor.ghs_danger_class}". ` +
+          `Rechaza esta posición o reordena el plan de desfragmentación.`,
+          409
+        );
+      }
     }
 
     // Ejecutar movimiento
@@ -219,6 +267,7 @@ const confirmDefragMove = async (req, res, next) => {
         shelf_name: shelf.name,
         from_position: { x: from_x ?? sample.position_x, y: from_y ?? sample.position_y, z: from_z ?? sample.position_z },
         to_position: { x: to_x, y: to_y, z: finalZ },
+        sga_validated: true,
         executed_by: req.user.id,
       }),
     ]);

@@ -7,9 +7,15 @@ const router = express.Router();
 const sseService = require('../../services/sseService');
 
 // Middleware: Solo localhost puede llamar estas rutas
+// Usa req.socket.remoteAddress (no req.ip) para evitar bypass
+// si trust proxy está activado en Express.
 function localhostOnly(req, res, next) {
-  const ip = req.ip || req.connection.remoteAddress || '';
-  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  const remoteAddr =
+    req.socket?.remoteAddress ||
+    req.connection?.remoteAddress ||
+    req.ip ||
+    '';
+  const isLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remoteAddr);
   if (!isLocal) {
     return res.status(403).json({ error: 'Acceso restringido a localhost' });
   }

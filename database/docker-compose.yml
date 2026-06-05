@@ -7,10 +7,14 @@ services:
     environment:
       POSTGRES_DB: handler_track_samples
       POSTGRES_USER: handler_user
-      POSTGRES_PASSWORD: handler_password
-      POSTGRES_HOST_AUTH_METHOD: trust
+      # IMPORTANTE: usar una contraseña fuerte. La definida en .env debe coincidir.
+      # Se eliminó POSTGRES_HOST_AUTH_METHOD=trust para forzar scram-sha-256.
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env or environment}
+    # Bind solo a 127.0.0.1 para que Postgres NO sea accesible desde la LAN.
+    # El backend local se conecta via localhost:5432 (misma máquina).
+    # Si necesitas acceso remoto, usa un túnel SSH o VPN — no expongas 5432.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/01-init.sql

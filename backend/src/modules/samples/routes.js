@@ -46,6 +46,27 @@ const upload = multer({
   }
 });
 
+// Validación adicional por magic number: el mimetype viene del cliente y es
+// falsificable. Verificamos los primeros 5 bytes (%PDF-) para asegurar que
+// realmente es un PDF. Se aplica como middleware entre multer y el handler.
+const validatePdfMagicNumber = (req, res, next) => {
+  if (!req.file) return next();
+  // En multer.diskStorage el archivo ya está en disco; leemos solo los primeros bytes.
+  const fd = require('fs').openSync(req.file.path, 'r');
+  const buffer = Buffer.alloc(5);
+  try {
+    require('fs').readSync(fd, buffer, 0, 5, 0);
+  } finally {
+    require('fs').closeSync(fd);
+  }
+  if (buffer.toString('utf8') !== '%PDF-') {
+    // Eliminar el archivo subido y rechazar
+    require('fs').unlink(req.file.path, () => {});
+    return res.status(400).json({ success: false, error: 'El archivo no es un PDF válido (magic number mismatch)' });
+  }
+  next();
+};
+
 /**
  * @openapi
  * /api/samples:
@@ -159,7 +180,7 @@ router.get('/:id', verifyToken, requirePermission('samples.view'), getBulkSample
  *       201:
  *         description: Muestra creada
  */
-router.post('/', verifyToken, requirePermission('samples.create'), upload.single('coa_file'), createBulkSample);
+router.post('/', verifyToken, requirePermission('samples.create'), upload.single('coa_file'), validatePdfMagicNumber, createBulkSample);
 
 /**
  * @openapi
@@ -195,7 +216,7 @@ router.post('/', verifyToken, requirePermission('samples.create'), upload.single
  *       200:
  *         description: Muestra actualizada
  */
-router.put('/:id', verifyToken, requirePermission('samples.edit'), upload.single('coa_file'), updateBulkSample);
+router.put('/:id', verifyToken, requirePermission('samples.edit'), upload.single('coa_file'), validatePdfMagicNumber, updateBulkSample);
 
 /**
  * @openapi
