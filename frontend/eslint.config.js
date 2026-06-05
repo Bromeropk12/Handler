@@ -34,6 +34,8 @@ export default [
         URL: 'readonly',
         Blob: 'readonly',
         URLSearchParams: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
 
         // Jest / Testing Globals
         describe: 'readonly',

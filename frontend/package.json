@@ -86,6 +86,7 @@
     "@react-three/drei": "^9.96.1",
     "@react-three/fiber": "^8.15.12",
     "@types/three": "^0.164.0",
+    "@use-gesture/react": "^10.3.1",
     "axios": "^1.6.0",
     "html5-qrcode": "^2.3.8",
     "immer": "^10.0.3",

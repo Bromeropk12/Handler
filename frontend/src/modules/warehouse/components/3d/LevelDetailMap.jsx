@@ -57,10 +57,14 @@ export const LevelDetailMap = ({
   // Movement props
   isSelectionMode,
   isMovementMode,
-  selectedSampleIds = new Set(), // Map or Set or Array (we'll assume useSampleSelection returns a list of objects, we'll check id)
+  isGroupDragMode = false,           // true cuando hay ≥2 muestras seleccionadas
+  isGroupDragging = false,           // true durante el drag activo
+  validityByKey = {},                // { 'x,y,z': 'valid'|'invalid'|'unknown' } del backend
+  selectedSampleIds = new Set(),
   assignedTargets = [],
   onSampleClick,
-  onEmptyCellClick
+  onEmptyCellClick,
+  onSampleDragStart,                 // (sample, event) al iniciar drag-en-grupo
 }) => {
   const totalCols   = mapData.shelf.grid_width  || 10;
   const totalDepth  = mapData.shelf.shelf_depth || 10;
@@ -121,7 +125,7 @@ export const LevelDetailMap = ({
         {/* No z-lock on OrbitControls so user can freely inspect */}
         <OrbitControls
           makeDefault
-          enablePan enableZoom enableRotate
+          enablePan enableZoom={!isGroupDragging} enableRotate={!isGroupDragging}
           minDistance={2} maxDistance={30}
           minPolarAngle={Math.PI / 8}
           maxPolarAngle={Math.PI / 2.1}
@@ -146,7 +150,8 @@ export const LevelDetailMap = ({
             const isMultiSelected = isSelectionMode && isSampleSelected(sample.id);
             const isSourceOfMove = isMovementMode && isSampleSelected(sample.id) && !isSampleAssigned(sample.id);
             const isAssignedSource = isMovementMode && isSampleAssigned(sample.id);
-            
+            const isInGroupDrag = isGroupDragging && isMultiSelected;
+
             // Dim if not selected in selection mode, or if assigned in movement mode
             let isDimmed = !visible || (isFocusing && !isSelected && !isHovered);
             if (isSelectionMode && !isMultiSelected) isDimmed = true;
@@ -165,7 +170,9 @@ export const LevelDetailMap = ({
                 isMultiSelected={isMultiSelected}
                 isSourceOfMove={isSourceOfMove}
                 isDimmed={isDimmed}
+                isInGroupDrag={isInGroupDrag}
                 status={status}
+                ghsDangerClass={sample.ghs_danger_class}
                 onHover={(c) => setHoveredCell(c ? sample : null)}
                 onClick={() => {
                   if (isSelectionMode || isMovementMode) {
@@ -174,22 +181,28 @@ export const LevelDetailMap = ({
                     setSelectedCell(isSelected ? null : sample);
                   }
                 }}
+                onDragStart={isInGroupDrag ? onSampleDragStart : undefined}
               />
             );
           })}
 
           {/* Render empty cell targets when moving */}
-          {isMovementMode && emptyCells.map(cell => (
-            <EmptyCellTarget
-              key={`empty-${cell.x}-${cell.z}`}
-              x={cell.x}
-              y={0}
-              z={cell.z}
-              offsetX={-totalCols / 2}
-              offsetZ={-totalDepth / 2}
-              onDrop={(pos) => onEmptyCellClick && onEmptyCellClick({ x: pos.x, y: selectedLevel, z: pos.z })}
-            />
-          ))}
+          {isMovementMode && emptyCells.map(cell => {
+            const cellKey = `${cell.x},${cell.y ?? selectedLevel},${cell.z}`;
+            const validityState = isGroupDragMode ? validityByKey[cellKey] : undefined;
+            return (
+              <EmptyCellTarget
+                key={`empty-${cell.x}-${cell.z}`}
+                x={cell.x}
+                y={0}
+                z={cell.z}
+                offsetX={-totalCols / 2}
+                offsetZ={-totalDepth / 2}
+                validityState={validityState}
+                onDrop={(pos) => onEmptyCellClick && onEmptyCellClick({ x: pos.x, y: selectedLevel, z: pos.z })}
+              />
+            );
+          })}
         </group>
       </Canvas>
 

@@ -39,7 +39,7 @@ export const useGroupPreview = () => {
     if (abortRef.current) {
       abortRef.current.abort();
     }
-    const controller = new AbortController();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     abortRef.current = controller;
     const myRequestId = requestIdRef.current + 1;
     requestIdRef.current = myRequestId;

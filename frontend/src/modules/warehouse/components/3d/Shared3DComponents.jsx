@@ -20,6 +20,19 @@ export const STATUS_COLORS = {
   empty:    '#1e293b',
 };
 
+// Mapeo SGA → color de anillo. Alineado con backend (sga-compatibility.js).
+// 6 clases: tóxico, inflamable, oxidante, explosivo, corrosivo, misceláneo.
+export const SGA_COLORS = {
+  'Toxic':         '#a855f7',  // purple-500
+  'Flammable':     '#f97316',  // orange-500
+  'Oxidizing':     '#eab308',  // yellow-500
+  'Explosive':     '#ef4444',  // red-500
+  'Corrosive':     '#10b981',  // emerald-500
+  'Miscellaneous': '#64748b',  // slate-500
+  'Sin Riesgo':    '#38bdf8',  // sky-400
+};
+export const getSGAColor = (sgaClass) => SGA_COLORS[sgaClass] || SGA_COLORS['Sin Riesgo'];
+
 export const getColorByName = (name) => {
   if (!name) return '#0ea5e9';
   let hash = 0;
@@ -153,48 +166,86 @@ const makeStampTexture = (letter, bgColor, letterColor) => {
 };
 
 // ─── Empty Cell Target ─────────────────────────────────────────────────────────
-export const EmptyCellTarget = ({ x, y = 0, z, offsetX, offsetY = 0, offsetZ, width = 1, depth = 1, onDrop }) => {
+export const EmptyCellTarget = ({
+  x, y = 0, z, offsetX, offsetY = 0, offsetZ,
+  width = 1, depth = 1, onDrop,
+  validityState,    // 'valid' | 'invalid' | 'unknown' | undefined
+}) => {
   const [hovered, setHovered] = useState(false);
+
+  // Color y cursor según validez (drag-en-grupo: green/red/grey).
+  const palette = (() => {
+    if (validityState === 'invalid') {
+      return { color: '#ef4444', emissive: '#ef4444', cursor: 'not-allowed' };
+    }
+    if (validityState === 'valid') {
+      return { color: '#10b981', emissive: '#10b981', cursor: 'grab' };
+    }
+    if (validityState === 'unknown') {
+      return { color: '#64748b', emissive: '#475569', cursor: 'wait' };
+    }
+    return { color: '#10b981', emissive: '#10b981', cursor: 'pointer' };
+  })();
+
   const px = offsetX + x + width / 2;
   const pz = offsetZ + z + depth / 2;
   const baseY = y * LEVEL_HEIGHT + offsetY;
 
   return (
-    <group 
+    <group
       position={[px, baseY + 0.4, pz]}
-      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
-      onPointerOut={() => { setHovered(false); document.body.style.cursor = 'default'; }}
-      onClick={(e) => { e.stopPropagation(); if (onDrop) onDrop({x, y, z}); }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+        document.body.style.cursor = palette.cursor;
+      }}
+      onPointerOut={() => {
+        setHovered(false);
+        document.body.style.cursor = 'default';
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (validityState === 'invalid') return;
+        if (onDrop) onDrop({ x, y, z });
+      }}
     >
       <mesh>
         <boxGeometry args={[width - 0.1, 0.8, depth - 0.1]} />
-        <meshStandardMaterial 
-          color="#10b981" 
-          transparent 
-          opacity={hovered ? 0.4 : 0.1}
-          emissive="#10b981"
-          emissiveIntensity={hovered ? 0.6 : 0.2}
+        <meshStandardMaterial
+          color={palette.color}
+          transparent
+          opacity={hovered ? 0.45 : 0.12}
+          emissive={palette.emissive}
+          emissiveIntensity={validityState === 'invalid' && hovered ? 1.2 : hovered ? 0.7 : 0.2}
           roughness={0.2}
         />
       </mesh>
       {/* Target indicator on top */}
-      <mesh position={[0, 0.41, 0]} rotation={[-Math.PI/2, 0, 0]}>
+      <mesh position={[0, 0.41, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[0.5, 0.5]} />
-        <meshBasicMaterial color="#10b981" transparent opacity={hovered ? 0.8 : 0.3} wireframe />
+        <meshBasicMaterial color={palette.color} transparent opacity={hovered ? 0.85 : 0.3} wireframe />
       </mesh>
       {hovered && (
-        <pointLight position={[0, 0.5, 0]} intensity={1} distance={2} color="#10b981" />
+        <pointLight position={[0, 0.5, 0]} intensity={1} distance={2} color={palette.color} />
       )}
     </group>
   );
 };
 
 // ─── Sample Cube ───────────────────────────────────────────────────────────────
-export const SampleCube = ({ cell, x, y, z, offsetX, offsetY = 0, offsetZ, isSelected, isDimmed, onHover, onClick, status, isMultiSelected, isSourceOfMove }) => {
+export const SampleCube = ({
+  cell, x, y, z, offsetX, offsetY = 0, offsetZ,
+  isSelected, isDimmed, onHover, onClick, status,
+  isMultiSelected, isSourceOfMove,
+  isInGroupDrag = false,        // true si esta muestra es parte del grupo que se está arrastrando
+  onDragStart,                 // callback (sample) al iniciar drag
+  ghsDangerClass,              // opcional, si el padre lo provee (más rápido que cell.ghs_danger_class)
+}) => {
   // cubeGroupRef wraps both the cube mesh AND the 3D stamp so they animate in sync.
   const cubeGroupRef = useRef();
   const meshRef      = useRef();
   const ringRef      = useRef();
+  const sgaRingRef   = useRef();
   const [hovered, setHovered] = useState(false);
 
   const isActiveSelection = isSelected || isMultiSelected;
@@ -259,10 +310,43 @@ export const SampleCube = ({ cell, x, y, z, offsetX, offsetY = 0, offsetZ, isSel
   return (
     <group
       position={[px, 0, pz]}
-      onPointerOver={(e) => { e.stopPropagation(); setHovered(true);  document.body.style.cursor = 'pointer'; if (onHover) onHover(cell); }}
+      onPointerOver={(e) => { e.stopPropagation(); setHovered(true);  document.body.style.cursor = 'grab'; if (onHover) onHover(cell); }}
       onPointerOut={()  => { setHovered(false);  document.body.style.cursor = 'default'; if (onHover) onHover(null); }}
       onClick={(e)       => { e.stopPropagation(); if (onClick) onClick(); }}
+      onPointerDown={(e) => {
+        // Si la muestra es parte de un grupo y el padre provee onDragStart,
+        // iniciamos drag-en-grupo. preventDefault evita que OrbitControls
+        // capture el evento.
+        if (onDragStart) {
+          e.stopPropagation();
+          if (e.target?.setPointerCapture) {
+            try { e.target.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+          }
+          onDragStart(cell, e);
+        }
+      }}
     >
+      {/* ── SGA danger class ring (toroide fino encima del cubo) ── */}
+      {!isDimmed && (ghsDangerClass || cell.ghs_danger_class) && (
+        <mesh
+          ref={sgaRingRef}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, baseY + 0.85, 0]}
+        >
+          <ringGeometry args={[
+            Math.max(width, depth) * 0.55,
+            Math.max(width, depth) * 0.62,
+            32
+          ]} />
+          <meshBasicMaterial
+            color={getSGAColor(ghsDangerClass || cell.ghs_danger_class)}
+            transparent
+            opacity={isInGroupDrag ? 0.95 : 0.6}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
+
       {/* ── Floor glow ring (stays on floor, not inside the animated group) ── */}
       <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <ringGeometry args={[Math.max(width, depth) * 0.5, Math.max(width, depth) * 0.72, 32]} />
