@@ -10,10 +10,19 @@ import { ShelfOverviewMap } from './3d/ShelfOverviewMap';
 import { LevelDetailMap }   from './3d/LevelDetailMap';
 import { useSampleSelection } from '../hooks/useSampleSelection';
 import { useSampleMovement } from '../hooks/useSampleMovement';
+import { useGroupDrag }     from '../hooks/useGroupDrag';
+import { useGroupPreview }  from '../hooks/useGroupPreview';
+import { useShelfStaleness } from '../hooks/useShelfStaleness';
 import SampleMovementToolbar from './movement/SampleMovementToolbar';
 import TargetShelfPicker from './movement/TargetShelfPicker';
 import MovementConfirmModal from './movement/MovementConfirmModal';
 import MovementModeOverlay from './movement/MovementModeOverlay';
+import GroupToolbar from './group/GroupToolbar';
+import GroupConfirmModal from './group/GroupConfirmModal';
+import TypeMismatchModal from './selection/TypeMismatchModal';
+import DimensionMismatchModal from './selection/DimensionMismatchModal';
+import GroupDragGhost from './3d/GroupDragGhost';
+// GroupDragGhost: componente R3F (disponible para Módulo E / integración con mini-mapa)
 
 // ─── Stat Pill ─────────────────────────────────────────────────────────────────
 const StatPill = ({ label, value, color }) => (
@@ -51,6 +60,65 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
     selection.clearSelection();
     fetchMapData();
   });
+  const groupPreview = useGroupPreview();
+  const { isStale } = useShelfStaleness(selectedShelf?.id, mapData);
+
+  // Group flow state
+  const [groupTarget, setGroupTarget] = useState(null); // {x,y,z,shelfId,shelfName}
+  const [groupConfirmOpen, setGroupConfirmOpen] = useState(false);
+  const [groupExecuting, setGroupExecuting] = useState(false);
+  const [groupError, setGroupError] = useState(null);
+  const [groupConflicts, setGroupConflicts] = useState([]);
+  const [validationModal, setValidationModal] = useState(null);
+  // { type: 'type'|'dimension'|'limit'|'status'|'multiShelf'|'partial', ...payload }
+
+  // Listen for rejection events from useSampleSelection
+  useEffect(() => {
+    if (!selection.rejectionEvent) return;
+    const ev = selection.rejectionEvent;
+    setValidationModal(ev);
+  }, [selection.rejectionEvent]);
+
+  const isGroupMode = selection.count >= 2;
+
+  const groupDrag = useGroupDrag({
+    groupSamples: selection.selectedSamples,
+    onChangeShelf: () => {
+      // Cancel group drag if user changes shelf mid-drag
+      groupPreview.clearCache();
+    },
+    onDropValid: (cell) => {
+      const first = selection.selectedSamples[0];
+      const targetShelfId = first?.shelf_id || selectedShelf?.id;
+      const targetShelfName = selectedShelf?.name;
+      setGroupTarget({ x: cell.x, y: cell.y, z: cell.z, shelfId: targetShelfId, shelfName: targetShelfName });
+      setGroupConflicts(groupPreview.cache?.conflicts || []);
+      setGroupConfirmOpen(true);
+    },
+  });
+
+  // Trigger preview when hovered cell changes (only in group mode)
+  useEffect(() => {
+    if (!groupDrag.dragState.isDragging) return;
+    if (!isGroupMode) return;
+    const cell = groupDrag.dragState.hoveredCell;
+    if (!cell) return;
+    const first = selection.selectedSamples[0];
+    const shelfId = first?.shelf_id || selectedShelf?.id;
+    groupPreview.loadPreview(shelfId, selection.selectedSamples.map(s => s.id), shelfId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupDrag.dragState.hoveredCell?.x, groupDrag.dragState.hoveredCell?.y, groupDrag.dragState.hoveredCell?.z]);
+
+  // Build validity map for LevelDetailMap
+  const validityByKey = useMemo(() => {
+    const out = {};
+    if (groupPreview.cache?.cells) {
+      groupPreview.cache.cells.forEach(c => {
+        out[`${c.x},${c.y},${c.z}`] = c.compatible ? 'valid' : 'invalid';
+      });
+    }
+    return out;
+  }, [groupPreview.cache]);
 
   const fetchMapData = useCallback(async () => {
     if (!selectedShelf) return;
@@ -209,18 +277,52 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 showWarnings={showWarnings}
                 isSelectionMode={selection.count > 0}
                 isMovementMode={movement.mode === 'moving'}
+                isGroupDragMode={isGroupMode}
+                isGroupDragging={groupDrag.dragState.isDragging}
+                validityByKey={validityByKey}
                 selectedSampleIds={selection.selectedSamples}
                 assignedTargets={movement.assignments}
                 onSampleClick={(sample) => {
                   if (movement.mode === 'idle') {
-                    selection.toggleSample(sample);
+                    if (isGroupMode) {
+                      // In group mode: a click also starts drag-en-grupo
+                      groupDrag.startDrag(sample);
+                    } else {
+                      selection.toggleSample(sample);
+                    }
                   } else if (movement.mode === 'moving') {
                     const isAssigned = movement.assignments.some(a => a.sampleData.id === sample.id && a.targetShelfId !== null);
                     if (isAssigned) movement.unassignTarget(sample.id);
                   }
                 }}
+                onSampleDragStart={(sample, evt) => {
+                  groupDrag.startDrag(sample);
+                  // capture mouse globally
+                  const moveHandler = (e) => {
+                    const dx = Math.round(e.movementX || 0);
+                    const dy = Math.round(e.movementY || 0);
+                    groupDrag.updateDrag({
+                      dx: (groupDrag.dragState.currentOffset.dx || 0) + dx,
+                      dy: (groupDrag.dragState.currentOffset.dy || 0) + dy,
+                      dz: (groupDrag.dragState.currentOffset.dz || 0) + 0,
+                    });
+                  };
+                  const upHandler = () => {
+                    window.removeEventListener('mousemove', moveHandler);
+                    window.removeEventListener('mouseup', upHandler);
+                    groupDrag.endDrag();
+                  };
+                  window.addEventListener('mousemove', moveHandler);
+                  window.addEventListener('mouseup', upHandler);
+                  if (evt?.target?.setPointerCapture && evt.pointerId !== undefined) {
+                    try { evt.target.setPointerCapture(evt.pointerId); } catch { /* ignore */ }
+                  }
+                }}
                 onEmptyCellClick={(pos) => {
-                  if (movement.mode === 'moving' && movement.nextUnassignedSampleId) {
+                  if (isGroupMode && groupDrag.dragState.isDragging) {
+                    // Group mode: hovering empty cell during drag → preview
+                    groupDrag.setHoveredCell(pos, validityByKey[`${pos.x},${pos.y},${pos.z}`] || 'unknown');
+                  } else if (movement.mode === 'moving' && movement.nextUnassignedSampleId) {
                     movement.assignTarget(movement.nextUnassignedSampleId, pos, movement.activeTargetShelf);
                   }
                 }}
@@ -500,13 +602,97 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
         onSelectTarget={(shelf) => movement.changeTargetShelf(shelf)}
       />
 
-      <MovementConfirmModal 
+      <MovementConfirmModal
         isOpen={movement.mode === 'confirming'}
         onClose={() => movement.changeTargetShelf(movement.activeTargetShelf)}
         onConfirm={() => movement.confirmMove(selectedShelf.id)}
         assignments={movement.assignments}
         isExecuting={movement.isExecuting}
         errors={movement.executionErrors}
+      />
+
+      {/* ════════════════════ GROUP FLOW (drag-en-grupo) ════════════════════ */}
+
+      {/* Group toolbar (aparece cuando hay 2+ seleccionadas) */}
+      {isGroupMode && movement.mode === 'idle' && (
+        <GroupToolbar
+          count={selection.count}
+          selectionType={selection.selectionType}
+          onClear={() => {
+            groupDrag.cancelDrag();
+            groupPreview.clearCache();
+            selection.clearSelection();
+          }}
+          isStale={isStale}
+        />
+      )}
+
+      {/* Modales de validación (tipo / dimensión / status / multi-shelf) */}
+      <TypeMismatchModal
+        open={validationModal?.type === 'type'}
+        currentType={validationModal?.currentType}
+        newSample={validationModal?.newSample}
+        onCancel={() => { setValidationModal(null); selection.clearRejection(); }}
+        onReplace={() => {
+          // Reemplazar = limpiar y agregar la nueva
+          setValidationModal(null);
+          const newS = validationModal?.newSample;
+          selection.clearRejection();
+          selection.clearSelection();
+          if (newS) selection.toggleSample(newS);
+        }}
+      />
+
+      <DimensionMismatchModal
+        open={validationModal?.type === 'dimension'}
+        currentDims={validationModal?.currentDims}
+        newDims={validationModal?.newDims}
+        newSample={validationModal?.newSample}
+        onCancel={() => { setValidationModal(null); selection.clearRejection(); }}
+        onReplace={() => {
+          setValidationModal(null);
+          const newS = validationModal?.newSample;
+          selection.clearRejection();
+          selection.clearSelection();
+          if (newS) selection.toggleSample(newS);
+        }}
+      />
+
+      {/* Modal de confirmación de drag-en-grupo (mueve todas en batch) */}
+      <GroupConfirmModal
+        open={groupConfirmOpen}
+        groupSamples={selection.selectedSamples}
+        target={groupTarget}
+        conflicts={groupConflicts}
+        isExecuting={groupExecuting}
+        error={groupError}
+        onCancel={() => {
+          setGroupConfirmOpen(false);
+          setGroupError(null);
+          groupPreview.clearCache();
+        }}
+        onConfirm={async () => {
+          if (!groupTarget) return;
+          setGroupExecuting(true);
+          setGroupError(null);
+          try {
+            await warehouseAPI.moveGroup(selectedShelf.id, {
+              sample_ids: selection.selectedSamples.map(s => s.id),
+              target_shelf_id: groupTarget.shelfId,
+              target_x: groupTarget.x,
+              target_y: groupTarget.y,
+              target_z: groupTarget.z,
+            });
+            setGroupConfirmOpen(false);
+            groupPreview.clearCache();
+            selection.clearSelection();
+            await fetchMapData();
+          } catch (err) {
+            setGroupError(err.response?.data?.message || err.message || 'Error al mover el grupo');
+          } finally {
+            setGroupExecuting(false);
+          }
+        }}
       />
     </div>
   );

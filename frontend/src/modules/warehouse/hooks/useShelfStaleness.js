@@ -58,7 +58,6 @@ export const useShelfStaleness = (shelfId, mapData) => {
   }, [shelfId, computeSignature]);
 
   const ackRefresh = useCallback(() => {
-    lastSignatureRef.current = lastSignatureRef.current; // mantiene signature
     setIsStale(false);
   }, []);
 
