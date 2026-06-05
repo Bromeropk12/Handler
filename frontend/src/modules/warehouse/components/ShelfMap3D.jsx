@@ -21,8 +21,9 @@ import GroupToolbar from './group/GroupToolbar';
 import GroupConfirmModal from './group/GroupConfirmModal';
 import TypeMismatchModal from './selection/TypeMismatchModal';
 import DimensionMismatchModal from './selection/DimensionMismatchModal';
-import GroupDragGhost from './3d/GroupDragGhost';
+import GroupDragGhost from './3d/GroupDragGhost'; // eslint-disable-line no-unused-vars
 // GroupDragGhost: componente R3F (disponible para Módulo E / integración con mini-mapa)
+import ShelfMiniMap3D from './minimap/ShelfMiniMap3D';
 
 // ─── Stat Pill ─────────────────────────────────────────────────────────────────
 const StatPill = ({ label, value, color }) => (
@@ -72,6 +73,11 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   const [validationModal, setValidationModal] = useState(null);
   // { type: 'type'|'dimension'|'limit'|'status'|'multiShelf'|'partial', ...payload }
 
+  // Cross-shelf mini-mapa state
+  const [crossShelfData, setCrossShelfData] = useState(null); // mapData del anaquel destino
+  const [crossShelfId, setCrossShelfId] = useState(null);
+  const [crossShelfOpen, setCrossShelfOpen] = useState(false);
+
   // Listen for rejection events from useSampleSelection
   useEffect(() => {
     if (!selection.rejectionEvent) return;
@@ -119,6 +125,15 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
     }
     return out;
   }, [groupPreview.cache]);
+
+  // Si la selección del grupo se limpia, cerrar cross-shelf
+  useEffect(() => {
+    if (selection.count === 0) {
+      setCrossShelfOpen(false);
+      setCrossShelfData(null);
+      setCrossShelfId(null);
+    }
+  }, [selection.count]);
 
   const fetchMapData = useCallback(async () => {
     if (!selectedShelf) return;
@@ -327,6 +342,36 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   }
                 }}
               />
+
+              {/* Cross-shelf mini-mapa (visible durante group mode) */}
+              {isGroupMode && crossShelfOpen && crossShelfData && (
+                <ShelfMiniMap3D
+                  mapData={crossShelfData}
+                  target={groupTarget && groupTarget.shelfId === crossShelfId
+                    ? { x: groupTarget.x, y: groupTarget.y, z: groupTarget.z }
+                    : null}
+                  validity={groupTarget && groupTarget.shelfId === crossShelfId
+                    ? (validityByKey[`${groupTarget.x},${groupTarget.y},${groupTarget.z}`] || 'unknown')
+                    : 'unknown'}
+                  title={crossShelfData.shelf.name}
+                  onSelectCell={(cell) => {
+                    if (!crossShelfId) return;
+                    setGroupTarget({
+                      x: cell.x, y: cell.y, z: cell.z,
+                      shelfId: crossShelfId,
+                      shelfName: crossShelfData.shelf.name,
+                    });
+                    // Run preview against cross shelf
+                    const first = selection.selectedSamples[0];
+                    const sourceShelfId = first?.shelf_id || selectedShelf.id;
+                    groupPreview.loadPreview(
+                      sourceShelfId,
+                      selection.selectedSamples.map(s => s.id),
+                      crossShelfId
+                    );
+                  }}
+                />
+              )}
 
               {/* ── Stats card (top-right overlay) ── */}
               {showStats ? (
