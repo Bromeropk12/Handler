@@ -3,6 +3,8 @@
  * Manejo centralizado de errores para la API
  */
 
+const { sanitize, sanitizeHeaders, REDACTED } = require('../utils/sanitizer');
+
 /**
  * Middleware para rutas no encontradas
  */
@@ -13,30 +15,16 @@ const notFound = (req, res, next) => {
 };
 
 /**
- * Lista de campos sensibles que NUNCA deben aparecer en logs.
- * Si se añaden a un body o query, se redactan a '[REDACTED]'.
- */
-const SENSITIVE_FIELDS = new Set([
-  'password', 'currentPassword', 'newPassword', 'confirmPassword',
-  'secretPassword', 'adminPassword', 'token', 'auth_token', 'authorization',
-  'jwt', 'jwt_secret', 'JWT_SECRET', 'cookie', 'cookies',
-]);
-
-const sanitize = (obj) => {
-  if (!obj || typeof obj !== 'object') return obj;
-  const out = Array.isArray(obj) ? [...obj] : { ...obj };
-  for (const key of Object.keys(out)) {
-    if (SENSITIVE_FIELDS.has(key)) {
-      out[key] = '[REDACTED]';
-    } else if (typeof out[key] === 'object' && out[key] !== null) {
-      out[key] = sanitize(out[key]);
-    }
-  }
-  return out;
-};
-
-/**
  * Middleware para manejo de errores
+ *
+ * SEGURIDAD: todo dato del request (body, params, query, headers) pasa por
+ * `sanitize()` antes de escribirse al log. Esto previene la fuga de
+ * contraseñas, tokens y otros secretos en logs de error.
+ *
+ * Cambios respecto a la versión anterior:
+ *  - `sanitize` se importa desde `utils/sanitizer` (case-insensitive + regex).
+ *  - Se sanitizan también los headers HTTP (authorization, cookie, etc.).
+ *  - El `error.stack` se trunca a 2000 chars para no explotar el log.
  */
 const errorHandler = (logger) => (error, req, res, next) => {
   let statusCode = error.statusCode || (typeof error.status === 'number' ? error.status : 500);
@@ -45,17 +33,29 @@ const errorHandler = (logger) => (error, req, res, next) => {
   if (statusCode === 500) {
     logger.error('Error en la aplicación:', {
       message: error.message,
-      stack: error.stack,
-      url: req.url,
+      // Truncar stack para evitar crecimiento descontrolado del log
+      stack: typeof error.stack === 'string' ? error.stack.substring(0, 2000) : undefined,
+      url: req.originalUrl || req.url,
       method: req.method,
       ip: req.ip,
       userAgent: req.get('User-Agent'),
       body: sanitize(req.body),
       params: sanitize(req.params),
       query: sanitize(req.query),
+      headers: sanitizeHeaders(req.headers),
     });
   } else if (statusCode === 400) {
-    console.error('### 400 BAD REQUEST ###:', message, sanitize(req.body));
+    // 400: usar console.error (no el logger central) para no duplicar en disco
+    console.error(
+      '### 400 BAD REQUEST ###:',
+      message,
+      'body:',
+      sanitize(req.body),
+      'params:',
+      sanitize(req.params),
+      'query:',
+      sanitize(req.query)
+    );
   }
 
   // Errores específicos de PostgreSQL

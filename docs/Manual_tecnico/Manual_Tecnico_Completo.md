@@ -563,11 +563,188 @@ Petición HTTP
 [cookie-parser]   → Parser de cookies
     ↓
 [logger]          → Registro Winston de todas las peticiones
+                    └─ [SANITIZER] → Redacta passwords, tokens, cookies antes de loguear
     ↓
 [auth middleware] → Verificación JWT (en rutas protegidas)
     ↓
 [Controlador]     → Lógica de negocio + consultas SQL
 ```
+
+### 4.2.1. Sanitización de Logs (Defensa contra Fuga de Credenciales)
+
+**Módulo:** `backend/src/utils/sanitizer.js`
+**Tests:** `backend/tests/sanitizer.test.js` (62 tests) + `backend/tests/log-security.test.js` (8 tests E2E)
+
+Toda información sensible es redactada automáticamente antes de escribirse a los logs del sistema (rotación diaria en `backend/logs/combined-YYYY-MM-DD.log` y `backend/logs/error.log`).
+
+**Campos redactados** (matching case-insensitive, soporta camelCase y snake_case):
+
+| Categoría | Ejemplos de claves redactadas |
+|-----------|-------------------------------|
+| Contraseñas | `password`, `currentPassword`, `new_password`, `oldPassword`, `userPassword`, `secretPassword` |
+| Tokens | `token`, `authToken`, `access_token`, `refreshToken`, `bearerToken`, `csrfToken` |
+| API Keys | `apiKey`, `api_key`, `x-api-key` |
+| Secretos | `secret`, `clientSecret`, `jwt_secret`, `privateKey` |
+| Auth | `authorization`, `cookie`, `cookies` |
+| Otros | `passphrase`, `signature`, `csrf` |
+
+**Headers HTTP redactados:** `authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `x-csrf-token`, `x-access-token`, `x-refresh-token`, `x-signature`.
+
+**Modos de redacción disponibles:**
+
+| Modo | Salida para `password: "secret123"` | Uso |
+|------|--------------------------------------|-----|
+| `redact` (default) | `password: "[REDACTED]"` | Producción — previene totalmente el leak |
+| `hash` | `password: "[REDACTED:sha256:7c4a8d09]"` | Forense — permite correlación sin exponer el valor |
+| `mask` | `password: "se***"` | Debugging — muestra primeros 2 chars |
+
+**Reglas implementadas:**
+
+1. ✅ **Sanitización en request logger** (`middleware/logger.js`): el body se sanitiza ANTES de serializarse. Solo se loguea el body si `Content-Type: application/json`.
+2. ✅ **Sanitización en error handler** (`middleware/errorHandler.js`): 500 + 400 sanitizan body, params, query, headers. Stack truncado a 2000 chars.
+3. ✅ **Protección contra ciclos**: referencias circulares → `[CIRCULAR]`.
+4. ✅ **Tipos especiales**: `Buffer` → `<Buffer length=N>`, `Error` → solo name/message/code, `Date` → ISO string, `RegExp` → source.
+5. ✅ **Headers sensibles**: `authorization`, `cookie`, etc. → `[REDACTED]`.
+6. ✅ **NO mutación**: el objeto original no se modifica; `sanitize()` retorna una copia.
+
+**Garantía verificada por tests E2E** (`tests/log-security.test.js`):
+
+El test monta una app Express real con los middlewares reales, hace un `POST /api/auth/login` con un password secreto, captura todos los logs Winston, y verifica que el password NO aparece en ningún log. **8 escenarios de regresión pasan**, incluyendo el caso exacto de los logs históricos de abril-mayo 2026.
+
+#### Saneamiento de logs históricos
+
+Para los archivos de log generados ANTES del despliegue de este fix, ejecute el script de purga **una sola vez**:
+
+```bash
+cd backend
+# Modo dry-run (recomendado primero)
+node scripts/purge-sensitive-logs.js
+
+# Aplicar cambios (con backup automático)
+node scripts/purge-sensitive-logs.js --apply --backup
+```
+
+El script busca y reemplaza por `[REDACTED-HISTORICAL]`:
+- Campos JSON `password`, `token`, `apiKey`, etc. con su valor.
+- Headers `Authorization: Bearer <jwt>`.
+- Cookies con valores sensibles.
+- Passwords comunes (`password`, `admin123`, etc.) que aparecieron en logs.
+
+**NO es destructivo por defecto**: requiere `--apply` explícito. Con `--backup` crea `.bak` antes de cada cambio.
+
+#### Modo `--strict` (circuit breaker post-purga)
+
+Desde v1.1 del script, el flag `--strict` activa una verificación de seguridad que escanea el resultado de la purga buscando una lista de **secrets conocidos** (los que aparecieron en los logs históricos de abril-mayo 2026: `@Sneyder52`, `admin123`, `paswword`, `passowrd`, `passeord`, `passeors`). Si alguno persiste, el script aborta con exit code 2 y un mensaje indicando el archivo y el secret filtrado.
+
+```bash
+# Modo seguro de producción: dry-run primero, luego apply con strict
+node scripts/purge-sensitive-logs.js --paths backend/logs
+node scripts/purge-sensitive-logs.js --apply --strict --verbose
+```
+
+Opcionalmente, una lista custom de secrets puede pasarse con `--secrets-file <ruta>` (un secret por línea, líneas con `#` son comentarios).
+
+### 4.2.2. Lecciones aprendidas — Script de purga (v1.0 → v1.1)
+
+**Contexto:** durante la primera ejecución del script de purga (v1.0, 2026-06-05) se detectaron dos bugs críticos que dejaron los logs en un estado **peor que el original**. Ambos fueron arreglados en v1.1 y validados con 15 tests E2E en `tests/purge-script.test.js`.
+
+#### Bug #1: Backreferences `$1` no se expandían (callback devolvía string literal)
+
+**Síntoma:** tras la purga, líneas de log quedaron con `"$1":"[REDACTED-HISTORICAL]"` — el campo de password se perdió y el reemplazo contenía el placeholder literal.
+
+**Causa raíz:** la regla usaba un callback de `String.replace()` para contar matches Y aplicar el reemplazo en el mismo paso:
+
+```js
+// v1.0 — INCORRECTO
+sanitized = sanitized.replace(rule.regex, (match, ...args) => {
+  count++;
+  return rule.replace;   // ← devuelve STRING con "$1" literal
+});
+```
+
+En JavaScript, `String.replace()` expande `$1`, `$2` en el replacement **solo cuando se le pasa un string directo**. Cuando se pasa una función callback, **el valor de retorno se inserta tal cual** — sin expandir los backreferences. El `$1` queda como texto literal.
+
+**Fix v1.1:** contar matches por separado (con `String.match()`, no destructivo) y aplicar el reemplazo pasando el string directo a `String.replace()`:
+
+```js
+// v1.1 — CORRECTO
+const matches = sanitized.match(rule.regex);
+const count = matches ? matches.length : 0;
+if (count > 0) {
+  sanitized = sanitized.replace(rule.regex, rule.replace);  // string → $1 se expande
+}
+```
+
+En modo `--verbose` (donde se necesita un callback para capturar contexto antes/después), se expande manualmente con `expandBackreferences(template, match, capturedGroups)`.
+
+**Lección:** cuando un regex tiene grupos de captura, **nunca devolver un string con `$1` desde un callback** de `String.replace()`. La expansión solo ocurre con string directo. Documentado en el bloque de cabecera del script y cubierto por el test de regresión `Bug #1 fixed: $1 is expanded to the field name, not left literal`.
+
+#### Bug #2: Rule 6 matcheaba JSON keys en lugar de values
+
+**Síntoma:** la regla `common-bad-passwords` (que buscaba la palabra `password` suelta) matcheaba la KEY `"password"` en JSON y dejaba el VALUE intacto. Resultado: líneas con `"password":"@Sneyder52"` se convertían en `"[REDACTED-HISTORICAL]":"@Sneyder52"` — el campo se renombraba pero el password seguía visible.
+
+**Causa raíz:** el patrón `\bpassword\b(?!")` intentaba excluir JSON keys con un negative lookahead, pero en los logs reales, el body se serializa a string con JSON escapado:
+
+```
+"body":"{\"username\":\"admin\",\"password\":\"@Sneyder52\"}"
+         ↑                ↑       ↑
+    \" literal      \" literal  \" literal
+```
+
+Después de `password` viene `\` (no `"`), así que `(?!")` no excluía el match.
+
+**Fix v1.1:** reemplazar el negative lookahead por un **negative lookbehind** en la posición de la KEY, asumiendo que la palabra está precedida de `"` (con o sin escape) cuando es una JSON key:
+
+```js
+// v1.1 — CORRECTO
+regex: /(?<!")\b(password|...)\b/g
+```
+
+Lookbehind de ancho fijo (1 char) funciona en todos los motores JS modernos sin flag `u`.
+
+**Lección:** la diferencia entre un JSON body nativo y un JSON body escapado dentro de un string es sutil pero crítica. En `winston`, los body de request se serializan a JSON-string cuando la línea es `info`, pero se mantienen como objeto cuando es `error`. Cualquier regex que procese logs DEBE soportar AMBOS formatos. Cubierto por el test de regresión `Bug #2 fixed: Rule 6 does NOT match JSON keys (only standalone words)`.
+
+#### Bug #3 (descubierto durante testing): Circuit breaker solo revisaba archivos modificados
+
+**Síntoma:** el modo `--strict` no detectaba leaks en archivos que las reglas NO modificaban (porque no había match para ninguna regla, pero el secret seguía ahí).
+
+**Causa raíz:** el loop del circuit breaker tenía `if (!result.changed) continue;` — solo verificaba archivos donde la purga había hecho cambios.
+
+**Fix v1.1:** remover el filtro y verificar TODOS los archivos procesados, marcando los no modificados como `✓ (sin cambios)` para distinguirlos de los modificados. El circuit breaker es comprehensivo: un secret conocido en un archivo sin modificar sigue siendo un leak, e indica un bug en las reglas.
+
+**Lección:** un circuit breaker no debe ser condicional. Si su propósito es detectar fallos, debe revisar todo el universo de archivos, no solo los que cambiaron. Cubierto por el test `FAILS (exit 2) when known secret remains after purge`.
+
+#### Formato de log: nativos vs escapados
+
+Otro hallazgo crítico de esta sesión: en los logs de Winston, las líneas `info` tienen el body como STRING con JSON escapado (porque winston serializa el request body a JSON-string), mientras que las líneas `error` tienen el body como OBJETO JSON nativo (porque el error handler lo serializa distinto). Las reglas 1, 2, 3 del script de purga soportan AMBOS formatos usando el cuantificador `\\?"` (0 o 1 backslash antes de cada `"`):
+
+```js
+// Captura: "password":"value"   Y   \"password\":\"value\"
+regex: /(\\?")(password|...)(\\?")\s*:\s*(\\?")([^"\\]*(?:\\.[^"\\]*)*)(\\?")/g
+```
+
+El replacement preserva el formato original con `$1$2$3:$4[REDACTED-HISTORICAL]$6`.
+
+#### Métricas de la purga final (2026-06-05)
+
+| Métrica | Valor |
+|---------|-------|
+| Archivos escaneados | 7 (combined.log, error.log, database.log en backend y backend-dist) |
+| Archivos saneados | 5 |
+| Total hits de redacción | 643 |
+| Leak rule #1 (json-password-field) | 562 |
+| Leak rule #3 (json-credential-key, currentPassword) | 2 |
+| Leak rule #6 (common-bad-passwords, palabras sueltas) | 79 |
+| Leaks post-purga (verificado con grep + --strict) | 0 |
+| Líneas corruptas con `"$1"` literal (bug v1.0) | 0 |
+| Exit code | 0 |
+
+#### Prácticas para futuras purgas
+
+1. **Siempre ejecutar `--strict`** en purgas reales. Sin strict, el script no valida nada y puede dejar leaks silenciosamente.
+2. **Siempre restaurar desde un backup antes de re-purga** si la purga anterior falló. Los `.bak` de v1.0 tienen passwords en claro; moverlos a un stash seguro fuera del repo (`%TEMP%\pre-purge-stash-<fecha>\`) y borrarlos después de validar.
+3. **Validar con grep manual** post-purga además del circuit breaker. El circuit breaker solo verifica una lista hardcoded de secrets; un grep exhaustivo con patrones amplios (JWT, API key, base64) detecta formatos nuevos.
+4. **Documentar la rotación de credenciales comprometidas** como acción operacional separada del fix técnico. Las passwords filtradas en logs SIGUEN SIENDO COMPROMETIDAS aunque el log se sanee — el atacante que tuvo acceso al log antes de la purga ya tiene los secrets.
 
 ## 4.3. Módulo de Autenticación (`/api/auth`)
 
