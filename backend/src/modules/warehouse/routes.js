@@ -19,7 +19,9 @@ const {
   removeSample,
   autoPlaceSamples,
   defragmentShelf,
-  confirmDefragMove
+  confirmDefragMove,
+  previewGroupMove,
+  moveGroup
 } = require('./controller');
 
 router.use(verifyToken);
@@ -336,5 +338,102 @@ router.post('/:id/defragment', requirePermission('warehouse.defragment'), defrag
  *         description: Movimiento ejecutado
  */
 router.post('/:id/defragment/confirm', requirePermission('warehouse.defragment'), confirmDefragMove);
+
+/**
+ * @openapi
+ * /api/warehouse/{id}/preview-move-group:
+ *   post:
+ *     summary: Previsualizar movimiento grupal (drag-en-grupo)
+ *     description: |
+ *       Retorna una matriz de celdas candidatas en el shelf destino con
+ *       `compatible: true|false` para cada una, considerando colisiones
+ *       AABB y compatibilidad SGA con muestras externas. El frontend
+ *       usa este cache para pintar los cubos fantasma en tiempo real.
+ *     tags: [Warehouse]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sample_ids:
+ *                 type: array
+ *                 items: { type: string }
+ *               target_shelf_id:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Matriz de celdas válidas/inválidas
+ *       400:
+ *         description: Grupo con tipos distintos, dimensiones distintas, o múltiples anaqueles
+ *       404:
+ *         description: Alguna muestra o anaquel no encontrado
+ */
+router.post(
+  '/:id/preview-move-group',
+  requirePermission('warehouse.view'),
+  previewGroupMove
+);
+
+/**
+ * @openapi
+ * /api/warehouse/{id}/move-group:
+ *   post:
+ *     summary: Mover grupo de muestras (commit atómico)
+ *     description: |
+ *       Mueve N muestras del mismo tipo en una sola transacción.
+ *       Si CUALQUIER muestra falla, se hace ROLLBACK total.
+ *       Las entradas de `movements` comparten el mismo `batch_id`.
+ *     tags: [Warehouse]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               target_shelf_id:
+ *                 type: string
+ *               moves:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     sample_id: { type: string }
+ *                     new_position_x: { type: integer }
+ *                     new_position_y: { type: integer }
+ *                     new_position_z: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Grupo movido atómicamente
+ *       400:
+ *         description: Validación fallida (SGA, colisión, límites)
+ *       404:
+ *         description: Muestra no encontrada
+ *       409:
+ *         description: Muestra cambió de estado/posición durante el commit
+ */
+router.post(
+  '/:id/move-group',
+  requirePermission('warehouse.move_sample'),
+  moveGroup
+);
 
 module.exports = router;

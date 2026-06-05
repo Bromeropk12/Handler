@@ -9,6 +9,7 @@
 const { query } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { areCompatible } = require('../../utils/sga-compatibility');
+const { getNeighborsByAABB: _getNeighborsByAABB } = require('./group-operations');
 
 // Validaciones para datos de anaquel
 const validateShelfData = (data) => {
@@ -88,7 +89,12 @@ function boxesOverlap(box1, box2) {
 }
 
 /**
- * Obtiene muestras vecinas adyacentes para validación SGA en 3D
+ * Obtiene muestras vecinas adyacentes para validación SGA en 3D.
+ *
+ * Refactor 2026-06: delega en `getNeighborsByAABB` (definida en
+ * group-operations.js) para evitar duplicación de lógica con el flujo
+ * de drag-en-grupo. Mantiene firma y comportamiento idénticos al
+ * original.
  */
 async function getNeighbors(shelfId, x, y, z, width, height, depth) {
   const adjacentSamples = await query(`
@@ -101,11 +107,20 @@ async function getNeighbors(shelfId, x, y, z, width, height, depth) {
       AND ds.position_z BETWEEN $6 - 4 AND $6 + $7 + 3
   `, [shelfId, x, width, y, height, z, depth]);
 
-  return adjacentSamples.rows.filter(s => {
-    const dist = Math.abs(s.position_x - x) + Math.abs(s.position_y - y) + Math.abs(s.position_z - z);
-    return dist <= 3 && dist > 0;
-  });
+  // Construimos el AABB del target y delegamos el filtrado final a
+  // getNeighborsByAABB (mismo radio=algoritmo).
+  return _getNeighborsByAABB(
+    { x, y, z, w: width, h: height, d: height },
+    adjacentSamples.rows
+  );
 }
+
+/**
+ * Re-exporta `getNeighborsByAABB` desde group-operations para
+ * conveniencia de tests y de cualquier otro módulo que quiera
+ * calcular vecinos sin ir a la base de datos.
+ */
+const getNeighborsByAABB = _getNeighborsByAABB;
 
 /**
  * Valida el posicionamiento de una muestra en un anaquel 3D
@@ -246,6 +261,7 @@ module.exports = {
   boxesOverlap,
   validatePlacement,
   getNeighbors,
+  getNeighborsByAABB,
   findAutoPlacement,
   calculateOccupancy,
   hasPhysicalSpace
