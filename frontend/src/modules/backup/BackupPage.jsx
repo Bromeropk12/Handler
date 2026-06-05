@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { backupAPI } from '../../services/api';
 import {
   CircleStackIcon,
   ArrowPathIcon,
-  CloudArrowUpIcon,
+  ArrowUpTrayIcon,
+  ArrowDownTrayIcon,
   TrashIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
@@ -11,8 +12,6 @@ import {
   InformationCircleIcon,
   ShieldCheckIcon,
   ClockIcon,
-  FolderOpenIcon,
-  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 
 // ─── Alert Banner ───────────────────────────────────────────────────────────
@@ -128,6 +127,112 @@ const RestoreModal = ({ backup, onConfirm, onCancel, loading }) => {
   );
 };
 
+// ─── Import Modal (file picker del navegador) ──────────────────────────────
+const ImportModal = ({ onConfirm, onCancel, loading }) => {
+  const [file, setFile] = useState(null);
+  const [password, setPassword] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleSelect = () => {
+    fileInputRef.current?.click();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-surface-400 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg">
+        {/* Header */}
+        <div className="flex items-center gap-3 p-6 border-b border-gray-700">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+            <ArrowUpTrayIcon className="w-6 h-6 text-blue-400" />
+          </div>
+          <div>
+            <h2 className="text-white font-bold text-lg">Importar Backup</h2>
+            <p className="text-gray-400 text-sm">Cargar un archivo .json desde cualquier carpeta de la PC</p>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <Alert type="info">
+            <p className="font-semibold mb-1">¿Qué hace este botón?</p>
+            <ul className="text-sm space-y-1 list-disc list-inside">
+              <li>Permite cargar un backup previamente exportado a una USB, disco de red o OneDrive personal.</li>
+              <li>El archivo se valida y registra en la base de datos local sin reemplazar los backups existentes.</li>
+              <li>La importación <strong>no restaura</strong> los datos — solo agrega el archivo a la lista. Para restaurar use "Restaurar" después.</li>
+            </ul>
+          </Alert>
+
+          {/* File picker oculto + botón visible */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={e => setFile(e.target.files?.[0] || null)}
+            className="hidden"
+          />
+          <div>
+            <label className="block text-sm text-gray-300 mb-2 font-medium">
+              <ArrowUpTrayIcon className="w-4 h-4 inline mr-1" />
+              Archivo de backup (.json)
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSelect}
+                className="btn-secondary flex-1 text-left truncate"
+              >
+                {file ? (
+                  <span className="text-white">{file.name} <span className="text-gray-500 text-xs">({(file.size / 1024 / 1024).toFixed(2)} MB)</span></span>
+                ) : (
+                  <span className="text-gray-500">Seleccionar archivo desde cualquier carpeta...</span>
+                )}
+              </button>
+              {file && (
+                <button
+                  type="button"
+                  onClick={() => setFile(null)}
+                  className="px-3 text-gray-500 hover:text-red-400"
+                  title="Quitar archivo"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-2 font-medium">
+              <ShieldCheckIcon className="w-4 h-4 inline mr-1" />
+              Contraseña de Administrador
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && file && password && onConfirm(file, password)}
+              placeholder="Requerida para autorizar la importación"
+              className="w-full bg-surface-300 border border-gray-600 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              autoFocus={!file}
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button onClick={onCancel} className="btn-secondary flex-1">Cancelar</button>
+            <button
+              onClick={() => onConfirm(file, password)}
+              disabled={!file || !password || loading}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              {loading
+                ? <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Importando...</>
+                : <><ArrowUpTrayIcon className="w-4 h-4" /> Importar Backup</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Restore Progress Overlay ───────────────────────────────────────────────
 const RestoreProgressOverlay = ({ elapsed }) => {
   return (
@@ -164,7 +269,8 @@ const BackupPage = () => {
   const [notification, setNotif]    = useState(null);
   const [restoreTarget, setRestore] = useState(null);
   const [restoreElapsed, setElapsed] = useState(0);
-  
+  const [importOpen, setImportOpen] = useState(false);
+
   // Settings state
   const [settings, setSettings] = useState({ interval_days: 20, hour: 12 });
   const [isEditingSettings, setIsEditing] = useState(false);
@@ -276,18 +382,54 @@ const BackupPage = () => {
     }
   };
 
-  // ── Sincronizar OneDrive ──────────────────────────────────────────────────
-  const handleOneDrive = async () => {
-    setAction('onedrive');
+  // ── Importar Backup desde archivo .json ─────────────────────────────────
+  const handleImport = async (file, password) => {
+    setAction('import');
     try {
-      const res = await backupAPI.syncToOneDrive();
-      notify('success', res.data.message);
+      const res = await backupAPI.importBackup(file, password);
+      const d = res.data.data;
+      notify('success', `✅ Backup importado: ${d.filename} (${d.sizeMB} MB)`);
+      setImportOpen(false);
+      loadData();
     } catch (err) {
-      notify('danger', err.message || 'No se pudo sincronizar con OneDrive');
+      const msg = err.message || 'Error al importar el backup';
+      if (msg.toLowerCase().includes('contraseña') || msg.toLowerCase().includes('password')) {
+        notify('danger', '❌ Contraseña incorrecta. Importación cancelada.');
+      } else if (msg.toLowerCase().includes('versión') || msg.toLowerCase().includes('version')) {
+        notify('danger', `❌ ${msg} — Use un backup de esta misma versión del sistema.`);
+      } else if (msg.toLowerCase().includes('json') || msg.toLowerCase().includes('estructura')) {
+        notify('danger', `❌ Archivo inválido: ${msg}`);
+      } else {
+        notify('danger', `❌ ${msg}`);
+      }
     } finally {
       setAction('');
     }
   };
+
+  // ── Descargar Backup ─────────────────────────────────────────────────────
+  const handleDownload = async (filename) => {
+    setAction(`download-${filename}`);
+    try {
+      const res = await backupAPI.downloadBackup(filename);
+      // Crear URL temporal y forzar descarga
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      notify('success', `Descarga iniciada: ${filename}`);
+    } catch (err) {
+      notify('danger', err.message || 'Error al descargar el backup');
+    } finally {
+      setAction('');
+    }
+  };
+
+
 
   // ── Formatear fechas ──────────────────────────────────────────────────────
   const formatDate = (iso) => {
@@ -315,6 +457,15 @@ const BackupPage = () => {
           onConfirm={handleRestore}
           onCancel={() => setRestore(null)}
           loading={actionLoading === 'restore'}
+        />
+      )}
+
+      {/* Modal de importacion de backup */}
+      {importOpen && (
+        <ImportModal
+          onConfirm={handleImport}
+          onCancel={() => setImportOpen(false)}
+          loading={actionLoading === 'import'}
         />
       )}
 
@@ -350,10 +501,10 @@ const BackupPage = () => {
 
       {/* ── Aviso importante ── */}
       <Alert type="info">
-        <p className="font-semibold mb-1">ℹ️ Cómo funciona el sistema de backups cloud</p>
+        <p className="font-semibold mb-1">ℹ️ Cómo funciona el sistema de backups locales</p>
         <ul className="text-sm space-y-1 list-disc list-inside">
           <li>El sistema genera un backup <strong>automático según la configuración establecida</strong> (actualmente cada {status?.intervalDays} días).</li>
-          <li>Los respaldos se guardan de forma segura en la base de datos de <strong>Supabase</strong>.</li>
+          <li>Los respaldos se guardan de forma segura en la base de datos del <strong>servidor local</strong>.</li>
           <li>Se conservan hasta <strong>3 backups</strong>. El más antiguo se elimina automáticamente.</li>
           <li>Usted puede descargar o restaurar cualquier backup del historial en cualquier momento.</li>
         </ul>
@@ -476,6 +627,14 @@ const BackupPage = () => {
                     : <CircleStackIcon className="w-5 h-5" />}
                   Generar Respaldo Ahora
                 </button>
+               <button
+                  onClick={() => setImportOpen(true)}
+                  disabled={!!actionLoading}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-3 rounded-lg transition-colors text-sm"
+                >
+                  <ArrowUpTrayIcon className="w-5 h-5" />
+                  Importar Backup desde archivo
+                </button>
             </div>
 
           </div>
@@ -540,6 +699,17 @@ const BackupPage = () => {
                           Restaurar
                         </button>
                         <button
+                          onClick={() => handleDownload(b.filename)}
+                          disabled={!!actionLoading}
+                          className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-3 py-2 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                          title="Descargar backup como archivo .json"
+                        >
+                          {actionLoading === `download-${b.filename}`
+                            ? <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
+                            : <ArrowDownTrayIcon className="w-3.5 h-3.5" />}
+                          Descargar
+                        </button>
+                        <button
                           onClick={() => handleDelete(b.filename)}
                           disabled={!!actionLoading}
                           className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
@@ -562,7 +732,7 @@ const BackupPage = () => {
                <div>
                  <h4 className="text-blue-200 text-sm font-bold mb-1">Seguridad de Datos</h4>
                  <p className="text-blue-300/60 text-xs leading-relaxed">
-                   Todos los respaldos están cifrados y almacenados en la infraestructura cloud de Supabase. 
+                   Todos los respaldos están almacenados localmente en el servidor. 
                    La restauración de datos requiere privilegios de administrador de sistema.
                  </p>
                </div>

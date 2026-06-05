@@ -9,6 +9,7 @@ import InventoryStatsWidget from './components/InventoryStatsWidget';
 import OccupancyChart from './components/OccupancyChart';
 import QuickActionsWidget from './components/QuickActionsWidget';
 import RecentMovementsWidget from './components/RecentMovementsWidget';
+import NetworkInfoWidget from './components/NetworkInfoWidget';
 
 const DashboardPage = () => {
   const [loading, setLoading] = useState(true);
@@ -79,6 +80,7 @@ const DashboardPage = () => {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Columna Izquierda: Stats y Acciones (1/3) */}
         <div className="xl:col-span-1 flex flex-col gap-6">
+          <NetworkInfoWidget />
           <InventoryStatsWidget stats={stats} />
           <QuickActionsWidget />
         </div>

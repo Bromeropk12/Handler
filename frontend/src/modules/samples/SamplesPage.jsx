@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import Badge from '../../components/Badge';
 import Modal from '../../components/Modal';
-import { samplesAPI, warehouseAPI } from '../../services/api';
+import { samplesAPI } from '../../services/api';
 import {
   PlusIcon,
   BeakerIcon,
@@ -20,7 +20,10 @@ import {
   BarsArrowDownIcon,
 } from '@heroicons/react/24/outline';
 
-const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
+// URL base para recursos directos (logos, CoA, descargas).
+// En dev: CRA proxy (package.json:"proxy") redirige todas las rutas relativas a localhost:3001.
+// En producción: Express sirve todo desde el mismo origen — las URLs relativas funcionan nativamente.
+const API_BASE = '';
 
 // Mapeo de pictogramas GHS → archivos de imagen
 const GHS_PICTOGRAM_MAP = {
@@ -151,6 +154,7 @@ const SamplesPage = () => {
 
     // Cargar datos para la página actual
     loadSamples(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchTerm, filters, sortAlphabetical]);
 
   const handleInputChange = (field, value) => {
@@ -559,7 +563,7 @@ const SamplesPage = () => {
               <p className="text-[10px] text-gray-500 truncate">{selectedSample.coa_file_path}</p>
             </div>
             <a
-              href={`${process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:3001'}/${selectedSample.coa_file_path}`}
+              href={`${API_BASE}/${selectedSample.coa_file_path}`}
               target="_blank"
               rel="noopener noreferrer"
               className="px-3 py-1.5 bg-blue-500/10 text-blue-400 text-xs font-bold rounded-lg hover:bg-blue-500/20 transition-colors shrink-0"

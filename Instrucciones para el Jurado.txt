@@ -1,20 +1,24 @@
 Instrucciones para el Jurado de trabajo de grado:
 
-	
-	paso 1: Abrir la aplicación de escritorio Handler (o ingresar a http://localhost:3000 si ejecuta el entorno local)
+Handler TrackSamples - Sistema de Gestión de Muestras Químicas (Local-First)
 
-		Credenciales Administrador:
-		(  user:     admin1
-		   password: @Admin1 )   
-		No copiar y pegar porque la app bloquea esta acción por seguridad. 
+Paso 1: Levantar la Base de Datos Local
+  1. Asegúrese de que Docker Desktop esté abierto y ejecutándose.
+  2. Abra una terminal en el directorio del proyecto y ejecute:
+     cd database
+     docker-compose up -d
+  (Esto descargará e iniciará el contenedor de PostgreSQL y ejecutará automáticamente los scripts de inicialización de la base de datos).
 
-         No se pueden cargar certificados CoA, YA QUE SOLO ESTA DISEÑADO PARA MANEJARSE EN LOCAL 
-		algunas imagenes no pueden cargar ya que las carga directamente la base de datos de docker en local 
-	 
+Paso 2: Iniciar la Aplicación de Escritorio
+  1. Ejecute el archivo "iniciar-sistema.bat" en la raíz del proyecto haciendo doble clic sobre él.
+  2. Este script instalará automáticamente las dependencias necesarias e iniciará los servicios.
+  3. Una vez listo, abrirá la ventana de la aplicación de escritorio (o puede ingresar mediante el navegador web en http://localhost:3000).
 
+Paso 3: Credenciales de Administrador por Defecto
+  - Usuario: admin
+  - Contraseña: admin123
+  (Por motivos de seguridad y auditoría local, se recomienda no usar copiar y pegar en los campos de credenciales).
 
-			
-
-   
-
-	
+Notas Adicionales:
+  - Carga de Archivos: El Certificado de Análisis (CoA) y la carga de documentos PDF son completamente funcionales y se almacenan en el sistema de archivos local de forma segura.
+  - Recursos y Logos: Las imágenes y logos de los proveedores químicos se cargan dinámicamente desde el servidor local (carpeta "recursos").

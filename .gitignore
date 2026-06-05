@@ -203,6 +203,10 @@ backend/uploads/
 uploads/
 C:/Handler/CoA/
 
+# Backups locales del sistema (no deben estar en git)
+backups/
+backup_scheduler_state.json
+
 # ==========================================
 # ELECTRON / TAURI
 # ==========================================

@@ -1,6 +1,6 @@
 // Configuración global del Circuit Breaker
 export const CIRCUIT_BREAKER_CONFIG = {
-  // Configuración por defecto para todas las APIs (nube Supabase puede tener latencia mayor)
+  // Configuración por defecto para todas las APIs (la base de datos local puede tener latencia)
   default: {
     timeout: 30000, // 30 segundos
     errorThresholdPercentage: 50, // Abrir si 50% de requests fallan
@@ -18,7 +18,7 @@ export const CIRCUIT_BREAKER_CONFIG = {
       resetTimeout: 60000, // Más tiempo para recuperación
     },
 
-    // Backup/restauración - operación lenta en la nube, necesita tiempo extra
+    // Backup/restauración - operación pesada, necesita tiempo extra
     'backup/restore': {
       timeout: 120000, // 2 minutos para restauración completa
       errorThresholdPercentage: 80,

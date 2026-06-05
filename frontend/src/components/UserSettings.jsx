@@ -4,7 +4,7 @@ import { authAPI } from '../services/api';
 import {
     XMarkIcon, KeyIcon, CheckCircleIcon,
     ExclamationTriangleIcon, EyeIcon, EyeSlashIcon,
-    ShieldCheckIcon, UserCircleIcon, UserIcon
+    ShieldCheckIcon, UserIcon
 } from '@heroicons/react/24/outline';
 import Modal from './Modal';
 import LoadingSpinner from './LoadingSpinner';
@@ -14,7 +14,7 @@ const CHECKS = [
     { test: /[A-Z]/, label: 'Mayúscula (A-Z)', short: 'A-Z' },
     { test: /[a-z]/, label: 'Minúscula (a-z)', short: 'a-z' },
     { test: /\d/, label: 'Número (0-9)', short: '0-9' },
-    { test: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]/, label: 'Carácter especial', short: '#@!' },
+    { test: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/, label: 'Carácter especial', short: '#@!' },
 ];
 
 const PasswordInput = ({ label, name, value, onChange, error, placeholder }) => {

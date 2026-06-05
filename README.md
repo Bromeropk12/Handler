@@ -8,7 +8,7 @@ Desarrollado como solución tecnológica para la optimización logística e indu
 
 ## 📊 Estado del Proyecto
 - ✅ **100% Completado** - Sistema completamente funcional e integrado como Aplicación de Escritorio nativa.
-- 🔒 **Seguro** - Autenticación JWT, políticas de seguridad a nivel de fila (RLS) y encriptación de credenciales.
+- 🔒 **Seguro** - Autenticación JWT, encriptación de credenciales y base de datos local en contenedor aislado.
 - 🎨 **Interfaz Industrial** - UI/UX premium diseñada específicamente para la reducción de fatiga visual en entornos de bodega (Industrial Dark Theme).
 - 🏗️ **Arquitectura Autónoma** - Cliente-Servidor local sin dependencia de internet, garantizando máxima resiliencia.
 
@@ -44,7 +44,7 @@ El sistema opera bajo un modelo **Cliente-Servidor de Escritorio** completamente
 
 ### 🗄️ Capa de Datos (Docker + PostgreSQL)
 - Contenedor aislado de base de datos relacional.
-- Cumplimiento estricto con **Row Level Security (RLS)** y políticas de acceso.
+- Cumplimiento estricto de integridad referencial y restricciones de seguridad.
 - Estructura normalizada sin inyecciones SQL.
 
 ---
@@ -89,7 +89,7 @@ Este comando levantará los servidores backend y el entorno de React simultánea
 ---
 
 ## 🔒 Auditoría y Seguridad
-- **Políticas RLS:** Más de 21 políticas de seguridad implementadas nativamente en la base de datos.
+- **Aislamiento en Contenedor:** La base de datos opera de manera aislada en Docker con autenticación robusta y almacenamiento local.
 - **Trazabilidad Absoluta:** La tabla `movements` registra irrevocablemente quién, cuándo y dónde movió cada muestra química.
 - **Respaldos (Backups):** Módulo de respaldo automatizado capaz de generar *snapshots* JSON del inventario y restaurar el sistema en caso de catástrofes.
 

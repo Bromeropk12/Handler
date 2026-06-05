@@ -13,9 +13,13 @@ import MovementsPage from './modules/movements/MovementsPage';
 import SuppliersPage from './modules/suppliers/SuppliersPage';
 import MarketLinesPage from './modules/market-lines/MarketLinesPage';
 import BackupPage from './modules/backup/BackupPage';
+import SettingsPage from './modules/settings/SettingsPage';
 import UserManagementPage from './modules/users/UserManagementPage';
 import LoadingSpinner from './components/LoadingSpinner';
 import ErrorBoundary from './components/ErrorBoundary';
+import SetupPage from './modules/setup/SetupPage';
+import SystemNotificationBanner from './components/SystemNotificationBanner';
+import { useServerEvents } from './hooks/useServerEvents';
 
 // Admin-only route wrapper
 const AdminRoute = ({ children }) => {
@@ -82,7 +86,16 @@ const PermissionRoute = ({ children, requiredPermission }) => {
   return children;
 };
 
-// App content with routes
+// App content with routes + SSE notification banner
+const AppWithNotifications = () => {
+  const { notification, dismissNotification } = useServerEvents();
+  return (
+    <>
+      <SystemNotificationBanner notification={notification} onDismiss={dismissNotification} />
+      <AppContent />
+    </>
+  );
+};
 const AppContent = () => {
   const { isAuthenticated } = useAuth();
 
@@ -125,6 +138,18 @@ const AppContent = () => {
         <Route index element={<BackupPage />} />
       </Route>
 
+      {/* Configuración del sistema — Solo administradores */}
+      <Route
+        path="/settings"
+        element={
+          <AdminRoute>
+            <MainLayout />
+          </AdminRoute>
+        }
+      >
+        <Route index element={<SettingsPage />} />
+      </Route>
+
       {/* Usuarios — Solo administradores */}
       <Route
         path="/users"
@@ -145,11 +170,89 @@ const AppContent = () => {
 
 // Root App
 const App = () => {
+  const [needsSetup, setNeedsSetup] = React.useState(false);
+  const [checkingSetup, setCheckingSetup] = React.useState(true);
+  const [setupError, setSetupError] = React.useState(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const timeout = setTimeout(() => {
+      if (!cancelled) {
+        console.warn('[App] checkSetup timed out, assuming setup complete');
+        setCheckingSetup(false);
+      }
+    }, 8000);
+
+    try {
+      if (window.electronAPI && typeof window.electronAPI.checkSetup === 'function') {
+        window.electronAPI.checkSetup().then(needs => {
+          if (cancelled) return;
+          clearTimeout(timeout);
+          setNeedsSetup(needs);
+          setCheckingSetup(false);
+        }).catch(err => {
+          if (cancelled) return;
+          clearTimeout(timeout);
+          console.error('[App] Error al verificar setup:', err);
+          setSetupError(err.message || 'Error de comunicación con el sistema');
+          setCheckingSetup(false);
+        });
+      } else {
+        clearTimeout(timeout);
+        setCheckingSetup(false);
+      }
+    } catch (err) {
+      clearTimeout(timeout);
+      console.error('[App] Error sincrónico en checkSetup:', err);
+      setSetupError(err.message || 'Error al iniciar la aplicación');
+      setCheckingSetup(false);
+    }
+
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, []);
+
+  if (setupError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-500 text-white p-8">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-danger-200/20 flex items-center justify-center">
+            <svg className="w-8 h-8 text-danger-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Error de inicio</h2>
+          <p className="text-gray-400 text-sm mb-4">{setupError}</p>
+          <p className="text-gray-600 text-xs mb-6">Si el problema persiste, reinstala la aplicación o contacta a soporte.</p>
+          <button onClick={() => window.location.reload()}
+            className="px-6 py-2.5 bg-handler-red hover:bg-handler-red-light text-white rounded-lg transition-colors text-sm font-medium">
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (checkingSetup) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-500 text-white">
+        <div className="text-center">
+          <LoadingSpinner size="large" />
+          <p className="mt-4 text-gray-400 text-sm">Verificando estado del sistema...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (needsSetup) {
+    return <SetupPage onSetupComplete={() => setNeedsSetup(false)} />;
+  }
+
   return (
     <ErrorBoundary>
       <AuthProvider>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <AppContent />
+          <AppWithNotifications />
         </Router>
       </AuthProvider>
     </ErrorBoundary>

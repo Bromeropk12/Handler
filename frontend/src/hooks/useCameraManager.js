@@ -184,7 +184,7 @@ export function useCameraManager() {
     // Escanear cámaras al montar
     useEffect(() => {
         scanCameras();
-    }, []);
+    }, [scanCameras]);
 
     // Escuchar cambios en dispositivos
     useEffect(() => {

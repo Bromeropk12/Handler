@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { BeakerIcon, Search, PlusCircle, CheckCircle2, Box, Info, AlertTriangle, Ruler, Tag, Edit3, X, Save, Hash, Building2, Scale, FlaskConical } from 'lucide-react';
+import { BeakerIcon, Search, PlusCircle, CheckCircle2, Box, Info, Ruler, Tag, Building2, Scale, FlaskConical } from 'lucide-react';
 import { samplesAPI, dispensingAPI, warehouseAPI } from '../../services/api';
 import Modal from '../../components/Modal';
 import LabelPrint from './components/LabelPrint';
 
-const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
+// URL base para recursos directos (logos, CoA, descargas).
+// En dev: CRA proxy (package.json:"proxy") redirige todas las rutas relativas a localhost:3001.
+// En producción: Express sirve todo desde el mismo origen — las URLs relativas funcionan nativamente.
+const API_BASE = '';
 
 const PICTO_FILES = {
   'Explosivo': 'explos.webp',

@@ -9,8 +9,8 @@ const LabelPrint = ({ samples, bulkData, onClose }) => {
   const printRef = useRef(null);
 
   // Configuración de la cuadrícula
-  const [cols, setCols] = useState(2); // Formato de 2x3 o 3x3
-  const [rows, setRows] = useState(3);
+  const [cols, setCols] = useState(2); // Formato de 2x6
+  const [rows, setRows] = useState(6);
   const slotsPerPage = cols * rows;
 
   const [scale, setScale] = useState(0.85);
@@ -18,7 +18,7 @@ const LabelPrint = ({ samples, bulkData, onClose }) => {
   // array plano con todos los slots de todas las hojas.
   // Empaquetamos las muestras al inicio, rellenando el resto de la hoja con 'null'
   const [slotsArray, setSlotsArray] = useState(() => {
-    const initialSlots = cols * rows; // Por defecto: 6
+    const initialSlots = cols * rows; // Por defecto: 12
     const total = Math.max(Math.ceil(samples.length / initialSlots) * initialSlots, initialSlots);
     const arr = Array(total).fill(null);
     samples.forEach((s, idx) => { arr[idx] = s; });

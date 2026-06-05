@@ -14,7 +14,7 @@ import {
   Squares2X2Icon,
   CubeIcon,
   CircleStackIcon,
-  UsersIcon,
+  Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 
 const navItems = [
@@ -157,6 +157,21 @@ const Sidebar = ({ collapsed, onToggle }) => {
 
         {/* Bottom Section */}
         <div className="border-t border-gray-700/50 py-3 px-3 space-y-1 shrink-0">
+          {/* Configuración — solo para administradores */}
+          {isAdmin() && (
+            <NavLink
+              to="/settings"
+              className={`
+                ${isActive('/settings') ? 'sidebar-item-active' : 'sidebar-item'}
+                ${collapsed ? 'justify-center px-0' : ''}
+              `}
+              title={collapsed ? 'Configuración' : undefined}
+            >
+              <Cog6ToothIcon className={`w-5 h-5 shrink-0 ${isActive('/settings') ? 'text-handler-red' : ''}`} />
+              {!collapsed && <span className="truncate">Configuración</span>}
+            </NavLink>
+          )}
+
           {/* Backup — solo para administradores */}
           {isAdmin() && (
             <NavLink

@@ -4,20 +4,28 @@
   "private": true,
   "description": "Root workspace orchestrator for Handler TrackSamples",
   "scripts": {
-    "install:all": "cd backend && pnpm install && cd ../frontend && npm install",
-
-    "start": "npx concurrently --kill-others --names \"BACKEND,REACT,ELECTRON\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"npm run start:backend\" \"npm run start:react\" \"npm run start:electron\"",
-
-    "start:full": "npx concurrently --kill-others --names \"BACKEND,REACT,ELECTRON\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"npm run start:backend\" \"npm run start:react\" \"npm run start:electron\"",
-
-    "start:no-db": "npx concurrently --kill-others --names \"BACKEND,REACT,ELECTRON\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"npm run start:backend\" \"npm run start:react\" \"npm run start:electron\"",
-
-    "start:web": "npx concurrently --kill-others --names \"BACKEND,FRONT\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run start:backend\" \"npm run start:react\"",
-
-    "start:backend": "cd backend && pnpm dev",
-    "start:react": "cd frontend && npm start",
-    "start:electron": "cd frontend && npm run electron:wait",
-
-    "build:exe": "cd frontend && npm run electron:build"
+    "install:all": "pnpm install && cd backend && pnpm install && cd ../frontend && pnpm install",
+    "start": "concurrently --kill-others --names \"BACKEND,REACT,ELECTRON\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"pnpm run start:backend\" \"pnpm run start:react\" \"pnpm run start:electron\"",
+    "start:full": "concurrently --kill-others --names \"BACKEND,REACT,ELECTRON\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"pnpm run start:backend\" \"pnpm run start:react\" \"pnpm run start:electron\"",
+    "start:no-db": "concurrently --kill-others --names \"BACKEND,REACT,ELECTRON\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"pnpm run start:backend\" \"pnpm run start:react\" \"pnpm run start:electron\"",
+    "start:web": "concurrently --kill-others --names \"BACKEND,FRONT\" -c \"bgBlue.bold,bgGreen.bold\" \"pnpm run start:backend\" \"pnpm run start:react\"",
+    "start:backend": "cd backend && pnpm run dev",
+    "start:react": "cd frontend && pnpm start",
+    "start:electron": "cd frontend && pnpm run electron:wait",
+    "build:exe": "cd frontend && pnpm run electron:build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "overrides": {
+    "date-fns": "2.30.0"
+  },
+  "dependencies": {
+    "date-fns": "2.30.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "lru-cache": "^7.12.1"
+    }
   }
 }

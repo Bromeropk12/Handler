@@ -16,7 +16,7 @@ const optionalEnvVars = {
   LOG_LEVEL: 'info',
   MAX_FILE_SIZE: '10485760',
   UPLOAD_DIR: 'uploads',
-  COA_BASE_DIR: 'C:/Handler/CoA',
+  COA_BASE_DIR: 'uploads/coa',
   BCRYPT_ROUNDS: 12,
   RATE_LIMIT_WINDOW: 15,
   RATE_LIMIT_MAX_REQUESTS: 5000
@@ -29,7 +29,10 @@ function validateEnvironment() {
   const missing = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
   if (missing.length > 0) {
-    throw new Error(`Variables de entorno requeridas faltantes: ${missing.join(', ')}`);
+    console.warn(`⚠️ [SETUP] Variables de entorno faltantes: ${missing.join(', ')}.`);
+    console.warn('⚠️ [SETUP] Iniciando servidor en "Modo Setup Web" para su configuración inicial.');
+    process.env.SETUP_MODE = 'true';
+    return;
   }
 
   // Validaciones específicas
@@ -37,7 +40,11 @@ function validateEnvironment() {
     console.warn('⚠️  JWT_SECRET es muy corta. Se recomienda al menos 32 caracteres para producción.');
   }
 
-  if (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET === 'handler-track-samples-jwt-secret-key-2024-very-secure-random-string-change-in-production') {
+  const defaultSecrets = [
+    'handler-track-samples-jwt-secret-key-2024-very-secure-random-string-change-in-production',
+    'handler-track-samples-jwt-secret-key-local-2026-cambiar-en-produccion'
+  ];
+  if (process.env.NODE_ENV === 'production' && defaultSecrets.includes(process.env.JWT_SECRET)) {
     throw new Error('JWT_SECRET no puede usar el valor por defecto en producción');
   }
 }
@@ -50,12 +57,6 @@ const config = {
   nodeEnv: process.env.NODE_ENV,
   port: parseInt(process.env.PORT, 10),
   frontendUrl: process.env.FRONTEND_URL || optionalEnvVars.FRONTEND_URL,
-
-  // Supabase
-  supabase: {
-    url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    anonKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  },
 
   // Database
   database: {
@@ -101,7 +102,5 @@ const config = {
   }
 };
 
-// Validar configuración
-validateEnvironment();
-
 module.exports = config;
+module.exports.validateEnvironment = validateEnvironment;

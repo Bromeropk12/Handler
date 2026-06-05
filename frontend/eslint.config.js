@@ -27,6 +27,24 @@ export default [
         console: 'readonly',
         navigator: 'readonly',
         location: 'readonly',
+        FormData: 'readonly',
+        fetch: 'readonly',
+        alert: 'readonly',
+        confirm: 'readonly',
+        URL: 'readonly',
+        Blob: 'readonly',
+        URLSearchParams: 'readonly',
+
+        // Jest / Testing Globals
+        describe: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        it: 'readonly',
+        jest: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
 
         // Node.js globals (for config files)
         process: 'readonly',
@@ -60,12 +78,18 @@ export default [
         caughtErrors: 'none'
       }],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
-      'prefer-const': 'error',
+      'prefer-const': 'warn',
       'no-var': 'error',
 
       // Specific React Rules
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+
+      // React Three Fiber custom elements trigger many false positive warnings
+      'react/no-unknown-property': 'off',
+
+      // Disable unescaped entities checks for simple JSX strings
+      'react/no-unescaped-entities': 'off',
     },
     settings: {
       react: {

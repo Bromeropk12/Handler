@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { authAPI } from '../../services/api';
 import { PERMISSION_MODULES, DEFAULT_PERMISSIONS, COLOR_MAP, ALL_PERMISSION_KEYS } from '../../config/permissions';
 import {
-  UsersIcon, PlusIcon, TrashIcon, KeyIcon, ShieldCheckIcon,
+  UsersIcon, PlusIcon, TrashIcon, ShieldCheckIcon,
   UserIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon,
   ChevronDownIcon, ChevronUpIcon, ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';

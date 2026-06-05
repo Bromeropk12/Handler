@@ -1,0 +1,18 @@
+{
+  "type": "postgres",
+  "host": "localhost",
+  "port": 5432,
+  "username": "handler_user",
+  "password": "handler_password",
+  "database": "handler_tracksamples",
+  "synchronize": false,
+  "logging": false,
+  "entities": ["src/domain/entities/**/*.ts"],
+  "migrations": ["src/infrastructure/database/migrations/**/*.ts"],
+  "subscribers": ["src/infrastructure/database/subscribers/**/*.ts"],
+  "cli": {
+    "entitiesDir": "src/domain/entities",
+    "migrationsDir": "src/infrastructure/database/migrations",
+    "subscribersDir": "src/infrastructure/database/subscribers"
+  }
+}

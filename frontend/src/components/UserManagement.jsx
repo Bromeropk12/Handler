@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../services/api';
 import Modal from './Modal';
 import { TrashIcon } from '@heroicons/react/24/outline';
-import { DEFAULT_PERMISSIONS, ALL_PERMISSION_KEYS } from '../config/permissions';
+
 
 // Componentes modulares
 import UserManagementHeader from './UserManagementHeader';
@@ -51,7 +51,7 @@ const UserManagement = ({ isOpen, onClose }) => {
         if (!/[A-Z]/.test(password)) errors.push('Al menos 1 mayúscula');
         if (!/[a-z]/.test(password)) errors.push('Al menos 1 minúscula');
         if (!/\d/.test(password)) errors.push('Al menos 1 número');
-        if (!/[!@#$%^&*()_+\-=[\]{};\':"\\|,.<>?]/.test(password)) errors.push('Al menos 1 carácter especial');
+        if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?]/.test(password)) errors.push('Al menos 1 carácter especial');
         return errors;
     };
 

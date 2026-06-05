@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, Edit2, Trash2, MapPin, Phone, Mail, Check, Upload, Image, Package } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, Edit2, Trash2, MapPin, Phone, Mail, Check, Upload, Package } from 'lucide-react';
 import { suppliersAPI } from '../../services/api';
 
 const MARKET_LINES = ['Cosmética', 'Industrial', 'Farmacéutica'];
-const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
+
 
 const SuppliersPage = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -12,7 +12,7 @@ const SuppliersPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(null);
-  const logoInputRef = useRef(null);
+
 
   const [formData, setFormData] = useState({
     name: '',

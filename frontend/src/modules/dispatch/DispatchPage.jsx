@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Box, AlertTriangle, FileText, CheckCircle2, QrCode, Camera, History, Calendar, LayoutGrid, ArrowRight, ArrowLeft, Printer, Download, Eye, Upload } from 'lucide-react';
-import { dispatchAPI, samplesAPI } from '../../services/api';
+import { Search, Box, AlertTriangle, FileText, CheckCircle2, QrCode, Camera, History, Calendar, LayoutGrid, ArrowRight, ArrowLeft, Printer, Eye } from 'lucide-react';
+import { dispatchAPI } from '../../services/api';
 import { Html5Qrcode } from 'html5-qrcode';
 import Modal from '../../components/Modal';
 import { useCameraManager } from '../../hooks/useCameraManager';
 import CameraSelector from '../../components/CameraSelector';
 import DispatchLabelPrint from './components/DispatchLabelPrint';
 
-const API_BASE = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:3001';
+// URL base para recursos directos (logos, CoA, descargas).
+// En dev: CRA proxy (package.json:"proxy") redirige todas las rutas relativas a localhost:3001.
+// En producción: Express sirve todo desde el mismo origen — las URLs relativas funcionan nativamente.
+const API_BASE = '';
+
 
 // ==========================================
 // MÓDULO DE DESPACHO COMPLETAMENTE MODULAR
@@ -31,7 +35,6 @@ const DispatchPage = () => {
     const [loading, setLoading] = useState(false);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [scanCode, setScanCode] = useState('');
-    const [dispatchStatus, setDispatchStatus] = useState(null);
     const [dispatchMessage, setDispatchMessage] = useState('');
     const [labelData, setLabelData] = useState(null);
     const [scannerActive, setScannerActive] = useState(false);
@@ -50,9 +53,7 @@ const DispatchPage = () => {
         setSelectedCameraId,
         isLoading: camerasLoading,
         error: cameraError,
-        getSelectedCamera,
-        isSelectedCameraAvailable,
-        validateActiveCamera
+        isSelectedCameraAvailable
     } = useCameraManager();
 
     // ==========================================
@@ -246,7 +247,6 @@ const DispatchPage = () => {
             const resp = await dispatchAPI.dispatch({ qr_code: code, expected_product_name: expectedProductName });
             const recUsed = pendingScanRec || selectedRecommendation;
 
-            setDispatchStatus('success');
             setDispatchMessage(resp.data.message);
 
             setLabelData({
@@ -270,7 +270,6 @@ const DispatchPage = () => {
 
         } catch (err) {
             console.error('Error en despacho:', err);
-            setDispatchStatus('error');
             setDispatchMessage(err.message || 'Error en el despacho');
             setShowConfirmModal(false);
         } finally {
@@ -284,57 +283,13 @@ const DispatchPage = () => {
         executeDispatchAPI(scanCode, productName);
     };
 
-    // ==========================================
-    // FUNCIONES DE UI
-    // ==========================================
-    const printLabel = () => {
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-      <html><head><title>Etiqueta de Despacho</title>
-      <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        .label-box { border: 2px solid #000; padding: 20px; width: 400px; margin: 0 auto; text-align: center; }
-        h2 { margin: 0 0 10px 0; color: #E30613; }
-        h1 { margin: 0 0 20px 0; font-size: 24px; }
-        .details { text-align: left; margin-bottom: 20px; font-size: 18px; }
-        .details div { margin-bottom: 8px; }
-      </style></head><body>
-      <div class="label-box">
-        <h2>Handler S.A.S</h2>
-        <h1>${labelData.product_name}</h1>
-        <div class="details">
-          <div><strong>Lote:</strong> ${labelData.lot}</div>
-          <div><strong>Vencimiento:</strong> ${labelData.expiration_date}</div>
-          <div><strong>QR:</strong> ${labelData.qr_code}</div>
-          <div><strong>Despachado por:</strong> ${labelData.dispatched_by}</div>
-        </div>
-        <div><em>Control de Calidad</em></div>
-      </div>
-      <script>window.print(); window.close();</script>
-      </body></html>
-    `);
-    };
 
-    const downloadCoA = () => {
-        if (labelData?.coa_file_path) {
-            const link = document.createElement('a');
-            link.href = `${API_BASE}/${labelData.coa_file_path}`;
-            link.target = '_blank';
-            link.download = `CoA_${labelData.lot}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        } else {
-            alert('No hay certificado CoA disponible');
-        }
-    };
 
     const resetAll = () => {
         setCurrentStep(1);
         setSearchTerm('');
         setRecommendations([]);
         setScanCode('');
-        setDispatchStatus(null);
         setDispatchMessage('');
         setLabelData(null);
         setSelectedRecommendation(null);

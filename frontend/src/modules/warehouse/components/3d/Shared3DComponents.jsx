@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Html, Edges } from '@react-three/drei';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 
 // ─── Status Helper ─────────────────────────────────────────────────────────────
@@ -18,6 +18,16 @@ export const STATUS_COLORS = {
   warning:  '#f59e0b',   // amber-500
   expired:  '#ef4444',   // red-500
   empty:    '#1e293b',
+};
+
+export const getColorByName = (name) => {
+  if (!name) return '#0ea5e9';
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 75%, 50%)`;
 };
 
 // Altura/Separación global entre niveles. Cámbialo aquí directamente si se ven muy juntos.
@@ -49,14 +59,28 @@ export const GridLines = ({ cols, depth }) => {
 // ─── Axis Labels ───────────────────────────────────────────────────────────────
 export const AxisLabels = ({ cols, depth }) => (
   <group>
-    <Html position={[cols / 2 + 2, 0.2, 0]} center>
-      <div style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.3)', padding: '2px 8px', borderRadius: 6, color: '#38bdf8', fontSize: 10, fontWeight: 700, letterSpacing: 1, whiteSpace: 'nowrap' }}>
-        X → Columna
+    <Html position={[cols / 2 + 1.8, 0.1, 0]} center>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        background: 'rgba(9, 13, 20, 0.65)', backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(255, 255, 255, 0.08)', padding: '4px 10px', borderRadius: 20,
+        color: '#94a3b8', fontSize: 9, fontWeight: 800, letterSpacing: 1, whiteSpace: 'nowrap',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#0ea5e9', boxShadow: '0 0 8px #0ea5e9' }} />
+        X · COLUMNA
       </div>
     </Html>
-    <Html position={[0, 0.2, depth / 2 + 2]} center>
-      <div style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', padding: '2px 8px', borderRadius: 6, color: '#34d399', fontSize: 10, fontWeight: 700, letterSpacing: 1, whiteSpace: 'nowrap' }}>
-        Z → Profundidad
+    <Html position={[0, 0.1, depth / 2 + 1.8]} center>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        background: 'rgba(9, 13, 20, 0.65)', backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(255, 255, 255, 0.08)', padding: '4px 10px', borderRadius: 20,
+        color: '#94a3b8', fontSize: 9, fontWeight: 800, letterSpacing: 1, whiteSpace: 'nowrap',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }} />
+        Z · PROFUNDIDAD
       </div>
     </Html>
   </group>
@@ -95,118 +119,253 @@ export const CameraController = ({ view, targetPosOverride = null }) => {
   return null;
 };
 
+// ─── Canvas Stamp Texture ───────────────────────────────────────────────────────
+// Builds a CanvasTexture (no web-workers / no CSP issues) for the status stamp.
+const makeStampTexture = (letter, bgColor, letterColor) => {
+  const SIZE = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext('2d');
+  const cx = SIZE / 2, cy = SIZE / 2, r = SIZE / 2 - 6;
+
+  // Filled circle background
+  ctx.fillStyle = bgColor;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // White border ring
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 5, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Bold letter
+  ctx.fillStyle = letterColor;
+  ctx.font = `900 ${Math.floor(SIZE * 0.5)}px "Arial Black", Arial, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(letter, cx, cy + 3);
+
+  return new THREE.CanvasTexture(canvas);
+};
+
+// ─── Empty Cell Target ─────────────────────────────────────────────────────────
+export const EmptyCellTarget = ({ x, y = 0, z, offsetX, offsetY = 0, offsetZ, width = 1, depth = 1, onDrop }) => {
+  const [hovered, setHovered] = useState(false);
+  const px = offsetX + x + width / 2;
+  const pz = offsetZ + z + depth / 2;
+  const baseY = y * LEVEL_HEIGHT + offsetY;
+
+  return (
+    <group 
+      position={[px, baseY + 0.4, pz]}
+      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
+      onPointerOut={() => { setHovered(false); document.body.style.cursor = 'default'; }}
+      onClick={(e) => { e.stopPropagation(); if (onDrop) onDrop({x, y, z}); }}
+    >
+      <mesh>
+        <boxGeometry args={[width - 0.1, 0.8, depth - 0.1]} />
+        <meshStandardMaterial 
+          color="#10b981" 
+          transparent 
+          opacity={hovered ? 0.4 : 0.1}
+          emissive="#10b981"
+          emissiveIntensity={hovered ? 0.6 : 0.2}
+          roughness={0.2}
+        />
+      </mesh>
+      {/* Target indicator on top */}
+      <mesh position={[0, 0.41, 0]} rotation={[-Math.PI/2, 0, 0]}>
+        <planeGeometry args={[0.5, 0.5]} />
+        <meshBasicMaterial color="#10b981" transparent opacity={hovered ? 0.8 : 0.3} wireframe />
+      </mesh>
+      {hovered && (
+        <pointLight position={[0, 0.5, 0]} intensity={1} distance={2} color="#10b981" />
+      )}
+    </group>
+  );
+};
+
 // ─── Sample Cube ───────────────────────────────────────────────────────────────
-export const SampleCube = ({ cell, x, y, z, offsetX, offsetY = 0, offsetZ, isSelected, isDimmed, onHover, onClick, status }) => {
-  const meshRef   = useRef();
-  const ringRef   = useRef();
+export const SampleCube = ({ cell, x, y, z, offsetX, offsetY = 0, offsetZ, isSelected, isDimmed, onHover, onClick, status, isMultiSelected, isSourceOfMove }) => {
+  // cubeGroupRef wraps both the cube mesh AND the 3D stamp so they animate in sync.
+  const cubeGroupRef = useRef();
+  const meshRef      = useRef();
+  const ringRef      = useRef();
   const [hovered, setHovered] = useState(false);
 
-  const color     = isSelected ? '#38bdf8' : STATUS_COLORS[status] || STATUS_COLORS.occupied;
-  const width     = cell.width || 1;
-  const depth     = cell.depth || cell.height || 1;
-  const px        = offsetX + x + width / 2;
-  const pz        = offsetZ + z + depth / 2;
-  const baseY     = y * LEVEL_HEIGHT + offsetY;
+  const isActiveSelection = isSelected || isMultiSelected;
+  const color = isActiveSelection ? '#facc15' : getColorByName(cell.name || cell.global_sample_name);
+  const width = cell.width || 1;
+  const depth = cell.depth || cell.height || 1;
+  const px    = offsetX + x + width / 2;
+  const pz    = offsetZ + z + depth / 2;
+  const baseY = y * LEVEL_HEIGHT + offsetY;
 
   useFrame((state) => {
-    if (!meshRef.current) return;
-    const floatY = isSelected
+    if (!cubeGroupRef.current) return;
+
+    // Animate the whole cube+stamp group together
+    const floatY = isActiveSelection
       ? baseY + 0.25 + Math.sin(state.clock.elapsedTime * 2.5) * 0.07
       : hovered && !isDimmed ? baseY + 0.15 : baseY + 0.05;
 
-    meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, floatY, 0.12);
-    meshRef.current.material.opacity = THREE.MathUtils.lerp(meshRef.current.material.opacity, isDimmed ? 0.06 : 0.95, 0.1);
-    meshRef.current.material.emissiveIntensity = THREE.MathUtils.lerp(
-      meshRef.current.material.emissiveIntensity,
-      isSelected ? 0.55 : hovered ? 0.25 : 0.05,
-      0.1
+    cubeGroupRef.current.position.y = THREE.MathUtils.lerp(
+      cubeGroupRef.current.position.y,
+      floatY,
+      0.12
     );
+
+    // Material tweens on the cube mesh itself
+    if (meshRef.current) {
+      meshRef.current.material.opacity = THREE.MathUtils.lerp(
+        meshRef.current.material.opacity,
+        isDimmed ? 0.06 : 0.95,
+        0.1
+      );
+      meshRef.current.material.emissiveIntensity = THREE.MathUtils.lerp(
+        meshRef.current.material.emissiveIntensity,
+        isActiveSelection ? 0.55 : hovered ? 0.25 : 0.05,
+        0.1
+      );
+    }
+
+    // Floor glow ring
     if (ringRef.current) {
-      ringRef.current.material.opacity = THREE.MathUtils.lerp(ringRef.current.material.opacity, (isSelected || hovered) && !isDimmed ? 0.6 : 0, 0.12);
+      ringRef.current.material.opacity = THREE.MathUtils.lerp(
+        ringRef.current.material.opacity,
+        (isActiveSelection || hovered) && !isDimmed ? 0.6 : 0,
+        0.12
+      );
     }
   });
 
-  const statusLabel = { occupied: 'Activa', warning: 'Por Vencer', expired: 'Vencida' };
-  const statusTextColor = { occupied: '#34d399', warning: '#facc15', expired: '#f87171' };
+  const statusLabel     = { occupied: 'Activa', warning: 'Por Vencer', expired: 'Vencida' };
+  const statusTextColor = { occupied: '#34d399', warning: '#facc15',  expired: '#f87171' };
+  const stampColor   = STATUS_COLORS[status] || STATUS_COLORS.occupied;
+  const letterColor  = status === 'warning' ? '#000000' : '#ffffff';
+  const statusLetter = status === 'warning' ? 'P' : status === 'expired' ? 'V' : 'A';
+
+  // Canvas texture — created once per status/color combo, no workers needed
+  const stampTexture = useMemo(
+    () => makeStampTexture(statusLetter, stampColor, letterColor),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [statusLetter, stampColor, letterColor]
+  );
 
   return (
     <group
-      position={[px, 0.05, pz]}
-      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; if (onHover) onHover(cell); }}
-      onPointerOut={(e)  => { setHovered(false);  document.body.style.cursor = 'default'; if (onHover) onHover(null); }}
+      position={[px, 0, pz]}
+      onPointerOver={(e) => { e.stopPropagation(); setHovered(true);  document.body.style.cursor = 'pointer'; if (onHover) onHover(cell); }}
+      onPointerOut={()  => { setHovered(false);  document.body.style.cursor = 'default'; if (onHover) onHover(null); }}
       onClick={(e)       => { e.stopPropagation(); if (onClick) onClick(); }}
     >
-      {/* Glow ring on floor */}
-      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+      {/* ── Floor glow ring (stays on floor, not inside the animated group) ── */}
+      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <ringGeometry args={[Math.max(width, depth) * 0.5, Math.max(width, depth) * 0.72, 32]} />
         <meshBasicMaterial color={color} transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {/* Main cube */}
-      <mesh ref={meshRef} position={[0, 0.4, 0]}>
-        <boxGeometry args={[width - 0.1, 0.8, depth - 0.1]} />
-        <meshStandardMaterial
-          color={color}
-          roughness={0.25}
-          metalness={0.55}
-          emissive={color}
-          emissiveIntensity={0.05}
-          transparent
-          opacity={0.95}
-        />
-      </mesh>
+      {/* ── Animated group: cube mesh + 3D stamp move together ── */}
+      <group ref={cubeGroupRef} position={[0, baseY + 0.05, 0]}>
 
-      {/* Tooltip when selected */}
+        {/* Main cube — centred at y=0 inside this group, height=0.8 → top at y=+0.4 */}
+        <mesh ref={meshRef}>
+          <boxGeometry args={[width - 0.1, 0.8, depth - 0.1]} />
+          <meshStandardMaterial
+            color={color}
+            roughness={0.25}
+            metalness={0.55}
+            emissive={color}
+            emissiveIntensity={0.05}
+            transparent
+            opacity={0.95}
+          />
+        </mesh>
+
+        {/* ── 3D Stamp: canvas texture on a flat plane — no workers, no CSP issue ── */}
+        {!isDimmed && (
+          <mesh position={[0, 0.425, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[0.46, 0.46]} />
+            <meshStandardMaterial
+              map={stampTexture}
+              transparent
+              roughness={0.25}
+              metalness={0.45}
+            />
+          </mesh>
+        )}
+      </group>
+
+      {/* ── Source of move indicator (animated arrow) ── */}
+      {isSourceOfMove && (
+        <mesh position={[0, baseY + 1.2, 0]} rotation={[Math.PI, 0, 0]}>
+          <coneGeometry args={[0.2, 0.4, 4]} />
+          <meshStandardMaterial color="#facc15" emissive="#facc15" emissiveIntensity={0.8} />
+        </mesh>
+      )}
+
+      {/* ── Tooltip when selected (positioned above the animated group) ── */}
       {isSelected && (
-        <Html position={[0, 1.8, 0]} center zIndexRange={[100, 0]}>
+        <Html position={[0, (baseY + 0.05) + 1.4, 0]} center zIndexRange={[100, 0]}>
           <div style={{
-            background: 'rgba(9,13,20,0.97)',
-            backdropFilter: 'blur(20px)',
-            border: `1px solid ${color}40`,
-            borderRadius: 14,
-            padding: '14px 16px',
+            background: 'rgba(9, 13, 22, 0.85)',
+            backdropFilter: 'blur(24px)',
+            borderLeft: `3px solid ${color}`,
+            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRight: '1px solid rgba(255, 255, 255, 0.08)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: 16,
+            padding: '16px 18px',
             width: 240,
-            boxShadow: `0 8px 40px rgba(0,0,0,0.6), 0 0 20px ${color}20`,
+            boxShadow: `0 12px 40px rgba(0,0,0,0.7), 0 0 30px ${color}15`,
             pointerEvents: 'auto',
+            boxSizing: 'border-box',
           }}>
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
               <div>
-                <div style={{ fontSize: 11, color: color, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>
+                <div style={{ fontSize: 10, color, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 3 }}>
                   {statusLabel[status] || 'Muestra'}
                 </div>
-                <div style={{ fontSize: 14, color: '#f1f5f9', fontWeight: 700, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 14, color: '#f8fafc', fontWeight: 800, lineHeight: 1.25 }}>
                   {cell.name || cell.global_sample_name}
                 </div>
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); if (onClick) onClick(); }}
-                style={{ color: '#64748b', fontSize: 16, lineHeight: 1, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
+                style={{ color: '#64748b', fontSize: 14, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.2s' }}
+                onMouseEnter={(e) => e.target.style.color = '#f8fafc'}
+                onMouseLeave={(e) => e.target.style.color = '#64748b'}
               >✕</button>
             </div>
 
             {/* Data rows */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 11 }}>
               {[
-                ['Lote',   cell.lot],
-                ['Peso',   cell.weight_grams ? `${cell.weight_grams} g` : '—'],
-                ['SGA',    cell.ghs_danger_class || 'N/A'],
+                ['Lote', cell.lot],
+                ['Peso', cell.weight_grams ? `${cell.weight_grams} g` : '—'],
+                ['SGA',  cell.ghs_danger_class || 'N/A'],
               ].map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
-                  <span>{k}</span><strong style={{ color: '#e2e8f0' }}>{v}</strong>
+                  <span style={{ fontWeight: 500 }}>{k}</span>
+                  <strong style={{ color: '#e2e8f0', fontWeight: 700 }}>{v}</strong>
                 </div>
               ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 2 }}>
-                <span>Vence</span>
-                <strong style={{ color: statusTextColor[status] || '#e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 3 }}>
+                <span style={{ fontWeight: 500 }}>Vence</span>
+                <strong style={{ color: statusTextColor[status] || '#e2e8f0', fontWeight: 800 }}>
                   {cell.expiration_date?.substring(0, 10) || '—'}
                 </strong>
               </div>
             </div>
 
             {/* Position badge */}
-            <div style={{ marginTop: 10, padding: '4px 8px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, textAlign: 'center', fontFamily: 'monospace', fontSize: 10, color: '#475569' }}>
-              Pos: X:{(cell.position_x ?? x) + 1}  Y:{(cell.position_y ?? y) + 1}  Z:{((cell.position_z ?? z) || 0) + 1}
+            <div style={{ marginTop: 12, padding: '5px 8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8, textAlign: 'center', fontFamily: 'monospace', fontSize: 9, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>
+              POS: X:{(cell.position_x ?? x) + 1} · Y:{(cell.position_y ?? y) + 1} · Z:{((cell.position_z ?? z) || 0) + 1}
             </div>
           </div>
         </Html>

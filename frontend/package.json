@@ -18,12 +18,13 @@
     "lint": "eslint src --ext .js,.jsx",
     "format": "prettier --write src/**/*.{js,jsx,css}",
     "electron:dev": "cross-env ELECTRON_DEV=true electron .",
-    "electron:wait": "wait-on http://localhost:3000 && npm run electron:dev",
-    "electron:start": "concurrently --kill-others \"npm start\" \"npm run electron:wait\"",
-    "electron:build": "npm run build && electron-builder --win",
-    "electron:pack": "npm run build && electron-builder --win --dir"
+    "electron:wait": "wait-on http://localhost:3000 && pnpm run electron:dev",
+    "electron:start": "concurrently --kill-others \"pnpm run start\" \"pnpm run electron:wait\"",
+    "electron:build": "pnpm run build && electron-builder --win",
+    "electron:pack": "pnpm run build && electron-builder --win --dir"
   },
   "build": {
+    "asar": true,
     "appId": "com.handler.tracksamples",
     "productName": "Handler TrackSamples",
     "copyright": "Copyright © 2026 Handler Colombia",
@@ -31,10 +32,30 @@
       "buildResources": "public",
       "output": "dist-electron"
     },
+    "extraResources": [
+      {
+        "from": "../backend/build/backend.exe",
+        "to": "backend/backend.exe"
+      },
+      {
+        "from": "../backend/build/create_tables.exe",
+        "to": "backend/create_tables.exe"
+      },
+      {
+        "from": "../backend/build/nssm.exe",
+        "to": "backend/nssm.exe"
+      },
+      {
+        "from": "build",
+        "to": "app"
+      }
+    ],
     "files": [
-      "build/**/*",
       "public/electron.js",
-      "public/favicon.png"
+      "public/preload.js",
+      "public/logo.png",
+      "public/admin_panel.html",
+      "public/installer.nsh"
     ],
     "win": {
       "target": [
@@ -45,18 +66,19 @@
           ]
         }
       ],
-      "icon": "public/favicon.png"
+      "icon": "public/logo.png",
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
       "perMachine": true,
+      "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "public/favicon.png",
-      "uninstallerIcon": "public/favicon.png",
-      "installerHeaderIcon": "public/favicon.png",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Handler TrackSamples"
+      "shortcutName": "Handler TrackSamples",
+      "include": "installer.nsh"
     }
   },
   "dependencies": {
@@ -69,6 +91,7 @@
     "immer": "^10.0.3",
     "lucide-react": "^1.7.0",
     "opossum": "^8.1.4",
+    "pg": "^8.21.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -94,7 +117,7 @@
     "babel-jest": "^30.3.0",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "^41.1.1",
+    "electron": "^41.7.0",
     "electron-builder": "^26.8.1",
     "eslint": "^8.57.1",
     "eslint-config-react-app": "^7.0.1",

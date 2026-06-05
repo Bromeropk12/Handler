@@ -16,23 +16,24 @@ const DispatchMiniLayout = ({ data }) => {
         WebkitPrintColorAdjust: 'exact',
         printColorAdjust: 'exact',
         boxSizing: 'border-box',
-        padding: '1mm',
+        padding: '1mm 1.5mm',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
+        gap: '0.4mm',
         overflow: 'hidden'
       }}
     >
-      <div style={{ fontSize: '4.5pt', color: '#111827', lineHeight: 1.2, fontWeight: 700 }}>
+      <div style={{ fontSize: '7.5pt', color: '#000000', lineHeight: 1.1, fontWeight: 800 }}>
         L: {data.lot}
       </div>
-      <div style={{ fontSize: '3.8pt', color: '#374151', lineHeight: 1.2 }}>
+      <div style={{ fontSize: '6pt', color: '#1f2937', lineHeight: 1.1, fontWeight: 600 }}>
         F.M: {data.manufacture_date || 'N/A'}
       </div>
-      <div style={{ fontSize: '3.8pt', color: '#374151', lineHeight: 1.2 }}>
+      <div style={{ fontSize: '6pt', color: '#1f2937', lineHeight: 1.1, fontWeight: 600 }}>
         F.V: {data.expiration_date}
       </div>
-      <div style={{ fontSize: '4pt', color: '#111827', lineHeight: 1.2, fontWeight: 700 }}>
+      <div style={{ fontSize: '7pt', color: '#000000', lineHeight: 1.1, fontWeight: 800 }}>
         Peso: {data.weight_grams}g
       </div>
     </div>

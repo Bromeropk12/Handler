@@ -3,22 +3,33 @@ import { warehouseAPI } from '../../../services/api';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import {
   ArrowLeftIcon, ExclamationTriangleIcon, CubeIcon, ArrowPathIcon,
-  EyeIcon, ChartBarIcon, ArrowsPointingOutIcon,
   BeakerIcon, ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 import DefragmentationTool from './DefragmentationTool';
 import { ShelfOverviewMap } from './3d/ShelfOverviewMap';
 import { LevelDetailMap }   from './3d/LevelDetailMap';
+import { useSampleSelection } from '../hooks/useSampleSelection';
+import { useSampleMovement } from '../hooks/useSampleMovement';
+import SampleMovementToolbar from './movement/SampleMovementToolbar';
+import TargetShelfPicker from './movement/TargetShelfPicker';
+import MovementConfirmModal from './movement/MovementConfirmModal';
+import MovementModeOverlay from './movement/MovementModeOverlay';
 
 // ─── Stat Pill ─────────────────────────────────────────────────────────────────
-const StatPill = ({ label, value, color, icon: Icon }) => (
+const StatPill = ({ label, value, color }) => (
   <div style={{
-    display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1,
-    padding: '10px 8px', borderRadius: 12,
-    background: `${color}10`, border: `1px solid ${color}25`,
+    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+    width: '100%', boxSizing: 'border-box',
+    padding: '6px 8px', borderRadius: 8,
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderLeft: `2.5px solid ${color}`,
+    borderTop: '1px solid rgba(255, 255, 255, 0.04)',
+    borderRight: '1px solid rgba(255, 255, 255, 0.04)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+    boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.02)',
   }}>
-    <span style={{ fontSize: 18, fontWeight: 800, color, lineHeight: 1 }}>{value}</span>
-    <span style={{ fontSize: 9, color: '#6b7280', fontWeight: 600, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+    <span style={{ fontSize: 13, fontWeight: 900, color: '#f1f5f9', lineHeight: 1.1 }}>{value}</span>
+    <span style={{ fontSize: 7, color: '#64748b', fontWeight: 800, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
   </div>
 );
 
@@ -33,7 +44,13 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   const [showExpired,    setShowExpired]    = useState(true);
   const [showWarnings,   setShowWarnings]   = useState(true);
   const [showDefragTool, setShowDefragTool] = useState(false);
-  const [cameraView,     setCameraView]     = useState('default');
+  const [showStats,      setShowStats]      = useState(true);
+
+  const selection = useSampleSelection();
+  const movement = useSampleMovement(() => {
+    selection.clearSelection();
+    fetchMapData();
+  });
 
   const fetchMapData = useCallback(async () => {
     if (!selectedShelf) return;
@@ -93,11 +110,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   const totalDepth  = mapData.shelf.shelf_depth || 10;
   const totalCols   = mapData.shelf.grid_width  || 10;
 
-  const CAMERA_VIEWS = [
-    { id: 'default', Icon: ArrowsPointingOutIcon, label: 'Angular'  },
-    { id: 'top',     Icon: EyeIcon,               label: 'Cenital'  },
-    { id: 'front',   Icon: ChartBarIcon,           label: 'Frontal'  },
-  ];
+
 
   return (
     <div
@@ -159,7 +172,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
           className="flex flex-col rounded-2xl overflow-hidden"
           style={{
             width: '40%', flexShrink: 0,
-            border: '1px solid rgba(14,165,233,0.1)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
             background: 'radial-gradient(ellipse at 60% 20%, #0d1929 0%, #000000 100%)',
             boxShadow: '0 4px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03)',
           }}
@@ -168,6 +181,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
             mapData={mapData}
             selectedLevel={selectedLevel}
             onSelectLevel={setSelectedLevel}
+            isTargetPickerMode={movement.mode === 'moving'}
           />
         </div>
 
@@ -176,7 +190,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
           className="flex flex-col rounded-2xl overflow-hidden relative"
           style={{
             flex: 1,
-            border: '1px solid rgba(14,165,233,0.1)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
             background: 'radial-gradient(ellipse at 30% 80%, #090d1c 0%, #000000 100%)',
             boxShadow: '0 4px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03)',
           }}
@@ -190,131 +204,253 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 setSelectedCell={setSelectedCell}
                 hoveredCell={hoveredCell}
                 setHoveredCell={setHoveredCell}
-                cameraView={cameraView}
+                cameraView="default"
                 showExpired={showExpired}
                 showWarnings={showWarnings}
+                isSelectionMode={selection.count > 0}
+                isMovementMode={movement.mode === 'moving'}
+                selectedSampleIds={selection.selectedSamples}
+                assignedTargets={movement.assignments}
+                onSampleClick={(sample) => {
+                  if (movement.mode === 'idle') {
+                    selection.toggleSample(sample);
+                  } else if (movement.mode === 'moving') {
+                    const isAssigned = movement.assignments.some(a => a.sampleData.id === sample.id && a.targetShelfId !== null);
+                    if (isAssigned) movement.unassignTarget(sample.id);
+                  }
+                }}
+                onEmptyCellClick={(pos) => {
+                  if (movement.mode === 'moving' && movement.nextUnassignedSampleId) {
+                    movement.assignTarget(movement.nextUnassignedSampleId, pos, movement.activeTargetShelf);
+                  }
+                }}
               />
 
               {/* ── Stats card (top-right overlay) ── */}
-              <div
-                className="absolute pointer-events-auto"
-                style={{ top: 16, right: 16, width: 220, zIndex: 20 }}
-              >
-                <div style={{
-                  background: 'rgba(9,13,20,0.88)',
-                  backdropFilter: 'blur(20px)',
-                  border: '1px solid rgba(255,255,255,0.07)',
-                  borderRadius: 16,
-                  padding: 16,
-                  boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-                }}>
-                  {/* Occupancy bar */}
-                  <div className="flex justify-between items-end mb-2">
-                    <span style={{ fontSize: 9, color: '#4b5563', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Ocupación</span>
-                    <span style={{ fontSize: 22, fontWeight: 800, color: '#f1f5f9', lineHeight: 1 }}>
-                      {shelfStats.occupancyPercent}<span style={{ fontSize: 12, color: '#4b5563' }}>%</span>
-                    </span>
-                  </div>
-                  <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.05)', overflow: 'hidden', marginBottom: 12 }}>
-                    <div style={{
-                      height: '100%', borderRadius: 2, transition: 'width 1s ease',
-                      width: `${shelfStats.occupancyPercent}%`,
-                      background: shelfStats.occupancyPercent > 80 ? '#ef4444' : shelfStats.occupancyPercent > 50 ? '#f59e0b' : '#0ea5e9',
-                    }} />
-                  </div>
+              {showStats ? (
+                <div
+                  className="absolute pointer-events-auto animate-fade-in"
+                  style={{ top: 16, right: 16, width: 180, zIndex: 20 }}
+                >
+                  <div style={{
+                    background: 'rgba(9, 13, 22, 0.75)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: 12,
+                    padding: 12,
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                    overflow: 'hidden',
+                    boxSizing: 'border-box',
+                  }}>
+                    {/* Occupancy bar */}
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <span style={{ fontSize: 8, color: '#94a3b8', fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' }}>OCUPACIÓN</span>
+                        <button
+                          onClick={() => setShowStats(false)}
+                          style={{
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            borderRadius: '50%',
+                            color: '#64748b',
+                            cursor: 'pointer',
+                            width: 12,
+                            height: 12,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 6,
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.color = '#ffffff';
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                            e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.color = '#64748b';
+                            e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                          }}
+                          title="Minimizar telemetría"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <span style={{ fontSize: 15, fontWeight: 900, color: '#ffffff', lineHeight: 1 }}>
+                        {shelfStats.occupancyPercent}<span style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>%</span>
+                      </span>
+                    </div>
+                    <div style={{ height: 3, borderRadius: 1.5, background: 'rgba(255,255,255,0.04)', overflow: 'hidden', marginBottom: 10 }}>
+                      <div style={{
+                        height: '100%', borderRadius: 1.5, transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                        width: `${shelfStats.occupancyPercent}%`,
+                        background: shelfStats.occupancyPercent > 80 ? '#ef4444' : shelfStats.occupancyPercent > 50 ? '#facc15' : '#0ea5e9',
+                        boxShadow: shelfStats.occupancyPercent > 80 ? '0 0 10px rgba(239, 68, 68, 0.4)' : shelfStats.occupancyPercent > 50 ? '0 0 10px rgba(250, 204, 21, 0.4)' : '0 0 10px rgba(14, 165, 229, 0.4)',
+                      }} />
+                    </div>
 
-                  {/* Stat pills */}
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                    <StatPill label="Muestras"  value={shelfStats.occupied} color="#0ea5e9" />
-                    <StatPill label="Libres"     value={shelfStats.free}    color="#475569" />
-                    {shelfStats.expired  > 0 && <StatPill label="Vencidas"  value={shelfStats.expired}  color="#ef4444" />}
-                    {shelfStats.warning  > 0 && <StatPill label="Alertas"   value={shelfStats.warning}  color="#f59e0b" />}
+                    {/* Stat pills in clean 2-column grid to prevent overflow */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, marginBottom: 2 }}>
+                      <StatPill label="Muestras"  value={shelfStats.occupied} color="#0ea5e9" />
+                      <StatPill label="Libres"     value={shelfStats.free}    color="#475569" />
+                      {shelfStats.expired  > 0 && <StatPill label="Vencidas"  value={shelfStats.expired}  color="#ef4444" />}
+                      {shelfStats.warning  > 0 && <StatPill label="Alertas"   value={shelfStats.warning}  color="#facc15" />}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <button
+                  onClick={() => setShowStats(true)}
+                  className="absolute top-4 right-4 pointer-events-auto cursor-pointer flex items-center gap-2 transition-all duration-300 animate-fade-in"
+                  style={{
+                    zIndex: 20,
+                    background: 'rgba(9, 13, 22, 0.75)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: 20,
+                    padding: '6px 12px',
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
+                    color: '#ffffff',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(14, 165, 233, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(14, 165, 233, 0.4)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(9, 13, 22, 0.75)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                  }}
+                >
+                  <span style={{ fontSize: 10 }}>📊</span>
+                  <span style={{ fontSize: 8, fontWeight: 900, color: '#38bdf8', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                    Telemetría ({shelfStats.occupancyPercent}%)
+                  </span>
+                </button>
+              )}
 
               {/* ── Bottom toolbar ── */}
               <div
-                className="absolute pointer-events-auto"
+                className="absolute pointer-events-auto flex items-center gap-4 animate-fade-in"
                 style={{
-                  bottom: 16, left: '50%', transform: 'translateX(-50%)',
-                  display: 'flex', alignItems: 'center', gap: 4, zIndex: 20,
-                  background: 'rgba(9,13,20,0.88)', backdropFilter: 'blur(20px)',
-                  border: '1px solid rgba(255,255,255,0.07)',
-                  borderRadius: 40, padding: '6px 10px',
-                  boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+                  bottom: 20, left: '50%', transform: 'translateX(-50%)',
+                  zIndex: 20,
+                  background: 'rgba(7, 10, 19, 0.75)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: 30,
+                  padding: '6px 16px',
+                  boxShadow: '0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
                 }}
               >
-                {/* Filter toggles */}
-                {[
-                  { key: 'expired',  color: '#ef4444', label: 'Vencidas',  state: showExpired,  set: setShowExpired  },
-                  { key: 'warnings', color: '#f59e0b', label: 'Alertas',   state: showWarnings, set: setShowWarnings },
-                ].map(({ key, color, label, state, set }) => (
-                  <button
-                    key={key}
-                    onClick={() => set(v => !v)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      padding: '4px 10px', borderRadius: 30, border: 'none', cursor: 'pointer',
-                      background: state ? `${color}18` : 'transparent',
-                      opacity: state ? 1 : 0.4,
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: state ? `0 0 6px ${color}` : 'none' }} />
-                    <span style={{ fontSize: 10, fontWeight: 700, color: state ? color : '#4b5563' }}>{label}</span>
-                  </button>
-                ))}
+                {/* Explanation text & Icon */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <span style={{ fontSize: 9, color: '#f8fafc', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase' }}>Filtros</span>
+                    <span style={{ fontSize: 7, color: '#475569', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>Estado</span>
+                  </div>
+                </div>
+
+                {/* Sleek Palette Badge */}
+                <span style={{
+                  fontSize: 7,
+                  fontWeight: 900,
+                  padding: '3px 8px',
+                  borderRadius: 10,
+                  background: 'linear-gradient(135deg, rgba(6,182,212,0.1) 0%, rgba(59,130,246,0.1) 100%)',
+                  color: '#22d3ee',
+                  border: '1px solid rgba(6,182,212,0.25)',
+                  letterSpacing: 0.5,
+                  textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 8px rgba(6,182,212,0.05)'
+                }}>
+                  🎨 Paleta: Producto
+                </span>
 
                 {/* Divider */}
-                <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.08)', margin: '0 4px' }} />
+                <div style={{ width: 1, height: 20, background: 'rgba(255, 255, 255, 0.08)' }} />
 
-                {/* Camera views */}
-                {CAMERA_VIEWS.map(({ id, Icon, label }) => (
-                  <button
-                    key={id}
-                    title={label}
-                    onClick={() => setCameraView(id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                      background:   cameraView === id ? 'rgba(14,165,233,0.2)' : 'transparent',
-                      color:        cameraView === id ? '#38bdf8' : '#4b5563',
-                      boxShadow:    cameraView === id ? '0 0 12px rgba(14,165,233,0.3)' : 'none',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    <Icon style={{ width: 14, height: 14 }} />
-                  </button>
-                ))}
+                {/* Filter toggles with letter badges */}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[
+                    { key: 'expired',  color: '#ef4444', letter: 'V', label: 'Vencidas',  state: showExpired,  set: setShowExpired, textCol: '#ffffff'  },
+                    { key: 'warnings', color: '#facc15', letter: 'P', label: 'Alertas',   state: showWarnings, set: setShowWarnings, textCol: '#0f172a' },
+                  ].map(({ key, color, letter, label, state, set, textCol }) => (
+                    <button
+                      key={key}
+                      onClick={() => set(v => !v)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '5px 12px', borderRadius: 20, cursor: 'pointer',
+                        background: state ? `${color}15` : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${state ? `${color}50` : 'rgba(255,255,255,0.04)'}`,
+                        color: state ? '#f8fafc' : '#64748b',
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                        boxShadow: state ? `0 0 12px ${color}20` : 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!state) {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                          e.currentTarget.style.color = '#94a3b8';
+                        } else {
+                          e.currentTarget.style.boxShadow = `0 0 16px ${color}35`;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!state) {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.04)';
+                          e.currentTarget.style.color = '#64748b';
+                        } else {
+                          e.currentTarget.style.boxShadow = `0 0 12px ${color}20`;
+                        }
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex', alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 15, height: 15, borderRadius: '50%', background: color,
+                        color: textCol, fontSize: 8, fontWeight: 900,
+                        boxShadow: state ? `0 0 6px ${color}60` : 'none',
+                        border: '1px solid rgba(255,255,255,0.2)'
+                      }}>
+                        {letter}
+                      </div>
+                      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.5 }}>{label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </>
           ) : (
             /* ── Empty state: no level selected ── */
             <div className="flex-1 flex flex-col items-center justify-center" style={{ padding: 48 }}>
               <div style={{
-                width: 80, height: 80, borderRadius: '50%', marginBottom: 20,
-                background: 'rgba(14,165,233,0.06)',
-                border: '1px solid rgba(14,165,233,0.15)',
+                width: 80, height: 80, borderRadius: '50%', marginBottom: 24,
+                background: 'rgba(56, 189, 248, 0.03)',
+                border: '1px solid rgba(56, 189, 248, 0.15)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: 'inset 0 0 20px rgba(56, 189, 248, 0.05), 0 0 30px rgba(56, 189, 248, 0.02)',
               }}>
-                <BeakerIcon className="w-10 h-10 text-primary-500/40" />
+                <BeakerIcon className="w-8 h-8 text-sky-400/50" />
               </div>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Seleccione un Nivel</h3>
-              <p style={{ fontSize: 12, color: '#1f2937', textAlign: 'center', maxWidth: 260 }}>
-                Haz clic en una de las bandejas del anaquel en la vista izquierda para inspeccionar en detalle.
+              <h3 style={{ fontSize: 15, fontWeight: 900, color: '#f8fafc', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1.5 }}>Seleccione un Nivel</h3>
+              <p style={{ fontSize: 11, color: '#64748b', textAlign: 'center', maxWidth: 280, fontWeight: 500, lineHeight: 1.6 }}>
+                Haz clic en una de las bandejas del anaquel en la vista izquierda para inspeccionar las muestras en detalle.
               </p>
-              <div style={{ display: 'flex', gap: 16, marginTop: 24 }}>
+              <div style={{ display: 'flex', gap: 20, marginTop: 32 }}>
                 {shelfStats.expired > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#ef4444' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#ef4444', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
                     <ExclamationCircleIcon style={{ width: 14, height: 14 }} />
-                    {shelfStats.expired} vencidas
+                    {shelfStats.expired} Vencidas
                   </div>
                 )}
                 {shelfStats.warning > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#f59e0b' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#facc15', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
                     <ExclamationTriangleIcon style={{ width: 14, height: 14 }} />
-                    {shelfStats.warning} por vencer
+                    {shelfStats.warning} Alertas
                   </div>
                 )}
               </div>
@@ -333,6 +469,45 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
           />
         </div>
       )}
+
+      {/* ── Movement Components ── */}
+      {selection.count > 0 && movement.mode === 'idle' && (
+        <SampleMovementToolbar 
+          selectionCount={selection.count}
+          onMove={() => movement.startMove(selection.selectedSamples, selectedShelf)}
+          onClear={selection.clearSelection}
+        />
+      )}
+
+      {movement.mode === 'moving' && (
+        <MovementModeOverlay 
+          assignedCount={movement.assignedCount}
+          totalCount={movement.totalToAssign}
+          onCancel={movement.cancelMove}
+          onConfirm={movement.reviewMove}
+          onChangeShelf={movement.openTargetPicker}
+          activeShelfName={movement.activeTargetShelf?.name}
+          nextUnassignedSampleId={movement.nextUnassignedSampleId}
+          assignments={movement.assignments}
+        />
+      )}
+
+      <TargetShelfPicker 
+        isOpen={movement.mode === 'target-picker'}
+        onClose={() => movement.changeTargetShelf(movement.activeTargetShelf)}
+        currentShelfId={selectedShelf.id}
+        marketLineId={mapData?.shelf?.market_line_id}
+        onSelectTarget={(shelf) => movement.changeTargetShelf(shelf)}
+      />
+
+      <MovementConfirmModal 
+        isOpen={movement.mode === 'confirming'}
+        onClose={() => movement.changeTargetShelf(movement.activeTargetShelf)}
+        onConfirm={() => movement.confirmMove(selectedShelf.id)}
+        assignments={movement.assignments}
+        isExecuting={movement.isExecuting}
+        errors={movement.executionErrors}
+      />
     </div>
   );
 };

@@ -1,8 +1,11 @@
 import axios from 'axios';
 import { apiCircuitBreaker } from './circuitBreaker';
 
+// Siempre usa la ruta relativa '/api'.
+// En dev: el proxy CRA ("proxy": "http://localhost:3001" en package.json) redirige a :3001.
+// En producción: Express sirve el frontend y la API desde el mismo origen.
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3001/api',
+  baseURL: process.env.REACT_APP_API_URL || '/api',
   timeout: 120000,
   withCredentials: true,
   headers: {
@@ -32,7 +35,7 @@ api.interceptors.response.use(
     return response;
   },
   error => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
       // Token expirado o inválido
       localStorage.removeItem('auth_token');
       window.location.href = '/login';
@@ -199,8 +202,29 @@ export const backupAPI = {
   restoreBackup:  (data) => api.post('/backup/restore',   data, { timeout: 300000 }),
   deleteBackup:   (filename) => api.delete(`/backup/${encodeURIComponent(filename)}`),
   syncToOneDrive: () => api.post('/backup/sync-onedrive', {}, { timeout: 300000 }),
+  // Importar backup desde archivo .json del cliente (multipart/form-data)
+  importBackup:   (file, password) => {
+    const formData = new FormData();
+    formData.append('backup', file);
+    formData.append('password', password);
+    return api.post('/backup/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+    });
+  },
+  // Descargar backup como archivo .json (blob)
+  downloadBackup: (filename) => api.get(`/backup/download/${encodeURIComponent(filename)}`, {
+    responseType: 'blob',
+    timeout: 300000,
+  }),
   getSettings:    () => api.get('/backup/settings'),
   updateSettings: (data) => api.put('/backup/settings', data),
+};
+
+export const settingsAPI = {
+  list:     () => api.get('/settings'),
+  get:      (key) => api.get(`/settings/${key}`),
+  update:   (key, value) => api.put(`/settings/${key}`, { value }),
 };
 
 export default api;

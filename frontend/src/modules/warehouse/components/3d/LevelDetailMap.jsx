@@ -1,7 +1,7 @@
 import React from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Edges, Grid } from '@react-three/drei';
-import { GridLines, AxisLabels, CameraController, SampleCube, getCellStatus } from './Shared3DComponents';
+import { OrbitControls, Edges } from '@react-three/drei';
+import { GridLines, CameraController, SampleCube, EmptyCellTarget, getCellStatus } from './Shared3DComponents';
 
 // ─── Floor Grid Panel ──────────────────────────────────────────────────────────
 const FloorPanel = ({ totalCols, totalDepth }) => (
@@ -53,6 +53,14 @@ export const LevelDetailMap = ({
   hoveredCell,  setHoveredCell,
   cameraView,
   showExpired, showWarnings,
+  
+  // Movement props
+  isSelectionMode,
+  isMovementMode,
+  selectedSampleIds = new Set(), // Map or Set or Array (we'll assume useSampleSelection returns a list of objects, we'll check id)
+  assignedTargets = [],
+  onSampleClick,
+  onEmptyCellClick
 }) => {
   const totalCols   = mapData.shelf.grid_width  || 10;
   const totalDepth  = mapData.shelf.shelf_depth || 10;
@@ -67,8 +75,40 @@ export const LevelDetailMap = ({
 
   const isFocusing = Boolean(selectedCell || hoveredCell);
 
+  // Compute empty cells for movement mode
+  const emptyCells = [];
+  if (isMovementMode) {
+    const occupiedMap = new Set(levelSamples.map(s => `${s.position_x},${s.position_z || 0}`));
+    
+    // Also consider newly assigned targets as occupied in this view
+    assignedTargets.forEach(target => {
+      if (target.targetShelfId === mapData.shelf.id && target.y === selectedLevel) {
+        occupiedMap.add(`${target.x},${target.z}`);
+      }
+    });
+
+    for (let x = 0; x < totalCols; x++) {
+      for (let z = 0; z < totalDepth; z++) {
+        if (!occupiedMap.has(`${x},${z}`)) {
+          emptyCells.push({ x, y: selectedLevel, z });
+        }
+      }
+    }
+  }
+
+  const isSampleSelected = (id) => {
+    if (selectedSampleIds instanceof Map) return selectedSampleIds.has(id);
+    if (selectedSampleIds instanceof Set) return selectedSampleIds.has(id);
+    if (Array.isArray(selectedSampleIds)) return selectedSampleIds.some(s => s.id === id);
+    return false;
+  };
+
+  const isSampleAssigned = (id) => {
+    return assignedTargets.some(t => t.sampleData?.id === id && t.targetShelfId !== null);
+  };
+
   return (
-    <div className="w-full h-full relative select-none flex" style={{ backgroundColor: '#060a12', background: 'radial-gradient(ellipse at 30% 80%, #090d1c 0%, #000000 100%)' }}>
+    <div className="w-full h-full relative select-none flex" style={{ backgroundColor: '#060a12', background: 'radial-gradient(ellipse at 30% 80%, #090d1c 0%, #000000 100%)', isolation: 'isolate' }}>
       <Canvas className="w-full h-full" camera={{ fov: 42, position: [10, 7, 10] }} gl={{ alpha: true, antialias: true }}>
         <CameraController view={cameraView} />
 
@@ -89,7 +129,6 @@ export const LevelDetailMap = ({
 
         <group position={[0, -0.5, 0]}>
           <FloorPanel totalCols={totalCols} totalDepth={totalDepth} />
-          <AxisLabels cols={totalCols} depth={totalDepth} />
 
           {/* No samples message */}
           {levelSamples.length === 0 && (
@@ -104,7 +143,14 @@ export const LevelDetailMap = ({
             const visible   = shouldShow(cellData);
             const isSelected = selectedCell?.id === sample.id;
             const isHovered  = hoveredCell?.id === sample.id;
-            const isDimmed   = !visible || (isFocusing && !isSelected && !isHovered);
+            const isMultiSelected = isSelectionMode && isSampleSelected(sample.id);
+            const isSourceOfMove = isMovementMode && isSampleSelected(sample.id) && !isSampleAssigned(sample.id);
+            const isAssignedSource = isMovementMode && isSampleAssigned(sample.id);
+            
+            // Dim if not selected in selection mode, or if assigned in movement mode
+            let isDimmed = !visible || (isFocusing && !isSelected && !isHovered);
+            if (isSelectionMode && !isMultiSelected) isDimmed = true;
+            if (isAssignedSource) isDimmed = true;
 
             return (
               <SampleCube
@@ -116,38 +162,71 @@ export const LevelDetailMap = ({
                 offsetX={-totalCols / 2}
                 offsetZ={-totalDepth / 2}
                 isSelected={isSelected}
+                isMultiSelected={isMultiSelected}
+                isSourceOfMove={isSourceOfMove}
                 isDimmed={isDimmed}
                 status={status}
                 onHover={(c) => setHoveredCell(c ? sample : null)}
-                onClick={() => setSelectedCell(isSelected ? null : sample)}
+                onClick={() => {
+                  if (isSelectionMode || isMovementMode) {
+                    if (onSampleClick) onSampleClick(sample);
+                  } else {
+                    setSelectedCell(isSelected ? null : sample);
+                  }
+                }}
               />
             );
           })}
+
+          {/* Render empty cell targets when moving */}
+          {isMovementMode && emptyCells.map(cell => (
+            <EmptyCellTarget
+              key={`empty-${cell.x}-${cell.z}`}
+              x={cell.x}
+              y={0}
+              z={cell.z}
+              offsetX={-totalCols / 2}
+              offsetZ={-totalDepth / 2}
+              onDrop={(pos) => onEmptyCellClick && onEmptyCellClick({ x: pos.x, y: selectedLevel, z: pos.z })}
+            />
+          ))}
         </group>
       </Canvas>
 
-      {/* ── HUD: Level badge top-left ── */}
-      <div className="absolute top-5 left-6 pointer-events-none">
-        <p className="text-[9px] font-bold tracking-[3px] text-primary-500 uppercase mb-0.5">Vista de Nivel</p>
-        <h3 className="text-base font-bold text-gray-100 leading-tight flex items-center gap-2">
-          Nivel {selectedLevel + 1}
-          <span style={{
-            fontSize: 9, padding: '2px 7px', borderRadius: 20, fontWeight: 700, letterSpacing: 0.5,
-            background: 'rgba(14,165,233,0.15)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.3)'
-          }}>
-            {levelSamples.length} muestras
-          </span>
-        </h3>
-        <p className="text-[10px] text-gray-500 mt-1">{mapData.shelf.name} · {totalCols}×{totalDepth}</p>
+      {/* ── HUD: Level badge top-left (z-index 30 to always sit above R3F Html) ── */}
+      <div className="absolute top-5 left-5 pointer-events-none flex items-start gap-3" style={{ zIndex: 30 }}>
+        <div className="w-[3px] h-12 rounded-full bg-gradient-to-b from-sky-400 to-blue-500" style={{ boxShadow: '0 0 8px rgba(56,189,248,0.5)', flexShrink: 0 }} />
+        <div>
+          <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: 3, color: '#38bdf8', textTransform: 'uppercase', margin: '0 0 2px' }}>Vista de Nivel</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 900, color: '#ffffff', margin: 0, textTransform: 'uppercase', letterSpacing: 1 }}>Nivel {selectedLevel + 1}</h3>
+            <span style={{
+              fontSize: 8, padding: '3px 8px', borderRadius: 20, fontWeight: 800, letterSpacing: 0.8,
+              background: 'rgba(14, 165, 233, 0.1)', color: '#38bdf8', border: '1px solid rgba(14, 165, 233, 0.3)',
+              backdropFilter: 'blur(8px)', whiteSpace: 'nowrap', textTransform: 'uppercase',
+            }}>
+              {levelSamples.length} {levelSamples.length === 1 ? 'muestra' : 'muestras'}
+            </span>
+          </div>
+          <p style={{ fontSize: 9, color: '#475569', fontWeight: 500, letterSpacing: 0.5, margin: '4px 0 0' }}>{mapData.shelf.name} · {totalCols}×{totalDepth}</p>
+        </div>
       </div>
 
-      {/* ── Empty state overlay ── */}
+      {/* ── Empty state overlay (z-index 25 – above canvas, below HUD) ── */}
       {levelSamples.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center" style={{ background: 'rgba(9,13,20,0.6)', backdropFilter: 'blur(12px)', borderRadius: 20, padding: '32px 48px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📦</div>
-            <p style={{ color: '#4b5563', fontSize: 13, fontWeight: 600 }}>Nivel vacío</p>
-            <p style={{ color: '#374151', fontSize: 11, marginTop: 4 }}>No hay muestras en este nivel</p>
+        <div className="absolute pointer-events-none" style={{ inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 25 }}>
+          <div style={{
+            textAlign: 'center',
+            background: 'rgba(9, 13, 22, 0.7)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: 24,
+            padding: '36px 56px',
+            border: '1px solid rgba(255, 255, 255, 0.07)',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{ fontSize: 38, marginBottom: 16, filter: 'drop-shadow(0 0 10px rgba(148, 163, 184, 0.15))' }}>📦</div>
+            <p style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.5, margin: 0 }}>Nivel Vacío</p>
+            <p style={{ color: '#64748b', fontSize: 10, fontWeight: 500, letterSpacing: 0.5, marginTop: 6, marginBottom: 0 }}>No hay muestras en este nivel</p>
           </div>
         </div>
       )}

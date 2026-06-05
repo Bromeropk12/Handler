@@ -1,3 +1,18 @@
+const fs = require('fs');
+const path = require('path');
+const programDataPath = path.join(process.env.ALLUSERSPROFILE || 'C:\\ProgramData', 'HandlerTrackSamples');
+const appDataPath = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME + '/.config');
+
+const prodEnvPath = fs.existsSync(path.join(programDataPath, '.env'))
+  ? path.join(programDataPath, '.env')
+  : path.join(appDataPath, 'HandlerTrackSamples', '.env');
+
+if (fs.existsSync(prodEnvPath)) {
+  require('dotenv').config({ path: prodEnvPath });
+} else {
+  require('dotenv').config();
+}
+
 const { query, close } = require('./src/services/database');
 
 async function run() {

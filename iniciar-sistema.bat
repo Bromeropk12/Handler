@@ -6,7 +6,7 @@ echo.
 echo =======================================================
 echo      Handler TrackSamples Desktop App
 echo      Sistema de Gestion de Muestras Quimicas
-echo      Base de Datos: Supabase Cloud (Production)
+echo      Base de Datos: PostgreSQL Local (Docker)
 echo =======================================================
 echo.
 
@@ -33,6 +33,11 @@ for /f "tokens=*" %%v in ('pnpm --version') do echo pnpm v%%v detectado
 
 :: ── [3/4] Instalar dependencias ─────────────────────────────────────────────
 echo.
+echo [3/4] Instalando dependencias de la Raiz...
+cd /d "%~dp0"
+call pnpm install
+
+echo.
 echo [3/4] Instalando dependencias del Backend...
 cd /d "%~dp0backend"
 call pnpm install
@@ -41,17 +46,17 @@ cd /d "%~dp0"
 echo.
 echo [3/4] Instalando dependencias del Frontend...
 cd /d "%~dp0frontend"
-call npm install
+call pnpm install
 cd /d "%~dp0"
 
 :: ── [4/4] Iniciar sistema ────────────────────────────────────────────────────
 echo.
 echo [4/4] Iniciando Handler TrackSamples...
-echo Conectando a Supabase Cloud...
+echo Conectando a Base de Datos Local...
 echo Presiona Ctrl+C para detener todo.
 echo.
 
-call npm run start:full
+call pnpm run start:full
 
 echo.
 echo Sistema detenido.
