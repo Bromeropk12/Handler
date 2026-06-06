@@ -15,6 +15,7 @@
  */
 import React, { useState } from 'react';
 import ShelfMiniMap3D from '../minimap/ShelfMiniMap3D';
+import { formatSampleId } from '../../utils/formatSampleId';
 
 const MovementView = ({
   mode,
@@ -80,7 +81,7 @@ const MovementView = ({
             }}>SIGUIENTE</span>
             <span style={{
               fontSize: 11, fontWeight: 700, color: '#cbd5e1',
-            }}>S-{String(nextUnassignedSampleId).slice(-3)}</span>
+            }}>{formatSampleId(nextUnassignedSampleId)}</span>
             <span style={{
               fontSize: 10, color: '#64748b', fontWeight: 600,
             }}>Click en una celda del 3D para asignar</span>
@@ -151,10 +152,10 @@ const MovementView = ({
                 background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
                 borderRadius: 4,
               }}>
-                <span style={{
-                  fontSize: 9, color: '#38bdf8', fontWeight: 800,
-                  fontFamily: 'monospace',
-                }}>S-{String(a.sampleData.id).slice(-3)}</span>
+                  <span style={{
+                    fontSize: 9, color: '#38bdf8', fontWeight: 800,
+                    fontFamily: 'monospace',
+                  }}>{formatSampleId(a.sampleData.id)}</span>
                 <span>→</span>
                 <span style={{ fontFamily: 'monospace', fontSize: 9 }}>
                   {a.target ? `(${a.target.x},${a.target.y},${a.target.z})` : '—'}
@@ -295,7 +296,7 @@ const MovementView = ({
                 }}>
                   <span style={{
                     fontFamily: 'monospace', color: '#38bdf8', fontWeight: 800, fontSize: 9,
-                  }}>S-{String(a.sampleData.id).slice(-3)}</span>
+                  }}>{formatSampleId(a.sampleData.id)}</span>
                   <span style={{ color: '#64748b' }}>→</span>
                   <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#cbd5e1' }}>
                     ({a.target?.x},{a.target?.y},{a.target?.z})

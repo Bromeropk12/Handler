@@ -28,6 +28,7 @@
 import React from 'react';
 import RejectBanner from './RejectBanner';
 import { getSGAColor } from '../3d/Shared3DComponents';
+import { formatSampleId } from '../../utils/formatSampleId';
 
 const GroupView = ({
   samples = [],
@@ -145,7 +146,7 @@ const GroupView = ({
             <span style={{
               fontSize: 9, color: '#38bdf8', fontWeight: 800,
               fontFamily: 'monospace',
-            }}>S-{String(s.id).slice(-3)}</span>
+            }}>{formatSampleId(s.id)}</span>
             <span style={{
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
