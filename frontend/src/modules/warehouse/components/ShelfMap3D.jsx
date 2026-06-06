@@ -13,10 +13,9 @@ import { useSampleMovement } from '../hooks/useSampleMovement';
 import { useGroupDrag }     from '../hooks/useGroupDrag';
 import { useGroupPreview }  from '../hooks/useGroupPreview';
 import { useShelfStaleness } from '../hooks/useShelfStaleness';
-import SampleMovementToolbar from './movement/SampleMovementToolbar';
-import TargetShelfPicker from './movement/TargetShelfPicker';
-import MovementConfirmModal from './movement/MovementConfirmModal';
-import MovementModeOverlay from './movement/MovementModeOverlay';
+// (SampleMovementToolbar + MovementModeOverlay + TargetShelfPicker +
+//  MovementConfirmModal eliminados en PR4; reemplazados por MovementView
+//  dentro del BottomSheet contextual.)
 import GroupDragGhost from './3d/GroupDragGhost'; // eslint-disable-line no-unused-vars
 // GroupDragGhost: componente R3F (disponible para Módulo E / integración con mini-mapa)
 import ShelfMiniMap3D from './minimap/ShelfMiniMap3D';
@@ -25,6 +24,7 @@ import EmptyView from './bottom/EmptyView';
 import SampleDetailView from './bottom/SampleDetailView';
 import GroupView from './group/GroupView';
 import GroupConfirmView from './bottom/GroupConfirmView';
+import MovementView from './bottom/MovementView';
 
 // ─── Stat Pill ─────────────────────────────────────────────────────────────────
 const StatPill = ({ label, value, color }) => (
@@ -344,27 +344,47 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 }}
               />
 
-              {/* ── Bottom Sheet (sample detail / group / confirm) ── */}
+              {/* ── Bottom Sheet (sample detail / group / confirm / movement) ── */}
               <BottomSheet
                 view={
+                  movement.mode === 'moving' || movement.mode === 'confirming' ? 'movement' :
                   groupConfirmOpen ? 'confirm' :
                   selection.count >= 2 ? 'group' :
                   selection.count === 1 ? 'sample' :
                   'empty'
                 }
                 headerTitle={
-                  groupConfirmOpen
-                    ? 'Confirmar movimiento de grupo'
-                    : selection.count === 0
-                    ? 'Información de muestra'
-                    : `${selection.count} muestras seleccionadas`
+                  movement.mode === 'moving' ? 'Mover muestras' :
+                  movement.mode === 'confirming' ? 'Confirmar movimiento' :
+                  groupConfirmOpen ? 'Confirmar movimiento de grupo' :
+                  selection.count === 0 ? 'Información de muestra' :
+                  `${selection.count} muestras seleccionadas`
                 }
                 persistKey="detail"
                 onClose={() => {
                   setSelectedCell(null);
                 }}
               >
-                {groupConfirmOpen ? (
+                {movement.mode === 'moving' || movement.mode === 'confirming' ? (
+                  <MovementView
+                    mode={movement.mode}
+                    assignments={movement.assignments}
+                    activeTargetShelf={movement.activeTargetShelf}
+                    isExecuting={movement.isExecuting}
+                    executionErrors={movement.executionErrors}
+                    nextUnassignedSampleId={movement.nextUnassignedSampleId}
+                    isFullyAssigned={movement.isFullyAssigned}
+                    assignedCount={movement.assignedCount}
+                    totalToAssign={movement.totalToAssign}
+                    onCancelMove={movement.cancelMove}
+                    onAssignTarget={movement.assignTarget}
+                    onChangeShelf={movement.changeTargetShelf}
+                    onReviewMove={movement.reviewMove}
+                    onConfirmMove={() => movement.confirmMove(selectedShelf.id)}
+                    currentShelfId={selectedShelf.id}
+                    currentMapData={mapData}
+                  />
+                ) : groupConfirmOpen ? (
                   <GroupConfirmView
                     samples={selection.selectedSamples}
                     target={groupTarget}
@@ -764,44 +784,10 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
         </div>
       )}
 
-      {/* ── Movement Components ── */}
-      {selection.count > 0 && movement.mode === 'idle' && (
-        <SampleMovementToolbar 
-          selectionCount={selection.count}
-          onMove={() => movement.startMove(selection.selectedSamples, selectedShelf)}
-          onClear={selection.clearSelection}
-        />
-      )}
-
-      {movement.mode === 'moving' && (
-        <MovementModeOverlay 
-          assignedCount={movement.assignedCount}
-          totalCount={movement.totalToAssign}
-          onCancel={movement.cancelMove}
-          onConfirm={movement.reviewMove}
-          onChangeShelf={movement.openTargetPicker}
-          activeShelfName={movement.activeTargetShelf?.name}
-          nextUnassignedSampleId={movement.nextUnassignedSampleId}
-          assignments={movement.assignments}
-        />
-      )}
-
-      <TargetShelfPicker 
-        isOpen={movement.mode === 'target-picker'}
-        onClose={() => movement.changeTargetShelf(movement.activeTargetShelf)}
-        currentShelfId={selectedShelf.id}
-        marketLineId={mapData?.shelf?.market_line_id}
-        onSelectTarget={(shelf) => movement.changeTargetShelf(shelf)}
-      />
-
-      <MovementConfirmModal
-        isOpen={movement.mode === 'confirming'}
-        onClose={() => movement.changeTargetShelf(movement.activeTargetShelf)}
-        onConfirm={() => movement.confirmMove(selectedShelf.id)}
-        assignments={movement.assignments}
-        isExecuting={movement.isExecuting}
-        errors={movement.executionErrors}
-      />
+      {/* ── Movement Components (legacy) ──────────────────────────────────── */}
+      {/* (v1.0.0 modales legacy reemplazados por MovementView dentro del
+          BottomSheet contextual. SampleMovementToolbar + MovementModeOverlay
+          + TargetShelfPicker + MovementConfirmModal eliminados en PR4.) */}
 
       {/* ════════════════════ GROUP FLOW (drag-en-grupo) ════════════════════ */}
 

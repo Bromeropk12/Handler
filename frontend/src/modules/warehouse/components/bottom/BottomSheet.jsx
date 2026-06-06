@@ -123,9 +123,9 @@ const BottomSheet = ({
     });
   }, [snapPoints]);
 
-  // Si view === 'confirm' y no estamos expanded, expandir automáticamente
+  // Si view === 'confirm' | 'movement' y no estamos expanded, expandir automáticamente
   useEffect(() => {
-    if (view === 'confirm' && currentState !== 'expanded' && !isDragging) {
+    if ((view === 'confirm' || view === 'movement') && currentState !== 'expanded' && !isDragging) {
       setHeightPx(snapPoints[2]);
     }
   }, [view, currentState, isDragging, snapPoints]);
