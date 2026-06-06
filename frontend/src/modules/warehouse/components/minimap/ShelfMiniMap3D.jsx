@@ -176,6 +176,7 @@ const ShelfMiniMap3D = ({
   validity = 'unknown',
   onSelectCell,
   title = 'Anaquel destino',
+  compact = false,
 }) => {
   const [responsiveHidden, setResponsiveHidden] = useState(false);
 
@@ -200,7 +201,7 @@ const ShelfMiniMap3D = ({
     <div
       style={{
         position: 'absolute', top: 16, right: 16,
-        width: 220, height: 300,
+        width: compact ? 220 : 220, height: compact ? 180 : 300,
         zIndex: 40,
         background: 'rgba(9, 13, 22, 0.85)',
         backdropFilter: 'blur(20px)',

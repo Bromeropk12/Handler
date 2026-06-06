@@ -24,6 +24,7 @@ import BottomSheet from './bottom/BottomSheet';
 import EmptyView from './bottom/EmptyView';
 import SampleDetailView from './bottom/SampleDetailView';
 import GroupView from './group/GroupView';
+import GroupConfirmView from './bottom/GroupConfirmView';
 
 // ─── Stat Pill ─────────────────────────────────────────────────────────────────
 const StatPill = ({ label, value, color }) => (
@@ -346,12 +347,15 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
               {/* ── Bottom Sheet (sample detail / group / confirm) ── */}
               <BottomSheet
                 view={
+                  groupConfirmOpen ? 'confirm' :
                   selection.count >= 2 ? 'group' :
                   selection.count === 1 ? 'sample' :
                   'empty'
                 }
                 headerTitle={
-                  selection.count === 0
+                  groupConfirmOpen
+                    ? 'Confirmar movimiento de grupo'
+                    : selection.count === 0
                     ? 'Información de muestra'
                     : `${selection.count} muestras seleccionadas`
                 }
@@ -360,7 +364,58 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   setSelectedCell(null);
                 }}
               >
-                {selection.count >= 2 ? (
+                {groupConfirmOpen ? (
+                  <GroupConfirmView
+                    samples={selection.selectedSamples}
+                    target={groupTarget}
+                    conflicts={groupConflicts}
+                    targetMapData={crossShelfOpen ? crossShelfData : mapData}
+                    isExecuting={groupExecuting}
+                    error={groupError}
+                    onCancel={() => {
+                      setGroupConfirmOpen(false);
+                      setGroupError(null);
+                      groupPreview.clearCache();
+                    }}
+                    onConfirm={async () => {
+                      if (!groupTarget) return;
+                      setGroupExecuting(true);
+                      setGroupError(null);
+                      try {
+                        await warehouseAPI.moveGroup(selectedShelf.id, {
+                          sample_ids: selection.selectedSamples.map(s => s.id),
+                          target_shelf_id: groupTarget.shelfId,
+                          target_x: groupTarget.x,
+                          target_y: groupTarget.y,
+                          target_z: groupTarget.z,
+                        });
+                        setGroupConfirmOpen(false);
+                        groupPreview.clearCache();
+                        selection.clearSelection();
+                        await fetchMapData();
+                      } catch (err) {
+                        setGroupError(err.response?.data?.message || err.message || 'Error al mover el grupo');
+                      } finally {
+                        setGroupExecuting(false);
+                      }
+                    }}
+                    onChangeShelf={async (targetShelfId) => {
+                      if (targetShelfId === selectedShelf.id) return;
+                      try {
+                        const res = await warehouseAPI.getShelfMap(targetShelfId);
+                        setCrossShelfData(res.data.data);
+                        setCrossShelfId(targetShelfId);
+                        setCrossShelfOpen(true);
+                        if (groupTarget) {
+                          setGroupTarget({ ...groupTarget, shelfId: targetShelfId });
+                        }
+                      } catch {
+                        setGroupError('No se pudo cargar el anaquel destino');
+                      }
+                    }}
+                    currentShelfId={selectedShelf.id}
+                  />
+                ) : selection.count >= 2 ? (
                   <GroupView
                     samples={selection.selectedSamples}
                     selectionType={selection.selectionType}
