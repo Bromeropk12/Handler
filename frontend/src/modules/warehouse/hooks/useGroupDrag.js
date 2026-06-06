@@ -136,7 +136,7 @@ export const useGroupDrag = ({
   // Listeners globales
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape' && dragState.isDragging) {
+      if (e && e.key === 'Escape' && dragState.isDragging) {
         cancelDrag();
       }
     };

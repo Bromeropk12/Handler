@@ -36,6 +36,8 @@ export default [
         URLSearchParams: 'readonly',
         AbortController: 'readonly',
         AbortSignal: 'readonly',
+        EventSource: 'readonly',
+        KeyboardEvent: 'readonly',
 
         // Jest / Testing Globals
         describe: 'readonly',
