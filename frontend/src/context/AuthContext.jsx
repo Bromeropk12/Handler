@@ -18,7 +18,10 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('auth_token');
+      // (H2) sessionStorage en vez de localStorage: el token se borra al cerrar
+      // la pestaña, reduciendo la ventana de exposición. La cookie httpOnly
+      // emitida por el backend sigue siendo el método principal.
+      const token = sessionStorage.getItem('auth_token');
       if (!token) {
         // No hay token, mostrar login
         setLoading(false);
@@ -36,7 +39,7 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true);
       } catch (_error) {
         // Token inválido, expirado o usuario eliminado → limpiar y pedir login
-        localStorage.removeItem('auth_token');
+        sessionStorage.removeItem('auth_token');
         setUser(null);
         setIsAuthenticated(false);
       } finally {
@@ -47,7 +50,7 @@ export const AuthProvider = ({ children }) => {
 
     // Polling en segundo plano para refrescar los permisos automáticamente cada 30 segundos
     const intervalId = setInterval(() => {
-      const token = localStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token');
       if (token) {
         authAPI.getCurrentUser()
           .then(response => {
@@ -58,7 +61,7 @@ export const AuthProvider = ({ children }) => {
           })
           .catch(() => {
             // Si el token falló o el usuario fue eliminado, forzar logout
-            localStorage.removeItem('auth_token');
+            sessionStorage.removeItem('auth_token');
             setUser(null);
             setIsAuthenticated(false);
           });
@@ -89,7 +92,8 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       const response = await authAPI.login(credentials);
       const { user: userData, token } = response.data.data;
-      localStorage.setItem('auth_token', token);
+      // (H2) sessionStorage en vez de localStorage: se borra al cerrar pestaña.
+      sessionStorage.setItem('auth_token', token);
       setUser(userData);
       setIsAuthenticated(true);
       return { success: true };
@@ -104,7 +108,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('auth_token');
+    // (H2) Limpia sessionStorage y la cookie httpOnly (vía /auth/logout).
+    sessionStorage.removeItem('auth_token');
     setUser(null);
     setIsAuthenticated(false);
   };

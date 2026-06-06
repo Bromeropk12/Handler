@@ -36,6 +36,29 @@ const KNOWN_WEAK_SECRETS = new Set([
   '',
 ]);
 
+// (C1) Secretos que fueron committed al repo o aparecen en logs/screenshots.
+// Estos se rechazan SIEMPRE, en cualquier entorno, con un mensaje que indica
+// que fueron comprometidos. El operador DEBE rotarlos.
+const KNOWN_LEAKED_SECRETS = new Set([
+  '3b11654d5476821fcd02ff752b71aa943776bc4c070a54940cc0a652f1fe1fb8fdece45aa3c1fed44af36fa57193f036',
+  'handler-track-samples-jwt-secret-key-2024-very-secure-random-string-change-in-production',
+  'handler-track-samples-jwt-secret-key-local-2026-cambiar-en-produccion',
+]);
+
+// Passwords de BD conocidas/débiles. Rechazadas en producción.
+const KNOWN_WEAK_DB_PASSWORDS = new Set([
+  '',
+  'password',
+  'postgres',
+  'admin',
+  'handler',
+  'handler_password',
+  'handler123',
+  'changeme',
+  'root',
+  '12345678',
+]);
+
 const MIN_JWT_SECRET_LENGTH = 32;
 
 /**
@@ -69,6 +92,18 @@ function validateEnvironment() {
     );
   }
 
+  // (C1) Si el secret está en KNOWN_LEAKED_SECRETS, fue expuesto públicamente
+  // y debe ser rotado de inmediato. Mensaje claro para que el operador entienda
+  // que es un incidente, no solo "secret débil".
+  if (KNOWN_LEAKED_SECRETS.has(secret)) {
+    throw new Error(
+      `JWT_SECRET fue comprometido (aparece en el repositorio/git history). ` +
+      `ROTA DE INMEDIATO: genera uno nuevo con ` +
+      `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))" ` +
+      `y actualiza el .env del servidor.`
+    );
+  }
+
   // Detectar secretos de baja entropía (todos hex/charset predecible)
   const uniqueChars = new Set(secret).size;
   if (uniqueChars < 16) {
@@ -76,6 +111,18 @@ function validateEnvironment() {
       `⚠️  [SECURITY] JWT_SECRET tiene baja entropía (${uniqueChars} caracteres únicos). ` +
       `Recomendado: cadena aleatoria criptográfica de 64+ chars hex/base64.`
     );
+  }
+
+  // (C1) Validar DB_PASSWORD contra lista de passwords conocidos/débiles.
+  // Solo en producción (en dev/test se permite cualquier cosa).
+  if (process.env.NODE_ENV === 'production') {
+    const dbPass = process.env.DB_PASSWORD || '';
+    if (KNOWN_WEAK_DB_PASSWORDS.has(dbPass)) {
+      throw new Error(
+        `DB_PASSWORD es un valor conocido/débil o está vacío. ` +
+        `Usa una contraseña aleatoria de al menos 16 caracteres.`
+      );
+    }
   }
 
   // Log de éxito solo en desarrollo (no exponer en prod)
@@ -134,7 +181,38 @@ const config = {
   rateLimit: {
     windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW, 10) || optionalEnvVars.RATE_LIMIT_WINDOW) * 60 * 1000,
     max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || optionalEnvVars.RATE_LIMIT_MAX_REQUESTS
-  }
+  },
+
+  // (H3) CORS whitelist explícita.
+  // Si ALLOWED_ORIGINS está definido, SOLO se aceptan esos orígenes (fail-closed).
+  // Si NO está definido, se usa el set de defaults seguros (localhost/127.0.0.1
+  // + IPs privadas RFC1918 con puerto 3000/3001/3002/5173 — los más comunes para
+  // dev). El operador puede extender la lista via env var.
+  allowedOrigins: (() => {
+    const fromEnv = (process.env.ALLOWED_ORIGINS || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (fromEnv.length > 0) return new Set(fromEnv);
+
+    const defaults = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:5173',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:3002',
+      'http://127.0.0.1:5173',
+    ];
+    // Si NODE_ENV es development, también aceptar IPs privadas en puertos comunes.
+    // En producción, fail-closed a los defaults de localhost.
+    if (process.env.NODE_ENV === 'development') {
+      // Añadir wildcards para dev LAN (se validan por prefijo en el middleware)
+      defaults.push('http://10.', 'http://172.', 'http://192.168.');
+    }
+    return new Set(defaults);
+  })()
 };
 
 module.exports = config;

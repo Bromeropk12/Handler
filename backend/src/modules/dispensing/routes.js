@@ -2,6 +2,7 @@ const express = require('express');
 const { subdivideBulkSample, getDispensedSamples, getUnplacedSamples, reassignShelf } = require('./controller');
 const { verifyToken, requireAdmin } = require('../auth/controller');
 const { requirePermission } = require('../../middleware/permissions');
+const { validate, schemas } = require('../../middleware/validate');
 
 const router = express.Router();
 
@@ -28,7 +29,7 @@ const router = express.Router();
  *       200:
  *         description: Muestras subdivididas exitosamente
  */
-router.post('/subdivide', verifyToken, requirePermission('dispensing.create'), subdivideBulkSample);
+router.post('/subdivide', verifyToken, requirePermission('dispensing.create'), validate(schemas.dispensingSubdivide), subdivideBulkSample);
 
 /**
  * @openapi

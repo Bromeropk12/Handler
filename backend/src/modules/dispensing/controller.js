@@ -1,14 +1,20 @@
 const { query, transaction, pool } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const { findAutoPlacement, parseDimensions } = require('../warehouse/validations');
 
 const SHORT_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+// (H10) Usar crypto.randomBytes en lugar de Math.random para códigos QR/cortos.
+// Math.random es predecible y permite colisiones/ataques de enumeración.
 function generateShortCode(length = 7) {
-  return Array.from({ length }, () =>
-    SHORT_CHARS[Math.floor(Math.random() * SHORT_CHARS.length)]
-  ).join('');
+  const bytes = crypto.randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += SHORT_CHARS[bytes[i] % SHORT_CHARS.length];
+  }
+  return out;
 }
 
 /**

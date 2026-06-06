@@ -604,6 +604,9 @@ const updateUserPermissions = async (req, res, next) => {
     );
 
     // Log de cambio de permisos
+    // (B2) Si el INSERT al audit log falla, NO fallamos la request (el cambio
+    // de permisos ya se hizo en BD y debe persistir), pero LOGGEAMOS el error
+    // para que ops lo investigue.
     try {
       await query(
         'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
@@ -615,7 +618,9 @@ const updateUserPermissions = async (req, res, next) => {
           timestamp: new Date().toISOString(),
         })]
       );
-    } catch (_) {}
+    } catch (auditErr) {
+      console.error(`[AUDIT-FAIL] permissions_updated userId=${userId} by=${req.user.id} ip=${req.ip}: ${auditErr.message}`);
+    }
 
     res.json({
       success: true,
@@ -655,7 +660,10 @@ const setUserPermissions = async (req, res, next) => {
           timestamp: new Date().toISOString(),
         })]
       );
-    } catch (_) {}
+    } catch (auditErr) {
+      // (B2) Audit log no silencioso
+      console.error(`[AUDIT-FAIL] permissions_set userId=${userId} by=${req.user.id} ip=${req.ip}: ${auditErr.message}`);
+    }
 
     res.json({
       success: true,

@@ -16,8 +16,11 @@ if (process.env.DATABASE_URL) {
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
+    // (B10) statement_timeout: matar queries que se cuelgan > 30s.
+    // Previene que una query lenta bloquee conexiones del pool indefinidamente.
+    statement_timeout: 30000,
   };
-  
+
   if (!process.env.DATABASE_URL.includes('localhost') && !process.env.DATABASE_URL.includes('127.0.0.1')) {
     poolConfig.ssl = { rejectUnauthorized: false };
   }
@@ -32,6 +35,8 @@ if (process.env.DATABASE_URL) {
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
+    // (B10) statement_timeout: matar queries que se cuelgan > 30s.
+    statement_timeout: 30000,
   };
 }
 
@@ -57,8 +62,14 @@ pool.on('connect', (client) => {
 });
 
 pool.on('error', (err, client) => {
-  dbLogger.error('Error inesperado en el pool de conexiones:', err);
-  process.exit(-1);
+  // (H6) No matar el proceso ante errores idle del pool. El cliente con
+  // error se descarta automáticamente; los demás siguen disponibles.
+  // Si la BD cae de verdad, las queries fallarán individualmente y los
+  // callers las manejarán. process.exit(-1) en pleno error de pool es
+  // un denial-of-service de un solo click.
+  dbLogger.error('Error idle en cliente del pool (cliente descartado):', err.message);
+  // Si el error es fatal (BD no disponible, etc.), intentar emitir alerta
+  // al logger, pero NO terminar el proceso.
 });
 
 pool.on('remove', (client) => {

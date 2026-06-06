@@ -1,5 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const { validate, schemas } = require('../../middleware/validate');
 const {
   login, resetPassword, getCurrentUser, verifyToken, changePassword,
   changeUsername, listUsers, createUser, changeUserPassword, deleteUser,
@@ -65,7 +66,7 @@ const resetPasswordLimiter = rateLimit({
  *       429:
  *         description: Demasiados intentos. Reintente en 15 minutos.
  */
-router.post('/login', authLimiter, login);
+router.post('/login', authLimiter, validate(schemas.authLogin), login);
 
 /**
  * @openapi
@@ -94,7 +95,7 @@ router.post('/login', authLimiter, login);
  *       429:
  *         description: Demasiados intentos de reset. Reintente en 1 hora.
  */
-router.post('/reset-password', resetPasswordLimiter, resetPassword);
+router.post('/reset-password', resetPasswordLimiter, validate(schemas.authResetPassword), resetPassword);
 
 /**
  * @openapi

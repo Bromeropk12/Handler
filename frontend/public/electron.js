@@ -1,7 +1,8 @@
 const { app, BrowserWindow, Menu, session, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
+const security = require('./security');
 
 const isDev = process.env.ELECTRON_DEV === 'true' || !app.isPackaged;
 const APP_URL = process.env.HANDLER_APP_URL || 'http://localhost:3001';
@@ -129,7 +130,12 @@ function buildMenu() {
       submenu: [
         {
           label: 'Abrir en Navegador',
-          click: () => shell.openExternal(APP_URL),
+          click: () => {
+            // (C5) shell.openExternal debe pasar por whitelist. APP_URL
+            // es un valor interno controlado por el main process, pero
+            // usamos el helper seguro para tener un solo punto de control.
+            security.safeOpenExternal(shell, APP_URL);
+          },
         },
         {
           label: 'Acerca de',
@@ -151,9 +157,28 @@ function buildMenu() {
   ]);
 }
 
-ipcMain.handle('get-service-status', async () => {
+/**
+ * (H9) Helper para validar que un IPC event viene de una BrowserWindow
+ * conocida de la app. Rechaza cualquier sender que no sea file://, devtools://,
+ * o la APP_URL del backend LAN.
+ */
+function isTrustedSender(event) {
+  const url = event.senderFrame ? event.senderFrame.url : '';
+  if (!url) return false;
+  if (url.startsWith('file://')) return true;
+  if (url.startsWith('devtools://')) return true;
+  if (url.startsWith(APP_URL)) return true;
+  console.warn(`[SECURITY] IPC rejected from untrusted sender: ${url}`);
+  return false;
+}
+
+ipcMain.handle('get-service-status', async (event) => {
+  // (H9) Validar sender
+  if (!isTrustedSender(event)) {
+    return 'STOPPED';
+  }
   return new Promise((resolve) => {
-    exec('sc query HandlerTrackSamples', (error, stdout) => {
+    exec('sc query HandlerTrackSamples', { shell: false }, (error, stdout) => {
       const out = (stdout || '').toLowerCase();
       if (error && (out.includes('1060') || out.includes('does not exist') || out.includes('no existe'))) {
         return resolve('NOT_INSTALLED');
@@ -166,7 +191,7 @@ ipcMain.handle('get-service-status', async () => {
       const nssmCmd = fs.existsSync(nssmPath)
         ? `"${nssmPath}" status HandlerTrackSamples`
         : 'nssm status HandlerTrackSamples';
-      exec(nssmCmd, (err2, out2) => {
+      exec(nssmCmd, { shell: false }, (err2, out2) => {
         const o = (out2 || '').toLowerCase().trim();
         if (o.includes('running')) return resolve('RUNNING');
         if (o.includes('start')) return resolve('STARTING');
@@ -179,33 +204,67 @@ ipcMain.handle('get-service-status', async () => {
 });
 
 ipcMain.handle('control-service', async (event, action) => {
-  return new Promise((resolve) => {
-    let cmd = '';
-    if (action === 'start') cmd = 'net start HandlerTrackSamples';
-    else if (action === 'stop') cmd = 'net stop HandlerTrackSamples';
-    else if (action === 'restart') cmd = 'net stop HandlerTrackSamples 2>nul & net start HandlerTrackSamples';
-    else return resolve({ success: false, error: 'Accion invalida' });
+  // (H8) execFile con array de args en lugar de exec con shell:true.
+  // (H9) Validar que el sender sea una BrowserWindow conocida.
+  const senderUrl = event.senderFrame ? event.senderFrame.url : '';
+  if (!senderUrl.startsWith('file://') && !senderUrl.startsWith('devtools://') && !senderUrl.startsWith(APP_URL)) {
+    console.warn(`[SECURITY] control-service rejected: untrusted sender ${senderUrl}`);
+    return { success: false, error: 'untrusted_sender' };
+  }
 
-    exec(cmd, { shell: true }, (error, stdout, stderr) => {
-      if (error) {
-        const combined = (stdout + stderr).toLowerCase();
-        if (combined.includes('2182') || combined.includes('ya ha sido iniciado') || combined.includes('already been started')) {
-          return resolve({ success: true, warning: 'El servicio ya estaba en ejecucion.' });
+  if (!security.ALLOWED_SERVICE_ACTIONS.has(action)) {
+    return { success: false, error: 'Accion invalida' };
+  }
+
+  const commandSpec = security.buildServiceCommand(action);
+  if (!commandSpec) {
+    return { success: false, error: 'Accion no soportada' };
+  }
+
+  // Si es restart, ejecutamos stop y start secuencialmente.
+  if (action === 'restart') {
+    return new Promise((resolve) => {
+      const runNext = (specs, index, results) => {
+        if (index >= specs.length) {
+          const allOk = results.every((r) => r.success);
+          return resolve({ success: allOk, results });
         }
-        if (combined.includes('2184') || combined.includes('no ha sido iniciado') || combined.includes('not been started')) {
-          return resolve({ success: true, warning: 'El servicio ya estaba detenido.' });
-        }
-        if (combined.includes(' 5 ') || combined.includes('denegado') || combined.includes('access is denied')) {
-          return resolve({ success: false, error: 'Acceso Denegado. Ejecute Handler como Administrador para controlar el servicio.' });
-        }
-        return resolve({ success: false, error: stderr.trim() || stdout.trim() || error.message });
-      }
-      resolve({ success: true });
+        const spec = specs[index];
+        execFile(spec.cmd, spec.args, { shell: false }, (error, stdout, stderr) => {
+          results.push(handleServiceResult(error, stdout, stderr));
+          runNext(specs, index + 1, results);
+        });
+      };
+      runNext(commandSpec, 0, []);
+    });
+  }
+
+  return new Promise((resolve) => {
+    execFile(commandSpec.cmd, commandSpec.args, { shell: false }, (error, stdout, stderr) => {
+      resolve(handleServiceResult(error, stdout, stderr));
     });
   });
 });
 
-ipcMain.handle('get-latest-logs', async () => {
+function handleServiceResult(error, stdout, stderr) {
+  if (!error) return { success: true };
+  const combined = (stdout + stderr).toLowerCase();
+  if (combined.includes('2182') || combined.includes('ya ha sido iniciado') || combined.includes('already been started')) {
+    return { success: true, warning: 'El servicio ya estaba en ejecucion.' };
+  }
+  if (combined.includes('2184') || combined.includes('no ha sido iniciado') || combined.includes('not been started')) {
+    return { success: true, warning: 'El servicio ya estaba detenido.' };
+  }
+  if (combined.includes(' 5 ') || combined.includes('denegado') || combined.includes('access is denied')) {
+    return { success: false, error: 'Acceso Denegado. Ejecute Handler como Administrador para controlar el servicio.' };
+  }
+  return { success: false, error: (stderr || stdout || error.message).trim() };
+}
+
+ipcMain.handle('get-latest-logs', async (event) => {
+  if (!isTrustedSender(event)) {
+    return 'Acceso denegado: sender no confiable.';
+  }
   try {
     const logsDir = path.join(programDataPath, 'logs');
     if (!fs.existsSync(logsDir)) return 'No hay registros disponibles aun. El servidor debe iniciarse primero.';
@@ -227,7 +286,10 @@ ipcMain.handle('get-latest-logs', async () => {
   }
 });
 
-ipcMain.handle('get-network-info', async () => {
+ipcMain.handle('get-network-info', async (event) => {
+  if (!isTrustedSender(event)) {
+    return { addresses: [], port: 3001, protocol: 'http' };
+  }
   const os = require('os');
   const addresses = [];
   for (const interfaceName of Object.keys(os.networkInterfaces())) {
@@ -246,12 +308,44 @@ ipcMain.handle('get-network-info', async () => {
   return ips;
 });
 
-ipcMain.on('open-external-browser', (event, url) => shell.openExternal(url));
+ipcMain.on('open-external-browser', async (event, url) => {
+  // (C5) Validar URL contra whitelist antes de abrir externamente.
+  // (H9) Validar que el sender sea una BrowserWindow conocida de
+  //      nuestra app (no un WebContents arbitrario).
+  const sender = event.senderFrame
+    ? event.senderFrame.url
+    : 'unknown';
+  const trustedOrigins = new Set([APP_URL, 'file://']);
+  let senderTrusted = false;
+  try {
+    const u = new URL(sender);
+    senderTrusted = trustedOrigins.has(`${u.protocol}//${u.host}`) ||
+      sender.startsWith('file://') ||
+      sender.startsWith('devtools://');
+  } catch (_) {}
+
+  if (!senderTrusted) {
+    console.warn(`[SECURITY] open-external-browser rejected: untrusted sender ${sender}`);
+    event.returnValue = { opened: false, reason: 'untrusted_sender' };
+    return;
+  }
+
+  const result = await security.safeOpenExternal(shell, url);
+  event.returnValue = result;
+});
 
 ipcMain.handle('notify-restart', async (event, minutesUntilRestart = 2) => {
+  // (H9 + param encoding) Validar sender + encodeURIComponent
+  if (!isTrustedSender(event)) {
+    return { success: false, error: 'untrusted_sender' };
+  }
+  // Validar que minutes es un número finito positivo
+  const safeMinutes = Number.isFinite(minutesUntilRestart) && minutesUntilRestart > 0 && minutesUntilRestart <= 60
+    ? Math.floor(minutesUntilRestart)
+    : 2;
   try {
     const http = require('http');
-    const options = { hostname: '127.0.0.1', port: 3001, path: `/api/admin/notify-restart?minutes=${minutesUntilRestart}`, method: 'POST' };
+    const options = { hostname: '127.0.0.1', port: 3001, path: `/api/admin/notify-restart?minutes=${encodeURIComponent(safeMinutes)}`, method: 'POST' };
     return new Promise((resolve, reject) => {
       const req = http.request(options, (res) => resolve({ success: res.statusCode === 200, status: res.statusCode }));
       req.on('error', e => reject(new Error(e.message)));
@@ -262,6 +356,9 @@ ipcMain.handle('notify-restart', async (event, minutesUntilRestart = 2) => {
 });
 
 ipcMain.handle('notify-update', async (event, version = '') => {
+  if (!isTrustedSender(event)) {
+    return { success: false, error: 'untrusted_sender' };
+  }
   try {
     const http = require('http');
     const options = { hostname: '127.0.0.1', port: 3001, path: `/api/admin/notify-update?version=${encodeURIComponent(version)}`, method: 'POST' };
@@ -274,7 +371,10 @@ ipcMain.handle('notify-update', async (event, version = '') => {
   } catch (err) { return { success: false, error: err.message }; }
 });
 
-ipcMain.handle('get-sse-client-count', async () => {
+ipcMain.handle('get-sse-client-count', async (event) => {
+  if (!isTrustedSender(event)) {
+    return { count: 0 };
+  }
   try {
     const http = require('http');
     const options = { hostname: '127.0.0.1', port: 3001, path: '/api/admin/sse-count', method: 'GET' };

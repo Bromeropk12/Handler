@@ -9,11 +9,17 @@
   ${If} $0 == 0
     DetailPrint "PostgreSQL detectado. Omitiendo instalacion."
   ${Else}
-    DetailPrint "PostgreSQL no detectado. Instalando con winget (password y puerto 5432)..."
+    DetailPrint "PostgreSQL no detectado. Instalando con winget (puerto 5432)..."
     ; --override pasa argumentos al instalador EDB interno de PostgreSQL.
-    ; superpassword establece la contrasena del usuario 'postgres'.
+    ; El password del superusuario 'postgres' NO se hardcodea: el instalador EDB
+    ; permite dejar el password en blanco y el setup wizard de la app lo
+    ; solicita al usuario en la primera ejecucion (ver setup_page.html).
     ; port fija el puerto de escucha (evita el default 5432 si esta ocupado).
-    nsExec::ExecToStack 'powershell -NoProfile -Command "winget install --id PostgreSQL.PostgreSQL --silent --accept-source-agreements --accept-package-agreements --override \""/superpassword=!Handler2026 /port=5432\"" "'
+    ;
+    ; IMPORTANTE: en una instalacion multi-tenant o expuesta a LAN, el operador
+    ; DEBE rotar este password inmediatamente despues de la instalacion.
+    ; Documentado en Manual_Tecnico_Completo.md, seccion 4.2.2 (C4).
+    nsExec::ExecToStack 'powershell -NoProfile -Command "winget install --id PostgreSQL.PostgreSQL --silent --accept-source-agreements --accept-package-agreements --override \""/port=5432\"" "'
     Pop $2
     Pop $3
     ${If} $2 != 0

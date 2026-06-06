@@ -1,7 +1,9 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
 const fs = require('fs').promises;
+const { validate, schemas } = require('../../middleware/validate');
 const {
   createBulkSample,
   getBulkSamples,
@@ -27,7 +29,7 @@ const storage = multer.diskStorage({
     }
   },
   filename: (req, file, cb) => {
-    const uniqueName = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${path.extname(file.originalname)}`;
+    const uniqueName = `temp_${Date.now()}_${crypto.randomBytes(6).toString('base64url')}${path.extname(file.originalname)}`;
     cb(null, uniqueName);
   }
 });
@@ -180,7 +182,7 @@ router.get('/:id', verifyToken, requirePermission('samples.view'), getBulkSample
  *       201:
  *         description: Muestra creada
  */
-router.post('/', verifyToken, requirePermission('samples.create'), upload.single('coa_file'), validatePdfMagicNumber, createBulkSample);
+router.post('/', verifyToken, requirePermission('samples.create'), upload.single('coa_file'), validatePdfMagicNumber, validate(schemas.samplesCreate), createBulkSample);
 
 /**
  * @openapi

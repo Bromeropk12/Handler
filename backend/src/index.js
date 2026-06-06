@@ -161,19 +161,31 @@ app.use((req, res, next) => {
 });
 
 
-// CORS permisivo para LAN: acepta localhost, 127.0.0.1, y todas las IPs
-// privadas (10.x, 172.16-31.x, 192.168.x.x) en cualquier puerto.
-// Bloquea orígenes de internet público.
+// CORS: whitelist explícita en lugar de regex (H3).
+// Origen ausente (curl, server-to-server) → permitido. Origen presente → debe
+// estar en config.allowedOrigins. En dev mode se permite prefijo de IP privada.
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (
-      origin.startsWith('http://localhost') ||
-      origin.startsWith('http://127.0.0.1') ||
-      /^http:\/\/(10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin)
-    ) {
+    if (!origin) return callback(null, true); // Sin Origin (server-to-server, curl)
+
+    // Coincidencia exacta primero
+    if (config.allowedOrigins.has(origin)) {
       return callback(null, true);
     }
+
+    // En dev: prefijos de IP privada (10., 172., 192.168.) sin regex libre
+    if (process.env.NODE_ENV === 'development') {
+      for (const allowed of config.allowedOrigins) {
+        if (allowed.endsWith('.') && origin.startsWith(allowed)) {
+          // Verificación básica: el resto debe parecer una IP:puerto
+          const rest = origin.slice(allowed.length);
+          if (/^\d{1,3}(\.\d{1,3}){0,3}(:\d+)?$/.test(rest)) {
+            return callback(null, true);
+          }
+        }
+      }
+    }
+
     console.warn(`[CORS] Origen bloqueado: ${origin}`);
     callback(new Error('Origen no permitido por CORS'));
   },
@@ -328,7 +340,10 @@ app.use(errorHandler(loggerInstance));
 // (Los certs autofirmados bloquean los navegadores sin aportar seguridad real
 //  en una red privada. Para HTTPS en producción, integrar Let's Encrypt o un cert válido.)
 // ─────────────────────────────────────────────────────────────────────────────
-const HOST = process.env.HOST || '0.0.0.0';
+// (H4) Default a 127.0.0.1 en lugar de 0.0.0.0. Para exponer en LAN, el
+// operador debe poner HOST=0.0.0.0 explícitamente en .env. Esto evita
+// que un .env mal configurado exponga la API a toda la red.
+const HOST = process.env.HOST || '127.0.0.1';
 
 const http = require('http');
 const server = http.createServer(app);

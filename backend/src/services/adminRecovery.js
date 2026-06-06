@@ -109,9 +109,18 @@ async function runAdminRecovery() {
     })();
     const hashedPassword = await bcrypt.hash(password, ROUNDS);
 
-    // El campo secret_password_hash es NOT NULL en el schema.
-    // En recovery lo igualamos al password principal (el admin puede cambiarlo luego).
-    const hashedSecret = hashedPassword;
+    // (C6) El campo secret_password_hash DEBE ser independiente de password_hash.
+    // Generamos un secreto criptográficamente aleatorio de 32 bytes (64 hex chars)
+    // que el operador DEBE comunicar al usuario por un canal fuera de banda
+    // (no por el mismo archivo, no por logs, no por respuesta HTTP).
+    //
+    // Riesgo histórico: si secret_password_hash == password_hash, cualquier
+    // atacante que conozca el password del usuario puede resetear la cuenta
+    // de CUALQUIER OTRO usuario vía /api/auth/reset-password (que solo pide
+    // username + secret_password). El "2FA" deja de ser 2FA.
+    const crypto = require('crypto');
+    const secretPassword = crypto.randomBytes(32).toString('hex');
+    const hashedSecret = await bcrypt.hash(secretPassword, ROUNDS);
 
     // Permisos completos de administrador
     const adminPermissions = {
@@ -152,7 +161,17 @@ async function runAdminRecovery() {
     `, [username.trim(), hashedPassword, hashedSecret, JSON.stringify(adminPermissions)]);
 
     console.log(`[ADMIN RECOVERY] ✓ Usuario '${username.trim()}' listo con rol ADMIN.`);
-    console.log('[ADMIN RECOVERY] ✓ Puedes iniciar sesión con las credenciales del archivo.');
+    console.log('[ADMIN RECOVERY] ✓ Puedes iniciar sesión con la contraseña del archivo.');
+    console.log('');
+    console.log('╔═══════════════════════════════════════════════════════════════╗');
+    console.log('║  CONTRASEÑA SECRETA (2FA) — COMUNICAR AL USUARIO POR CANAL   ║');
+    console.log('║  SEGURO FUERA DE BANDA (NO por el archivo, NO por HTTP)      ║');
+    console.log('╚═══════════════════════════════════════════════════════════════╝');
+    console.log(`  Username:           ${username.trim()}`);
+    console.log(`  Password:           ${password}`);
+    console.log(`  Contraseña secreta: ${secretPassword}`);
+    console.log('  (Esta contraseña secreta se usará para reset-password. Guárdala offline.)');
+    console.log('');
     console.log('[ADMIN RECOVERY] ✓ Archivo admin-recovery.json ELIMINADO por seguridad (auto-destrucción).');
     console.log('[ADMIN RECOVERY] ─────────────────────────────────────────');
 

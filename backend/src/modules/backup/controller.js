@@ -108,6 +108,32 @@ const rotateFiles = (dir) => {
 /**
  * Exportar todas las tablas de la BD a un objeto JSON
  */
+
+// Tablas que NO tienen columna created_at
+const NO_CREATED_AT = new Set(['shelf_suppliers', 'movements']);
+
+// (H5) Whitelist de columnas válidas por tabla, cacheada al primer uso.
+//   Cualquier key presente en un JSON de backup que NO esté en este Set se
+//   descarta. Esto previene SQL injection via nombres de columna arbitrarios
+//   (un cliente malicioso podría subir un JSON con keys tipo
+//   `; DROP TABLE users; --` que se interpolarían en `INSERT INTO ...`).
+//
+//   Los valores sí usan placeholders ($N) así que son seguros; las KEYS no
+//   tienen placeholder nativo, por eso necesitan whitelist.
+const _validColumnsCache = new Map();
+const getValidColumns = async (client, table) => {
+  if (_validColumnsCache.has(table)) return _validColumnsCache.get(table);
+  // table aquí es del array hardcodeado `tables`, no de input del usuario.
+  const res = await client.query(
+    `SELECT column_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1`,
+    [table]
+  );
+  const set = new Set(res.rows.map(r => r.column_name));
+  _validColumnsCache.set(table, set);
+  return set;
+};
+
 const exportDatabaseToJSON = async () => {
   const tables = [
     'users',
@@ -131,10 +157,7 @@ const exportDatabaseToJSON = async () => {
     },
   };
 
-// Tablas que NO tienen columna created_at
-const NO_CREATED_AT = new Set(['shelf_suppliers', 'movements']);
-
-for (const table of tables) {
+  for (const table of tables) {
     try {
       const orderBy = NO_CREATED_AT.has(table) ? '' : 'ORDER BY created_at NULLS LAST';
       const result = await query(`SELECT * FROM ${table} ${orderBy}`);
@@ -483,8 +506,15 @@ const restoreBackup = async (req, res, next) => {
       await client.query(`TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE`);
 
       let insertedCount = 0;
+      // (H5) Whitelist de columnas válidas para esta tabla
+      const validCols = await getValidColumns(client, table);
       for (const rawRow of rows) {
-        const row = { ...rawRow };
+        // Filtrar keys del JSON contra la whitelist de columnas del schema.
+        // Las keys que no existan en la BD se descartan silenciosamente.
+        const row = {};
+        for (const [k, v] of Object.entries(rawRow)) {
+          if (validCols.has(k)) row[k] = v;
+        }
         const generatedCols = GENERATED_COLUMNS[table] || [];
         for (const col of generatedCols) delete row[col];
 
@@ -947,4 +977,5 @@ module.exports = {
   performBackup,      // Exportada para uso en backupScheduler
   LOCAL_BACKUP_DIR,
   getOneDrivePath,
+  getValidColumns,    // (H5) Whitelist de columnas por tabla
 };

@@ -20,10 +20,14 @@ const api = axios.create({
 // Este Authorization header es un fallback opcional para clientes que aún lo usen.
 api.interceptors.request.use(
   config => {
-    // Solo para compatibilidad: si quedó algún token en localStorage de versiones
+    // Solo para compatibilidad: si quedó algún token en sessionStorage de versiones
     // antiguas, lo seguimos enviando. NO escribir tokens nuevos aquí — el backend
     // emite cookie httpOnly que es el método seguro.
-    const legacyToken = localStorage.getItem('auth_token');
+    //
+    // (H2) sessionStorage en vez de localStorage: el token se borra al cerrar
+    // la pestaña, reduciendo la ventana de exposición si la máquina se compromete.
+    // La cookie httpOnly sigue siendo el método principal.
+    const legacyToken = sessionStorage.getItem('auth_token');
     if (legacyToken) {
       config.headers.Authorization = `Bearer ${legacyToken}`;
     }
@@ -41,9 +45,9 @@ api.interceptors.response.use(
   },
   error => {
     if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
-      // Token expirado o inválido. Limpiar cualquier token legacy en localStorage
+      // Token expirado o inválido. Limpiar cualquier token legacy en sessionStorage
       // (la cookie httpOnly la limpia el backend al caducar).
-      localStorage.removeItem('auth_token');
+      sessionStorage.removeItem('auth_token');
       window.location.href = '/login';
     }
 
