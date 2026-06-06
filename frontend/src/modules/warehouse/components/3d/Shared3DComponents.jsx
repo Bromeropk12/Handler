@@ -392,68 +392,10 @@ export const SampleCube = ({
         </mesh>
       )}
 
-      {/* ── Tooltip when selected (positioned above the animated group) ── */}
-      {isSelected && (
-        <Html position={[0, (baseY + 0.05) + 1.4, 0]} center zIndexRange={[100, 0]}>
-          <div style={{
-            background: 'rgba(9, 13, 22, 0.85)',
-            backdropFilter: 'blur(24px)',
-            borderLeft: `3px solid ${color}`,
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRight: '1px solid rgba(255, 255, 255, 0.08)',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: 16,
-            padding: '16px 18px',
-            width: 240,
-            boxShadow: `0 12px 40px rgba(0,0,0,0.7), 0 0 30px ${color}15`,
-            pointerEvents: 'auto',
-            boxSizing: 'border-box',
-          }}>
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 10, color, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 3 }}>
-                  {statusLabel[status] || 'Muestra'}
-                </div>
-                <div style={{ fontSize: 14, color: '#f8fafc', fontWeight: 800, lineHeight: 1.25 }}>
-                  {cell.name || cell.global_sample_name}
-                </div>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); if (onClick) onClick(); }}
-                style={{ color: '#64748b', fontSize: 14, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.2s' }}
-                onMouseEnter={(e) => e.target.style.color = '#f8fafc'}
-                onMouseLeave={(e) => e.target.style.color = '#64748b'}
-              >✕</button>
-            </div>
-
-            {/* Data rows */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 11 }}>
-              {[
-                ['Lote', cell.lot],
-                ['Peso', cell.weight_grams ? `${cell.weight_grams} g` : '—'],
-                ['SGA',  cell.ghs_danger_class || 'N/A'],
-              ].map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
-                  <span style={{ fontWeight: 500 }}>{k}</span>
-                  <strong style={{ color: '#e2e8f0', fontWeight: 700 }}>{v}</strong>
-                </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 3 }}>
-                <span style={{ fontWeight: 500 }}>Vence</span>
-                <strong style={{ color: statusTextColor[status] || '#e2e8f0', fontWeight: 800 }}>
-                  {cell.expiration_date?.substring(0, 10) || '—'}
-                </strong>
-              </div>
-            </div>
-
-            {/* Position badge */}
-            <div style={{ marginTop: 12, padding: '5px 8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8, textAlign: 'center', fontFamily: 'monospace', fontSize: 9, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>
-              POS: X:{(cell.position_x ?? x) + 1} · Y:{(cell.position_y ?? y) + 1} · Z:{((cell.position_z ?? z) || 0) + 1}
-            </div>
-          </div>
-        </Html>
-      )}
+      {/* ── Tooltip eliminado en PR5 (v1.1.0) ──
+          El detalle de la muestra se muestra ahora en el bottom sheet
+          contextual (SampleDetailView). El cubo 3D ya no levanta un
+          `<Html>` flotante al seleccionarse. */}
     </group>
   );
 };
