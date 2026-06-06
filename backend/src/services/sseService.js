@@ -6,12 +6,28 @@
 
 const clients = new Set();
 
+// (B6) Límite de clientes SSE concurrentes. Sin este límite, un atacante puede
+// abrir 1000s de conexiones con un script y tirar el servidor (cada conexión
+// consume un file descriptor y memoria). 100 es generoso para un sistema LAN
+// (frontend + admin + a lo sumo algunos tabs).
+const MAX_SSE_CLIENTS = parseInt(process.env.MAX_SSE_CLIENTS, 10) || 100;
+
 /**
  * Suscribe una respuesta SSE al canal de eventos del servidor.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
 function subscribe(req, res) {
+  // (B6) Rechazar nuevas conexiones si ya alcanzamos el máximo
+  if (clients.size >= MAX_SSE_CLIENTS) {
+    console.warn(`[SSE] Límite de clientes alcanzado (${MAX_SSE_CLIENTS}). Rechazando nueva conexión desde ${req.ip}.`);
+    res.status(503).json({
+      success: false,
+      error: { message: 'Demasiados clientes conectados. Intente de nuevo en unos segundos.' },
+    });
+    return;
+  }
+
   // Cabeceras SSE estándar
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -100,5 +116,6 @@ module.exports = {
   notifyRestart,
   notifyUpdate,
   startHeartbeat,
-  getClientCount: () => clients.size
+  getClientCount: () => clients.size,
+  MAX_SSE_CLIENTS, // (B6) Exportado para tests
 };

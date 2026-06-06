@@ -33,7 +33,11 @@ const getCoaBaseDir = async () => {
       _cacheTimestamp = now;
       return _cachedCoaBaseDir;
     }
-  } catch {}
+  } catch (cacheErr) {
+    // (B3) Loggear el error en lugar de tragarlo silencioso. Si la BD está
+    // caída, el operador necesita ver el motivo en el log del server.
+    console.error(`[CACHE-FAIL] getCoaBaseDir query settings falló: ${cacheErr.message}; usando config por defecto`);
+  }
   return resolveSafePath(config.coa.baseDir);
 };
 

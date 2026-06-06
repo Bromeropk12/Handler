@@ -23,8 +23,17 @@ const getMovements = async (req, res, next) => {
             export_csv = false
         } = req.query;
 
-        const pageNum = parseInt(page) || 1;
-        const limitNum = parseInt(limit) || 50;
+        // (B7) Validar paginación explícitamente en lugar de usar `|| 1` que
+        // enmascara silenciosamente `?page=0`, `?page=-5`, `?page=abc`.
+        // Defaults explícitos; valores inválidos devuelven 400.
+        const pageNum = parseInt(page, 10);
+        const limitNum = parseInt(limit, 10);
+        if (!Number.isFinite(pageNum) || pageNum < 1) {
+            throw new AppError('page debe ser un entero >= 1', 400);
+        }
+        if (!Number.isFinite(limitNum) || limitNum < 1 || limitNum > 500) {
+            throw new AppError('limit debe ser un entero entre 1 y 500', 400);
+        }
         const offset = (pageNum - 1) * limitNum;
         let whereConditions = [];
         let params = [];
