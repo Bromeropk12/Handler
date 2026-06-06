@@ -663,10 +663,23 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
         <GroupToolbar
           count={selection.count}
           selectionType={selection.selectionType}
+          currentShelfId={selectedShelf.id}
+          activeCrossShelfId={crossShelfOpen ? crossShelfId : null}
           onClear={() => {
             groupDrag.cancelDrag();
             groupPreview.clearCache();
             selection.clearSelection();
+          }}
+          onCrossShelf={async (targetShelfId) => {
+            if (targetShelfId === selectedShelf.id) return;
+            try {
+              const res = await warehouseAPI.getShelfMap(targetShelfId);
+              setCrossShelfData(res.data.data);
+              setCrossShelfId(targetShelfId);
+              setCrossShelfOpen(true);
+            } catch {
+              setGroupError('No se pudo cargar el anaquel destino');
+            }
           }}
           isStale={isStale}
         />
