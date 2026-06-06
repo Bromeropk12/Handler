@@ -24,6 +24,9 @@ import DimensionMismatchModal from './selection/DimensionMismatchModal';
 import GroupDragGhost from './3d/GroupDragGhost'; // eslint-disable-line no-unused-vars
 // GroupDragGhost: componente R3F (disponible para Módulo E / integración con mini-mapa)
 import ShelfMiniMap3D from './minimap/ShelfMiniMap3D';
+import BottomSheet from './bottom/BottomSheet';
+import EmptyView from './bottom/EmptyView';
+import SampleDetailView from './bottom/SampleDetailView';
 
 // ─── Stat Pill ─────────────────────────────────────────────────────────────────
 const StatPill = ({ label, value, color }) => (
@@ -342,6 +345,44 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   }
                 }}
               />
+
+              {/* ── Bottom Sheet (sample detail / group / confirm) ── */}
+              <BottomSheet
+                view="sample"
+                headerTitle={
+                  selection.count === 0
+                    ? 'Información de muestra'
+                    : `${selection.count} muestras seleccionadas`
+                }
+                persistKey="detail"
+                onClose={() => {
+                  setSelectedCell(null);
+                  if (selection.count === 0) {
+                    // No hay selección, solo cerrar el detalle
+                  }
+                }}
+              >
+                {selection.count === 0 ? (
+                  selectedCell ? (
+                    <SampleDetailView
+                      sample={selectedCell}
+                      isInGroup={false}
+                      isAlreadyInGroupOfOne={false}
+                      onAddToGroup={() => selection.toggleSample(selectedCell)}
+                      onRemoveFromGroup={() => selection.toggleSample(selectedCell)}
+                      onMoveSingle={() => {
+                        movement.startMove([selectedCell], selectedShelf);
+                        setSelectedCell(null);
+                      }}
+                      onClose={() => setSelectedCell(null)}
+                    />
+                  ) : (
+                    <EmptyView hasActiveSelection={false} />
+                  )
+                ) : (
+                  <EmptyView hasActiveSelection={true} />
+                )}
+              </BottomSheet>
 
               {/* Cross-shelf mini-mapa (visible durante group mode) */}
               {isGroupMode && crossShelfOpen && crossShelfData && (
