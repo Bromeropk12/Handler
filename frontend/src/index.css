@@ -348,6 +348,18 @@
     50% { transform: translateZ(calc(var(--cube-size) * 1.9)); box-shadow: -30px 30px 45px rgba(0,0,0,0.3); }
   }
 
+  /* slideDown para el reject banner del GroupView (PR2) */
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* pulse para indicador "Stale" en chips y badges (PR2) */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.45; }
+  }
+
   .grid-block-3d.is-selected {
     animation: levitate-cube 4s ease-in-out infinite;
     z-index: 60;
