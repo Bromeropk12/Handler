@@ -246,19 +246,38 @@ export const LevelDetailMap = ({
 
       {/* ── Empty state overlay (z-index 25 – above canvas, below HUD) ── */}
       {levelSamples.length === 0 && (
-        <div className="absolute pointer-events-none" style={{ inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 25 }}>
+        <div
+          className="absolute"
+          style={{
+            inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 25,
+            // IMPORTANTE: pointer-events-none para no bloquear clics al Three.js canvas
+            pointerEvents: 'none',
+          }}
+        >
           <div style={{
             textAlign: 'center',
             background: 'rgba(9, 13, 22, 0.7)',
             backdropFilter: 'blur(20px)',
             borderRadius: 24,
             padding: '36px 56px',
-            border: '1px solid rgba(255, 255, 255, 0.07)',
+            border: isMovementMode
+              ? '1px solid rgba(56, 189, 248, 0.25)'
+              : '1px solid rgba(255, 255, 255, 0.07)',
             boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
           }}>
-            <div style={{ fontSize: 38, marginBottom: 16, filter: 'drop-shadow(0 0 10px rgba(148, 163, 184, 0.15))' }}>📦</div>
-            <p style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.5, margin: 0 }}>Nivel Vacío</p>
-            <p style={{ color: '#64748b', fontSize: 10, fontWeight: 500, letterSpacing: 0.5, marginTop: 6, marginBottom: 0 }}>No hay muestras en este nivel</p>
+            <div style={{ fontSize: 38, marginBottom: 16, filter: 'drop-shadow(0 0 10px rgba(148, 163, 184, 0.15))' }}>
+              {isMovementMode ? '🎯' : '📦'}
+            </div>
+            <p style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.5, margin: 0 }}>
+              {isMovementMode ? 'Nivel Disponible' : 'Nivel Vacío'}
+            </p>
+            <p style={{ color: '#64748b', fontSize: 10, fontWeight: 500, letterSpacing: 0.5, marginTop: 6, marginBottom: 0 }}>
+              {isMovementMode
+                ? 'Haz clic en cualquier celda verde del grid para mover aquí'
+                : 'No hay muestras en este nivel'}
+            </p>
           </div>
         </div>
       )}

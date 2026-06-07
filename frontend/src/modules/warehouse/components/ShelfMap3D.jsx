@@ -445,13 +445,33 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   }}
                   onMoveGroup={() => {
                     if (isGroupMode) {
-                      movementMode.startMove(selection.selectedSamples);
-                      const anchor = selection.selectedSamples[0];
+                      const samples = selection.selectedSamples;
+                      movementMode.startMove(samples);
+                      // Calcular el anchor inicial ajustado para que el grupo quepa
+                      // (evitar offsets negativos que sacarían muestras del rango)
+                      const firstSample = samples[0];
+                      const baseX = firstSample.position_x ?? 0;
+                      const baseY = firstSample.position_y ?? 0;
+                      const baseZ = firstSample.position_z ?? 0;
+                      // Calcular offsets mínimos para determinar el rango seguro del anchor
+                      let minDx = 0, minDy = 0, minDz = 0;
+                      for (const s of samples) {
+                        const dx = (s.position_x ?? 0) - baseX;
+                        const dy = (s.position_y ?? 0) - baseY;
+                        const dz = (s.position_z ?? 0) - baseZ;
+                        if (dx < minDx) minDx = dx;
+                        if (dy < minDy) minDy = dy;
+                        if (dz < minDz) minDz = dz;
+                      }
+                      // Ajustar el anchor para que ninguna muestra tenga posición negativa
+                      const safeX = Math.max(baseX, -minDx);
+                      const safeY = Math.max(baseY, -minDy);
+                      const safeZ = Math.max(baseZ, -minDz);
                       movementMode.selectTarget({
-                        x: anchor.position_x || 0,
-                        y: anchor.position_y || 0,
-                        z: anchor.position_z || 0,
-                        shelfId: anchor.shelf_id,
+                        x: safeX,
+                        y: safeY,
+                        z: safeZ,
+                        shelfId: firstSample.shelf_id || selectedShelf?.id,
                         shelfName: selectedShelf?.name || '',
                       });
                       setMovementModalOpen(true);
@@ -489,11 +509,23 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   target={movementMode.target}
                   conflicts={movementMode.conflicts}
                   mapData={targetMapData || mapData}
+                  previewCells={groupPreview.cache?.cells || null}
                   isExecuting={movementExecuting}
                   error={movementModalError}
                   currentShelfId={selectedShelf?.id}
                   compatibleShelves={compatibleShelves}
-                  onTargetChange={movementMode.selectTarget}
+                  onTargetChange={(newTarget) => {
+                    movementMode.selectTarget(newTarget);
+                    // Recargar preview si cambió el anaquel destino
+                    if (newTarget.shelfId && newTarget.shelfId !== movementMode.target?.shelfId) {
+                      const sourceShelfId = movementMode.movingSamples[0]?.shelf_id || selectedShelf?.id;
+                      groupPreview.loadPreview(
+                        sourceShelfId,
+                        movementMode.movingSamples.map(s => s.id),
+                        newTarget.shelfId,
+                      );
+                    }
+                  }}
                   onCancel={() => {
                     setMovementModalOpen(false);
                     setMovementModalError(null);
@@ -507,14 +539,17 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                       const samples = movementMode.movingSamples;
                       const target = movementMode.target;
                       const sourceShelfId = samples[0]?.shelf_id || selectedShelf.id;
-                      // Calcular posiciones por muestra usando anchor (primera muestra)
-                      // para mantener el layout relativo del grupo
+                      // Calcular posiciones finales por muestra usando offsets relativos
+                      // al anchor (primera muestra)
                       const anchor = samples[0];
+                      const baseX = anchor.position_x ?? 0;
+                      const baseY = anchor.position_y ?? 0;
+                      const baseZ = anchor.position_z ?? 0;
                       const moves = samples.map(s => ({
                         sample_id: s.id,
-                        new_position_x: (s.position_x || 0) - (anchor.position_x || 0) + target.x,
-                        new_position_y: (s.position_y || 0) - (anchor.position_y || 0) + target.y,
-                        new_position_z: (s.position_z || 0) - (anchor.position_z || 0) + target.z,
+                        new_position_x: (s.position_x ?? 0) - baseX + target.x,
+                        new_position_y: (s.position_y ?? 0) - baseY + target.y,
+                        new_position_z: (s.position_z ?? 0) - baseZ + target.z,
                       }));
                       await warehouseAPI.moveGroup(sourceShelfId, {
                         target_shelf_id: target.shelfId,
@@ -524,6 +559,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                       movementMode.reset();
                       selection.clearSelection();
                       setSelectedCell(null);
+                      groupPreview.clearCache();
                       await fetchMapData();
                     } catch (err) {
                       setMovementModalError(err.response?.data?.message || err.message || 'Error al mover');
