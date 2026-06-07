@@ -72,6 +72,7 @@ frontend/dist/
 # Electron build output
 frontend/dist-electron/
 frontend/release/
+distribucion/
 
 # Source maps (no commitear en producción)
 *.map

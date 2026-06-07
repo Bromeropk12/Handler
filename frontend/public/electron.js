@@ -21,7 +21,7 @@ function createMainWindow() {
     minWidth: 1100,
     minHeight: 700,
     title: 'Handler TrackSamples',
-    icon: path.join(__dirname, 'logo.png'),
+    icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#0b0f19',
     show: false,
     webPreferences: {
@@ -70,7 +70,7 @@ function createAdminWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Handler TrackSamples — Panel de Administración',
-    icon: path.join(__dirname, 'logo.png'),
+    icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#070913',
     parent: mainWindow,
     show: false,
