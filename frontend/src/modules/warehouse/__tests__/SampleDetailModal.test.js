@@ -45,4 +45,22 @@ describe('SampleDetailModal', () => {
     fireEvent.click(screen.getByTestId('sample-detail-modal-close'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  test('calls onAddToGroup when + Agregar a grupo clicked', () => {
+    const onAddToGroup = jest.fn();
+    render(
+      <SampleDetailModal
+        sample={fullSample}
+        onClose={() => {}}
+        onAddToGroup={onAddToGroup}
+      />
+    );
+    fireEvent.click(screen.getByTestId('sample-detail-modal-add-group'));
+    expect(onAddToGroup).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not render + Agregar a grupo when onAddToGroup is missing', () => {
+    render(<SampleDetailModal sample={fullSample} onClose={() => {}} />);
+    expect(screen.queryByTestId('sample-detail-modal-add-group')).toBeNull();
+  });
 });

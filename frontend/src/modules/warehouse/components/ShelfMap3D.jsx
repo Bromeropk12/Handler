@@ -321,6 +321,12 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                     setSelectedCell(null);
                   }
                 }}
+                onTooltipAddToGroup={() => {
+                  if (selectedCell) {
+                    selection.toggleSample(selectedCell);
+                    setSelectedCell(null);
+                  }
+                }}
                 onTooltipMove={() => {
                   if (selectedCell) {
                     movementMode.startMove([selectedCell]);
@@ -332,9 +338,12 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   if (isMoving) {
                     return;
                   }
-                  if (isGroupMode) {
+                  if (selection.count > 0) {
+                    // Ya hay selección (1 o N): toggle en el grupo
                     selection.toggleSample(sample);
+                    if (selectedCell) setSelectedCell(null);
                   } else {
+                    // Sin selección: mostrar tooltip
                     setSelectedCell(sample);
                   }
                 }}
@@ -404,6 +413,13 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 <SampleDetailModal
                   sample={detailModalSample}
                   onClose={() => setDetailModalSample(null)}
+                  onAddToGroup={() => {
+                    const s = detailModalSample;
+                    setDetailModalSample(null);
+                    if (s) {
+                      selection.toggleSample(s);
+                    }
+                  }}
                   onMoveSingle={() => {
                     const s = detailModalSample;
                     setDetailModalSample(null);

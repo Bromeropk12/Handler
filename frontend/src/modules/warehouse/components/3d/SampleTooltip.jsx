@@ -15,6 +15,7 @@
  *  - sample: { id, name, lot, weight_grams, ghs_danger_class, ... }
  *  - sgaColor: hex color (calculado con getSGAColor)
  *  - onViewDetail: () => void          ← abre modal centrado
+ *  - onAddToGroup: () => void          ← agrega esta muestra al grupo (v2.1)
  *  - onMove: () => void                ← entra movement mode
  *  - onClose: () => void               ← cierra el tooltip (vuelve a IDLE)
  *  - disabled: boolean                 ← desactiva botones (durante movement mode, etc.)
@@ -26,6 +27,7 @@ const SampleTooltip = ({
   sample,
   sgaColor = '#38bdf8',
   onViewDetail,
+  onAddToGroup,
   onMove,
   onClose,
   disabled = false,
@@ -131,6 +133,23 @@ const SampleTooltip = ({
               letterSpacing: 0.3, opacity: disabled ? 0.5 : 1,
             }}
           >Ver detalle</button>
+        )}
+        {onAddToGroup && (
+          <button
+            onClick={onAddToGroup}
+            disabled={disabled}
+            data-testid="sample-tooltip-add-group"
+            title="Agregar al grupo de movimiento"
+            style={{
+              flex: 1, padding: '6px 8px',
+              background: 'rgba(56,189,248,0.08)',
+              border: '1px solid rgba(56,189,248,0.3)',
+              borderRadius: 6,
+              color: '#7dd3fc', fontSize: 10, fontWeight: 800,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              letterSpacing: 0.3, opacity: disabled ? 0.5 : 1,
+            }}
+          >+ Grupo</button>
         )}
         {onMove && (
           <button

@@ -72,6 +72,7 @@ export const LevelDetailMap = ({
   showGroupChipFor = new Set(),      // Set<number> de ids que son parte del grupo seleccionado
   groupChipColor = '#38bdf8',
   onTooltipViewDetail,               // () => void
+  onTooltipAddToGroup,               // () => void — v2.1: agrega la muestra al grupo
   onTooltipMove,                     // () => void
   onTooltipClose,                    // () => void
 }) => {
@@ -188,6 +189,7 @@ export const LevelDetailMap = ({
                 movementMode={movementMode}
                 groupChipColor={groupChipColor}
                 onTooltipViewDetail={onTooltipViewDetail}
+                onTooltipAddToGroup={onTooltipAddToGroup}
                 onTooltipMove={onTooltipMove}
                 onTooltipClose={onTooltipClose}
                 onHover={(c) => setHoveredCell(c ? sample : null)}

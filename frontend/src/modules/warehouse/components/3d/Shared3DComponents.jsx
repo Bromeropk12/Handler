@@ -247,6 +247,7 @@ export const SampleCube = ({
   showGroupChip = false,        // true cuando el cubo es parte de un grupo seleccionado
   movementMode = false,         // true cuando estamos en modo "mover": no muestra tooltip
   onTooltipViewDetail,          // () => void
+  onTooltipAddToGroup,          // () => void — v2.1
   onTooltipMove,                // () => void
   onTooltipClose,               // () => void
   groupChipColor,               // hex color del grupo (opcional, default sky)
@@ -432,6 +433,7 @@ export const SampleCube = ({
             sample={cell}
             sgaColor={ghsDangerClass ? getSGAColor(ghsDangerClass) : (cell.ghs_danger_class ? getSGAColor(cell.ghs_danger_class) : '#38bdf8')}
             onViewDetail={onTooltipViewDetail}
+            onAddToGroup={onTooltipAddToGroup}
             onMove={onTooltipMove}
             onClose={onTooltipClose}
           />

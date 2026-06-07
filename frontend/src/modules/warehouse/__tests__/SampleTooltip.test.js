@@ -40,6 +40,18 @@ describe('SampleTooltip', () => {
     expect(onMove).toHaveBeenCalledTimes(1);
   });
 
+  test('calls onAddToGroup when + Grupo clicked', () => {
+    const onAddToGroup = jest.fn();
+    render(<SampleTooltip sample={baseSample} onAddToGroup={onAddToGroup} />);
+    fireEvent.click(screen.getByTestId('sample-tooltip-add-group'));
+    expect(onAddToGroup).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not render + Grupo button when onAddToGroup is missing', () => {
+    render(<SampleTooltip sample={baseSample} />);
+    expect(screen.queryByTestId('sample-tooltip-add-group')).toBeNull();
+  });
+
   test('returns null when sample is missing', () => {
     const { container } = render(<SampleTooltip sample={null} />);
     expect(container.firstChild).toBeNull();

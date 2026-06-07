@@ -11,6 +11,7 @@
  * Props:
  *  - sample: sample object
  *  - onClose: () => void
+ *  - onAddToGroup: () => void     ← botón "Agregar a grupo" (v2.1)
  *  - onMoveSingle: () => void     ← botón "Mover individual"
  *  - isExecuting: boolean         ← durante movimiento
  */
@@ -32,6 +33,7 @@ const STATUS_COLORS = {
 const SampleDetailModal = ({
   sample,
   onClose,
+  onAddToGroup,
   onMoveSingle,
   isExecuting = false,
 }) => {
@@ -177,6 +179,24 @@ const SampleDetailModal = ({
               cursor: 'pointer', letterSpacing: 0.3,
             }}
           >Cerrar</button>
+          {onAddToGroup && (
+            <button
+              onClick={onAddToGroup}
+              disabled={isExecuting}
+              data-testid="sample-detail-modal-add-group"
+              title="Agregar al grupo de movimiento"
+              style={{
+                padding: '9px 16px',
+                background: 'rgba(56,189,248,0.08)',
+                border: '1px solid rgba(56,189,248,0.35)',
+                borderRadius: 8,
+                color: '#7dd3fc', fontSize: 11, fontWeight: 800,
+                cursor: isExecuting ? 'not-allowed' : 'pointer',
+                letterSpacing: 0.3,
+                opacity: isExecuting ? 0.5 : 1,
+              }}
+            >+ Agregar a grupo</button>
+          )}
           {onMoveSingle && (
             <button
               onClick={onMoveSingle}
