@@ -145,6 +145,8 @@ export const warehouseAPI = {
     api.post(`/warehouse/${id}/preview-move-group`, data, config),
   moveGroup: (id, data, config) =>
     api.post(`/warehouse/${id}/move-group`, data, config),
+  getCompatibleShelves: (id) =>
+    api.get(`/warehouse/${id}/compatible-shelves`),
 };
 
 export const suppliersAPI = {

@@ -164,7 +164,7 @@ const FloatingGroupBar = ({
             flexShrink: 0,
             whiteSpace: 'nowrap',
           }}
-        >→ Mover grupo</button>
+        >→ Mover lote / Seleccionar destino</button>
       )}
     </div>
   );

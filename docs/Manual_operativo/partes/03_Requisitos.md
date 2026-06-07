@@ -6,19 +6,19 @@
 
 El software puede utilizarse de dos maneras:
 1. **Como aplicación de escritorio nativa:** Haciendo doble clic en el ícono de acceso directo del escritorio. Esta es la forma de uso recomendada y principal.
-2. **Desde un navegador web:** Accediendo a `http://localhost:3000` en los navegadores **Google Chrome** o **Microsoft Edge** instalados en la misma máquina donde se instaló el sistema.
+2. **Desde un navegador web:** Accediendo a `http://localhost:3001` en los navegadores **Google Chrome** o **Microsoft Edge** instalados en la misma máquina donde se instaló el sistema.
 
 > ⚠️ **Atención:** Intentar acceder desde otro computador de la red o desde un celular puede funcionar de manera limitada, pero no está oficialmente soportado ni es el uso esperado del sistema.
 
 ## 3.2. Requisitos Mínimos de Hardware
 
-El sistema requiere un mínimo de recursos del computador debido a que ejecuta tres componentes simultáneamente en segundo plano: la base de datos local PostgreSQL (dentro de Docker), el servidor de la aplicación (Node.js), y la interfaz gráfica con vista tridimensional del almacén (motor WebGL).
+El sistema ejecuta tres componentes simultáneamente en segundo plano: la base de datos local PostgreSQL (instalada como servicio de Windows), el servidor de la aplicación (backend compilado), y la interfaz gráfica con vista tridimensional del almacén (motor WebGL).
 
 | Componente | Especificación Mínima Requerida |
 |---|---|
 | **Procesador** | Intel Core i3 (8.ª generación o más reciente) o AMD Ryzen 3. De 64 bits. |
-| **Memoria RAM** | 8 GB como mínimo absoluto. Con menos de 8 GB el sistema presentará lentitud severa. |
-| **Disco Duro / Almacenamiento** | Al menos 10 GB de espacio libre disponible. Se requiere un SSD (Disco de Estado Sólido), no un disco duro mecánico tradicional. |
+| **Memoria RAM** | 6 GB como mínimo absoluto. Con menos de 6 GB el sistema presentará lentitud severa. |
+| **Disco Duro / Almacenamiento** | Al menos 10 GB de espacio libre disponible. Se recomienda un SSD (Disco de Estado Sólido). |
 | **Tarjeta de Video** | Compatible con WebGL (cualquier tarjeta integrada Intel UHD o posterior). Los controladores deben estar actualizados. |
 | **Pantalla** | Resolución mínima de 1366 × 768 píxeles. |
 
@@ -29,17 +29,17 @@ Si el computador cumple las siguientes especificaciones, el sistema funcionará 
 | Componente | Especificación Recomendada |
 |---|---|
 | **Procesador** | Intel Core i5 (10.ª generación o más reciente) o AMD Ryzen 5 |
-| **Memoria RAM** | 16 GB DDR4 |
+| **Memoria RAM** | 12 GB DDR4 |
 | **Disco Duro / Almacenamiento** | SSD NVMe de alta velocidad |
 | **Tarjeta de Video** | GPU dedicada NVIDIA o AMD con soporte WebGL 2.0 |
 | **Pantalla** | Resolución Full HD: 1920 × 1080 píxeles |
 
 ## 3.4. Software Previo Necesario
 
-Además de Windows 10 o 11, el computador donde se instale el sistema debe tener previamente instalado el siguiente software gratuito:
+Handler TrackSamples es un sistema **autocontenido**. No requiere ningún software adicional instalado manualmente. El instalador `.exe` se encarga de todo automáticamente:
 
-| Software | Para qué sirve | Dónde obtenerlo |
-|---|---|---|
-| **Docker Desktop** | Es el programa que gestiona la base de datos local del sistema. Sin él, el sistema no puede guardar ni leer información. | `https://www.docker.com/products/docker-desktop/` |
+1. **PostgreSQL 15** — El motor de base de datos se instala automáticamente durante el proceso de instalación si no está presente. No necesita descargarlo ni configurarlo manualmente.
+2. **El Backend** — Viene compilado dentro del instalador como `backend.exe` y se registra automáticamente como un servicio de Windows que se inicia con el equipo.
+3. **La interfaz gráfica** — Corre dentro de Electron, que también está empaquetado en el instalador.
 
-> 📌 **Nota:** El equipo de TI de su institución puede encargarse de instalar Docker Desktop antes de proceder con la instalación de Handler TrackSamples. Si ya tiene Docker Desktop instalado y ve el ícono de una ballena blanca cerca del reloj de su pantalla, este requisito ya está cumplido.
+> 📌 **Nota:** Todo lo que necesita el sistema se instala con un solo clic en `Handler_TrackSamples_Setup.exe`. No hay pasos adicionales de configuración de software de terceros.

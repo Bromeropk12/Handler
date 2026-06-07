@@ -2,7 +2,7 @@
 
 ## 3.1. Visión General del Esquema
 
-La base de datos relacional de **Handler TrackSamples** está construida sobre **PostgreSQL 15** y contiene **8 tablas principales**, **5 tipos enumerados** (`ENUM`), **4 vistas SQL**, **6 triggers automáticos**, múltiples índices de rendimiento y **políticas RLS (Row Level Security)** habilitadas en todas las tablas. El esquema completo se define en el archivo `database/scripts/schema-completo-produccion.sql`.
+La base de datos relacional de **Handler TrackSamples** está construida sobre **PostgreSQL 15** y contiene **8 tablas principales**, **5 tipos enumerados** (`ENUM`), **4 vistas SQL**, **6 triggers automáticos**, múltiples índices de rendimiento y **políticas RLS (Row Level Security)** habilitadas en todas las tablas. El esquema completo se define en el archivo `database/scripts/migration-001-init.sql`.
 
 ### Diagrama Entidad-Relación (Simplificado)
 

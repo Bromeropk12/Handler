@@ -2,25 +2,18 @@
 
 ## 7.1. Prerrequisitos Obligatorios
 
-Antes de iniciar el proceso de instalación, el técnico responsable debe verificar que la estación de trabajo cumple con los siguientes prerrequisitos. El incumplimiento de cualquiera de ellos impedirá la correcta inicialización del sistema.
+Antes de iniciar el proceso de instalación, el técnico responsable debe verificar que la estación de trabajo cumple con los siguientes prerrequisitos:
 
 **Lista de verificación previa a la instalación:**
 
 - [ ] Sistema operativo: Windows 10 (Build 19041+) o Windows 11 — 64-bit.
-- [ ] Docker Desktop instalado (versión 4.0 o superior) y en estado de ejecución activo.
-- [ ] WSL2 habilitado en Windows (verificar en: Panel de control → Programas → Activar o desactivar características de Windows → Subsistema de Windows para Linux).
-- [ ] Puertos `3000`, `3001` y `5432` libres (sin conflictos con otros servicios).
-- [ ] Al menos 10 GB de espacio libre en disco SSD.
-- [ ] El usuario de Windows tiene privilegios de Administrador local.
+- [ ] Puertos `3001` y `5432` libres (sin conflictos con otros servicios).
+- [ ] Al menos 10 GB de espacio libre en disco (SSD recomendado).
+- [ ] El usuario de Windows tiene privilegios de Administrador local (requerido para instalar servicios).
+- [ ] Conexión a internet disponible para la descarga de PostgreSQL vía winget (solo si no está preinstalado).
+- [ ] *No requiere* Docker Desktop, WSL2, ni ningún software de virtualización.
 
-### Verificación del Estado de Docker Desktop
-
-Antes de ejecutar el instalador, confirmar que el icono de Docker Desktop (ballena blanca) aparece en la bandeja del sistema de Windows con estado "Running". Si no está activo, iniciarlo manualmente:
-
-```
-Menú Inicio de Windows → Buscar "Docker Desktop" → Abrir → 
-Esperar hasta que el icono deje de animar y muestre "Docker is running"
-```
+> **Nota Técnica:** El instalador es autocontenido. Cualquier dependencia faltante (PostgreSQL) es detectada y gestionada automáticamente durante la instalación.
 
 ## 7.2. Proceso de Instalación del Ejecutable `.exe`
 
@@ -55,86 +48,230 @@ El asistente NSIS presentará las siguientes pantallas secuenciales:
 - Confirmación de creación de acceso directo en el escritorio y en el menú de Inicio.
 
 **Paso 3 — Extracción y despliegue de archivos:**
-El instalador extrae todos los binarios de la aplicación Electron, los archivos estáticos del frontend React compilado (`build/`), los scripts SQL de inicialización de la base de datos, y los recursos multimedia (logos de proveedores en `recursos/proveedores/`).
+El instalador extrae todos los binarios de la aplicación Electron, el frontend React compilado (`resources/app/`), el backend compilado (`resources/backend/backend.exe`), el gestor de servicios NSSM (`resources/backend/nssm.exe`), los scripts SQL de inicialización de la base de datos, y los recursos multimedia (logos de proveedores en `recursos/proveedores/`).
 
-**Paso 4 — Aprovisionamiento automático de la Base de Datos:**
-Durante la fase de instalación, el setup ejecuta de forma transparente los comandos Docker necesarios para:
-1. Descargar la imagen `postgres:15-alpine` (si no está disponible localmente).
-2. Crear el contenedor `handler-track-samples-db` con el volumen persistente `postgres_data`.
-3. Ejecutar el script SQL de inicialización completo (`schema-completo-produccion.sql`) que crea todas las tablas, tipos ENUM, vistas, triggers, índices y el usuario administrador por defecto.
-4. Habilitar las políticas de Row Level Security (RLS) en las 8 tablas.
+**Paso 4 — Aprovisionamiento automático de PostgreSQL:**
+Durante la fase de instalación, el instalador ejecuta de forma transparente las siguientes acciones:
 
-**Paso 5 — Configuración de variables de entorno:**
-El instalador genera automáticamente el archivo `.env` en el directorio de instalación con los valores correctos para el entorno local, incluyendo la cadena de conexión a PostgreSQL en `localhost:5432`.
+1. **Detección:** Verifica si PostgreSQL está instalado mediante `Get-Service postgresql*`.
+2. **Instalación** (si no está presente): Ejecuta `winget install --id PostgreSQL.PostgreSQL` con los parámetros:
+   - Puerto: `5432`
+   - Contraseña del superusuario `postgres`: `!Handler2026`
+   - Instalación silenciosa (sin intervención del usuario)
+3. **Espera de servicio:** Espera hasta 90 segundos a que el servicio `postgresql-x64-15` entre en estado "Running".
+4. Si PostgreSQL ya está instalado, omite este paso completamente.
 
-**Paso 6 — Finalización:**
+**Paso 5 — Configuración del Servicio de Windows para el Backend:**
+El instalador utiliza **NSSM** (Non-Sucking Service Manager) para crear un servicio de Windows:
+
+```powershell
+# Instalar el servicio HandlerTrackSamples
+nssm install HandlerTrackSamples "$INSTDIR\resources\backend\backend.exe"
+
+# Configurar directorio de trabajo
+nssm set HandlerTrackSamples AppDirectory "$INSTDIR\resources\backend"
+
+# Configurar variables de entorno
+nssm set HandlerTrackSamples AppEnvironmentExtra "NODE_ENV=production" "PORT=3001"
+
+# Configurar inicio automático con Windows
+nssm set HandlerTrackSamples Start SERVICE_AUTO_START
+
+# Iniciar el servicio
+nssm start HandlerTrackSamples
+```
+
+**Paso 6 — Configuración del Firewall de Windows:**
+El instalador crea una regla de entrada en el Firewall de Windows para permitir el acceso al puerto `3001`:
+
+```powershell
+netsh advfirewall firewall add rule name="HandlerTrackSamples" `
+  dir=in action=allow protocol=TCP localport=3001 profile=private,public
+```
+
+**Paso 7 — Finalización:**
 Al completarse, el asistente muestra la pantalla de éxito. El acceso directo "Handler TrackSamples" es creado en el escritorio y en el Menú de Inicio de Windows. Opcionalmente, el usuario puede ejecutar la aplicación de inmediato marcando la casilla "Iniciar Handler TrackSamples ahora".
 
-## 7.3. Estructura de Directorios Post-Instalación
+## 7.3. Configuración de Variables de Entorno
 
-Tras la instalación, el directorio raíz del sistema tiene la siguiente estructura:
+El archivo de configuración `.env` se almacena en `C:\ProgramData\HandlerTrackSamples\.env` y es generado automáticamente por el **Asistente de Configuración Inicial** (Setup Web Wizard) que se ejecuta en el primer arranque.
+
+### 7.3.1. Setup Web Wizard (Primer Arranque)
+
+Cuando el sistema se inicia por primera vez y no encuentra un `.env` configurado, el backend entra en **SETUP_MODE** y redirige automáticamente al usuario a un asistente web en `http://localhost:3001/setup`.
+
+**Pantallas del asistente:**
+
+1. **Conexión a Base de Datos:** El usuario ingresa:
+   - Host (por defecto: `localhost`)
+   - Puerto (por defecto: `5432`)
+   - Usuario de PostgreSQL
+   - Contraseña de PostgreSQL
+   - Nombre de base de datos (por defecto: `handler_track_samples`)
+
+2. **Verificación de Conexión:** El sistema prueba la conexión y, si es exitosa, crea la base de datos si no existe.
+
+3. **Configuración de Administrador:** El usuario establece:
+   - Nombre de usuario para el admin
+   - Contraseña para el admin (debe cumplir requisitos de seguridad)
+   - Contraseña secreta de recuperación
+
+4. **Generación de JWT_SECRET:** El sistema genera un secreto criptográficamente aleatorio de 64 caracteres.
+
+5. **Finalización:** El asistente:
+   - Escribe el archivo `.env` en `C:\ProgramData\HandlerTrackSamples\.env`
+   - Ejecuta todas las migraciones SQL (`migration-001-init.sql`, `migration-002-enable-rls.sql`, `migration-003-add-batch-id-to-movements.sql`)
+   - Crea las tablas auxiliares (`backups`, `settings`)
+   - Crea el usuario administrador con contraseñas hasheadas (BCrypt 12 rondas)
+   - Inserta datos iniciales: 3 líneas de mercado, 7 proveedores, 14 anaqueles
+   - Reinicia automáticamente el servicio HandlerTrackSamples
+
+### 7.3.2. Configuración Manual del `.env`
+
+Si se requiere configurar manualmente, el archivo `.env` debe tener el siguiente contenido mínimo:
+
+```env
+NODE_ENV=production
+PORT=3001
+HOST=0.0.0.0
+JWT_SECRET=<clave_aleatoria_de_64_caracteres>
+DATABASE_URL=postgresql://handler_user:handler_password@localhost:5432/handler_track_samples
+JWT_EXPIRES_IN=8h
+BCRYPT_ROUNDS=12
+RATE_LIMIT_WINDOW=15
+RATE_LIMIT_MAX_REQUESTS=5000
+COA_BASE_DIR=C:\ProgramData\HandlerTrackSamples\uploads\coa
+MAX_FILE_SIZE=10485760
+```
+
+## 7.4. Estructura de Directorios Post-Instalación
+
+### Directorio de Instalación de la Aplicación
 
 ```
 C:\Program Files\Handler TrackSamples\
 ├── Handler TrackSamples.exe          ← Ejecutable principal (Electron)
+├── uninstall.exe                     ← Desinstalador oficial del sistema
 ├── resources\
-│   ├── app\
-│   │   ├── build\                    ← Frontend React compilado (HTML/CSS/JS)
-│   │   ├── backend\                  ← API Node.js/Express
-│   │   │   ├── src\
-│   │   │   │   ├── modules\          ← 12 módulos de la API
-│   │   │   │   ├── services\         ← database.js, backupScheduler.js
-│   │   │   │   └── index.js          ← Punto de entrada del servidor
-│   │   │   └── .env                  ← Variables de entorno locales
-│   │   ├── database\
-│   │   │   └── scripts\              ← schema-completo-produccion.sql
-│   │   └── recursos\
-│   │       └── proveedores\          ← Logos de los 7 proveedores preconfigurados
-│   └── electron.js                   ← Proceso principal de Electron
-├── backups\                           ← [Creada automáticamente] Carpeta interna de backups
-└── uninstall.exe                      ← Desinstalador oficial del sistema
+│   ├── app\                          ← Frontend React compilado (HTML/CSS/JS)
+│   │   ├── index.html                ← Punto de entrada SPA
+│   │   ├── static\                   ← Assets compilados (JS, CSS)
+│   │   ├── electron.js               ← Proceso principal de Electron
+│   │   ├── preload.js                ← Bridge de seguridad (contextBridge)
+│   │   ├── admin_panel.html          ← Panel de control admin (standalone)
+│   │   ├── installer.nsh             ← Script NSIS custom (solo build)
+│   │   └── recursos\                 ← Imágenes, iconos
+│   └── backend\                      ← Backend compilado
+│       ├── backend.exe               ← Express API compilada (pkg)
+│       ├── create_tables.exe         ← Utilidad de creación de tablas
+│       └── nssm.exe                  ← Non-Sucking Service Manager
 ```
 
-> **Nota Técnica:** La carpeta `backups\` es creada automáticamente por el sistema la primera vez que se ejecuta un backup. Los archivos `.json` de respaldo se almacenan en esta ubicación interna, completamente local a la instalación del software, sin requerir transmisión a servicios externos.
+### Directorio de Datos Persistentes
 
-## 7.4. Verificación Post-Instalación
+```
+C:\ProgramData\HandlerTrackSamples\   ← Datos persistentes (NO se pierden al actualizar)
+├── .env                              ← Variables de entorno del sistema
+├── logs\                             ← Logs del backend con rotación diaria
+│   ├── combined-YYYY-MM-DD.log       ← Log general
+│   ├── error.log                     ← Solo errores
+│   └── database.log                  ← Consultas a la base de datos
+├── uploads\                          ← Archivos subidos por el usuario
+│   ├── coa\                          ← PDFs de Certificados de Análisis
+│   └── ...                           ← Otros archivos subidos
+└── backups\                          ← Backups exportados a archivo JSON
+    └── backup_handler_*.json
+```
+
+> **Nota Técnica:** El directorio `C:\ProgramData\HandlerTrackSamples\` se utiliza para datos persistentes porque no se elimina durante las actualizaciones del software. Esto garantiza que los logs, uploads y backups sobrevivan a reinstalaciones.
+
+## 7.5. Verificación Post-Instalación
 
 Tras la instalación, el técnico debe verificar que todos los componentes están operativos:
 
-**1. Verificar el contenedor de base de datos:**
+**1. Verificar el servicio de la base de datos PostgreSQL:**
 ```powershell
-# En PowerShell con Docker Desktop activo:
-docker ps
-
+Get-Service postgresql* | Format-List Name, Status, StartType
 # Resultado esperado:
-# CONTAINER ID   IMAGE                PORTS                    NAMES
-# xxxxxxxxxxxx   postgres:15-alpine   0.0.0.0:5432->5432/tcp   handler-track-samples-db
+# Name      : postgresql-x64-15
+# Status    : Running
+# StartType : Automatic
 ```
 
-**2. Verificar el health check de la API:**
-Abrir un navegador web y navegar a:
-```
-http://localhost:3001/health
-```
-Respuesta esperada:
-```json
-{
-  "status": "OK",
-  "timestamp": "2026-05-04T...",
-  "service": "Handler TrackSamples Backend",
-  "version": "1.0.0"
-}
+**2. Verificar el servicio de la aplicación:**
+```powershell
+Get-Service HandlerTrackSamples | Format-List Name, Status, StartType
+# Resultado esperado:
+# Name      : HandlerTrackSamples
+# Status    : Running
+# StartType : Automatic
 ```
 
-**3. Verificar la interfaz de usuario:**
-Navegar a `http://localhost:3000` o abrir la aplicación desde el acceso directo del escritorio. Debe aparecer la pantalla de inicio de sesión.
+**3. Verificar el health check de la API:**
+```powershell
+# Con PowerShell (Invoke-WebRequest)
+Invoke-RestMethod -Uri http://localhost:3001/health
+# Resultado esperado:
+# status    : OK
+# timestamp : 2026-06-07T...
+# service   : Handler TrackSamples Backend
+# version   : 1.0.0
+```
 
-**Credenciales de primer acceso (cambiar inmediatamente en producción):**
-- **Usuario:** `admin`
-- **Contraseña:** `admin123`
+**4. Verificar la interfaz de usuario:**
+Abrir la aplicación desde el acceso directo del escritorio o navegar a `http://localhost:3001`. Debe aparecer la pantalla de inicio de sesión (si el setup wizard ya fue completado) o el asistente de configuración inicial (si es el primer arranque).
 
-## 7.5. Ejecución Cotidiana del Sistema
+**Credenciales de primer acceso (configuradas durante el setup wizard):**
+- Las credenciales son las que fueron establecidas durante el asistente de configuración inicial.
+- Por defecto, si no se ejecutó el setup wizard, el usuario es `admin` y la contraseña se configura en el primer arranque.
 
-Una vez instalado, el sistema se inicia con un doble clic en el acceso directo "Handler TrackSamples" del escritorio. Electron levanta internamente el proceso Node.js del backend y renderiza la interfaz React en la ventana Chromium. No se requiere ninguna acción adicional del usuario.
+## 7.6. Ejecución Cotidiana del Sistema
 
-> **Prerequisito cotidiano:** Docker Desktop debe estar activo antes de abrir la aplicación. Si Docker no está corriendo, la aplicación mostrará errores de conexión a la base de datos en la pantalla de login. El icono de Docker (ballena) debe aparecer en la bandeja del sistema antes de iniciar Handler TrackSamples.
+Una vez instalado y configurado, el sistema funciona de la siguiente manera:
+
+1. **Servicios de fondo:** Al encender el computador, los servicios `postgresql-x64-15` y `HandlerTrackSamples` se inician automáticamente con Windows (configurados como `SERVICE_AUTO_START`).
+2. **Inicio de la aplicación:** El usuario hace doble clic en el acceso directo "Handler TrackSamples" del escritorio. Electron se conecta al backend en `localhost:3001` y renderiza la interfaz React.
+3. **Cierre de la aplicación:** Al cerrar la ventana de Electron, solo se cierra la interfaz de usuario. Los servicios de fondo continúan ejecutándose, permitiendo un inicio más rápido la próxima vez.
+
+> **Nota Técnica:** A diferencia de las versiones anteriores basadas en Docker, el sistema actual no requiere ningún paso de verificación manual antes de iniciar la aplicación. Los servicios se inician automáticamente con Windows y están listos para usar.
+
+## 7.7. Gestión de Servicios (IT)
+
+El personal de TI puede gestionar los servicios del sistema mediante los siguientes comandos:
+
+### Servicio HandlerTrackSamples (Backend API)
+
+```powershell
+# Verificar estado
+nssm status HandlerTrackSamples
+
+# Verificar estado (alternativa PowerShell)
+Get-Service HandlerTrackSamples
+
+# Reiniciar el servicio
+nssm restart HandlerTrackSamples
+# o
+Restart-Service HandlerTrackSamples
+
+# Detener el servicio
+nssm stop HandlerTrackSamples
+
+# Iniciar el servicio
+nssm start HandlerTrackSamples
+
+# Ver logs del servicio en tiempo real
+Get-Content "C:\ProgramData\HandlerTrackSamples\logs\combined-$(Get-Date -Format 'yyyy-MM-dd').log" -Tail 50 -Wait
+```
+
+### Servicio PostgreSQL
+
+```powershell
+# Verificar estado
+Get-Service postgresql*
+
+# Reiniciar PostgreSQL
+Restart-Service postgresql-x64-15
+
+# Verificar puerto de escucha
+netstat -ano | Select-String ":5432"
+```

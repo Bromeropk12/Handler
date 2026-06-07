@@ -21,7 +21,8 @@ const {
   defragmentShelf,
   confirmDefragMove,
   previewGroupMove,
-  moveGroup
+  moveGroup,
+  getCompatibleShelves
 } = require('./controller');
 
 router.use(verifyToken);
@@ -88,6 +89,28 @@ router.get('/', requirePermission('warehouse.view'), getShelves);
  *         description: Anaquel no encontrado
  */
 router.get('/:id', requirePermission('warehouse.view'), getShelfById);
+
+/**
+ * @openapi
+ * /api/warehouse/{id}/compatible-shelves:
+ *   get:
+ *     summary: Obtener anaqueles compatibles (misma línea de mercado)
+ *     tags: [Warehouse]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lista de anaqueles compatibles
+ *       404:
+ *         description: Anaquel no encontrado
+ */
+router.get('/:id/compatible-shelves', requirePermission('warehouse.view'), getCompatibleShelves);
 
 /**
  * @openapi

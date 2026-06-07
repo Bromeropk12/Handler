@@ -44,11 +44,6 @@ Proceso de fraccionar el contenido de una muestra global (recipiente grande de m
 
 ---
 
-**Docker Desktop**
-Programa de sistema que crea y gestiona un entorno virtualizado (contenedor) dentro de Windows donde se ejecuta la base de datos PostgreSQL del sistema. Debe estar activo (corriendo) para que Handler TrackSamples pueda acceder y guardar información. Se identifica por el ícono de una ballena blanca en la bandeja del sistema de Windows.
-
----
-
 **GHS (Globally Harmonized System)**
 Nombre en inglés del Sistema Globalmente Armonizado de clasificación y etiquetado de productos químicos. Es una norma de las Naciones Unidas adoptada mundialmente para estandarizar la comunicación de los peligros de los productos químicos mediante pictogramas, palabras de señal y etiquetas de advertencia uniformes.
 
@@ -85,7 +80,7 @@ Símbolo visual estandarizado dentro de un rombo rojo (o negro sobre fondo blanc
 ---
 
 **PostgreSQL**
-Motor de base de datos relacional de código abierto que utiliza Handler TrackSamples para almacenar toda la información del inventario. Opera de forma completamente local dentro de un contenedor Docker en el computador del usuario, en el lenguaje SQL (Structured Query Language). No requiere conexión a internet.
+Motor de base de datos relacional de código abierto que utiliza Handler TrackSamples para almacenar toda la información del inventario. Se instala automáticamente en Windows durante la instalación del sistema y funciona como un servicio más del computador, al igual que otros servicios del sistema. No requiere conexión a internet ni ninguna capa de virtualización.
 
 ---
 

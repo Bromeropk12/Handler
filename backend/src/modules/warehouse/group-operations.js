@@ -511,6 +511,25 @@ async function commitGroupMove({
   const groupSamples = await validateGroupType(sampleIds, db);
   const sampleMap = new Map(groupSamples.map((s) => [s.id, s]));
 
+  // 1.5) Si es cross-shelf, validar misma línea de mercado
+  if (finalTargetId !== sourceShelfId) {
+    const checkResult = await db.query(
+      `SELECT id, market_line_id FROM shelves WHERE id IN ($1, $2)`,
+      [sourceShelfId, finalTargetId]
+    );
+    if (checkResult.rows.length < 2) {
+      throw new AppError('Anaquel origen o destino no encontrado', 404);
+    }
+    const source = checkResult.rows.find((r) => r.id === sourceShelfId);
+    const target = checkResult.rows.find((r) => r.id === finalTargetId);
+    if (source.market_line_id !== target.market_line_id) {
+      throw new AppError(
+        'Solo se permiten movimientos dentro de la misma línea de mercado',
+        400
+      );
+    }
+  }
+
   // 2) Generar batch_id
   const batchId = crypto.randomUUID();
 

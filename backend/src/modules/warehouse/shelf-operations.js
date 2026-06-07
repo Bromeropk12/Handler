@@ -529,10 +529,50 @@ const deleteShelf = async (req, res, next) => {
   }
 };
 
+/**
+ * Obtener anaqueles compatibles (misma línea de mercado)
+ */
+const getCompatibleShelves = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Obtener la línea de mercado del anaquel origen
+    const sourceResult = await query(
+      'SELECT market_line_id FROM shelves WHERE id = $1',
+      [id]
+    );
+    if (sourceResult.rows.length === 0) {
+      throw new AppError('Anaquel origen no encontrado', 404);
+    }
+    const { market_line_id } = sourceResult.rows[0];
+
+    // Obtener todos los anaqueles con esa misma línea de mercado
+    const result = await query(
+      `
+      SELECT s.id, s.name, s.grid_width, s.grid_height, s.shelf_depth, s.shelf_type,
+             ml.name as market_line_name
+      FROM shelves s
+      JOIN market_lines ml ON s.market_line_id = ml.id
+      WHERE s.market_line_id = $1
+      ORDER BY s.name ASC
+    `,
+      [market_line_id]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createShelf,
   getShelves,
   getShelfById,
   updateShelf,
-  deleteShelf
+  deleteShelf,
+  getCompatibleShelves
 };

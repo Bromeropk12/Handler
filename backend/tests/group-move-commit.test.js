@@ -24,8 +24,20 @@ function createDbMock() {
     query: clientQuery,
     release: jest.fn(),
   };
+  const dbQuery = jest.fn().mockImplementation((sql, params) => {
+    if (sql && sql.includes('market_line_id FROM shelves')) {
+      return Promise.resolve({
+        rows: [
+          { id: SHELF_ID, market_line_id: 'ml-1' },
+          { id: TARGET_SHELF_ID, market_line_id: 'ml-1' },
+          { id: 'OTHER-SHELF', market_line_id: 'ml-other' }
+        ]
+      });
+    }
+    return Promise.resolve({ rows: [] });
+  });
   return {
-    query: jest.fn(),
+    query: dbQuery,
     pool: {
       connect: jest.fn().mockResolvedValue(client),
     },

@@ -193,19 +193,19 @@ Garantizar la continuidad del negocio frente a fallos de hardware o corrupción 
 
 El software puede utilizarse de dos maneras:
 1. **Como aplicación de escritorio nativa:** Haciendo doble clic en el ícono de acceso directo del escritorio. Esta es la forma de uso recomendada y principal.
-2. **Desde un navegador web:** Accediendo a `http://localhost:3000` en los navegadores **Google Chrome** o **Microsoft Edge** instalados en la misma máquina donde se instaló el sistema.
+2. **Desde un navegador web:** Accediendo a `http://localhost:3001` en los navegadores **Google Chrome** o **Microsoft Edge** instalados en la misma máquina donde se instaló el sistema.
 
 > ⚠️ **Atención:** Intentar acceder desde otro computador de la red o desde un celular puede funcionar de manera limitada, pero no está oficialmente soportado ni es el uso esperado del sistema.
 
 ## 3.2. Requisitos Mínimos de Hardware
 
-El sistema requiere un mínimo de recursos del computador debido a que ejecuta tres componentes simultáneamente en segundo plano: la base de datos local PostgreSQL (dentro de Docker), el servidor de la aplicación (Node.js), y la interfaz gráfica con vista tridimensional del almacén (motor WebGL).
+El sistema requiere un mínimo de recursos del computador debido a que ejecuta tres componentes simultáneamente en segundo plano: la base de datos local PostgreSQL, el servidor de la aplicación, y la interfaz gráfica con vista tridimensional del almacén (motor WebGL).
 
 | Componente | Especificación Mínima Requerida |
 |---|---|
 | **Procesador** | Intel Core i3 (8.ª generación o más reciente) o AMD Ryzen 3. De 64 bits. |
-| **Memoria RAM** | 8 GB como mínimo absoluto. Con menos de 8 GB el sistema presentará lentitud severa. |
-| **Disco Duro / Almacenamiento** | Al menos 10 GB de espacio libre disponible. Se requiere un SSD (Disco de Estado Sólido), no un disco duro mecánico tradicional. |
+| **Memoria RAM** | 6 GB como mínimo absoluto. Con menos de 6 GB el sistema presentará lentitud severa. |
+| **Disco Duro / Almacenamiento** | Al menos 10 GB de espacio libre disponible. Se recomienda un SSD (Disco de Estado Sólido). |
 | **Tarjeta de Video** | Compatible con WebGL (cualquier tarjeta integrada Intel UHD o posterior). Los controladores deben estar actualizados. |
 | **Pantalla** | Resolución mínima de 1366 × 768 píxeles. |
 
@@ -216,20 +216,16 @@ Si el computador cumple las siguientes especificaciones, el sistema funcionará 
 | Componente | Especificación Recomendada |
 |---|---|
 | **Procesador** | Intel Core i5 (10.ª generación o más reciente) o AMD Ryzen 5 |
-| **Memoria RAM** | 16 GB DDR4 |
+| **Memoria RAM** | 12 GB DDR4 |
 | **Disco Duro / Almacenamiento** | SSD NVMe de alta velocidad |
 | **Tarjeta de Video** | GPU dedicada NVIDIA o AMD con soporte WebGL 2.0 |
 | **Pantalla** | Resolución Full HD: 1920 × 1080 píxeles |
 
 ## 3.4. Software Previo Necesario
 
-Además de Windows 10 o 11, el computador donde se instale el sistema debe tener previamente instalado el siguiente software gratuito:
+Handler TrackSamples es un sistema **autocontenido**. El instalador incluye y gestiona automáticamente todo el software necesario para su funcionamiento. **No se requiere instalar ningún componente manualmente** previo a la instalación.
 
-| Software | Para qué sirve | Dónde obtenerlo |
-|---|---|---|
-| **Docker Desktop** | Es el programa que gestiona la base de datos local del sistema. Sin él, el sistema no puede guardar ni leer información. | `https://www.docker.com/products/docker-desktop/` |
-
-> 📌 **Nota:** El equipo de TI de su institución puede encargarse de instalar Docker Desktop antes de proceder con la instalación de Handler TrackSamples. Si ya tiene Docker Desktop instalado y ve el ícono de una ballena blanca cerca del reloj de su pantalla, este requisito ya está cumplido.
+> 📌 **Nota:** El instalador verificará automáticamente si PostgreSQL (la base de datos) está instalado en el equipo. Si no lo encuentra, lo descargará e instalará durante el proceso de instalación. Todo esto ocurre de forma transparente para el usuario.
 
 
 ---
@@ -238,9 +234,9 @@ Además de Windows 10 o 11, el computador donde se instale el sistema debe tener
 
 ## 4.1. Instalación del Sistema
 
-El sistema **Handler TrackSamples** se instala en su computador con Windows 10 o Windows 11 mediante un único archivo de instalación ejecutable. Este proceso fue diseñado para ser lo más sencillo posible y no requiere conocimientos técnicos avanzados, aunque se recomienda que la primera instalación sea realizada o supervisada por el personal del área de Tecnologías de la Información (TI).
+El sistema **Handler TrackSamples** se instala en su computador con Windows 10 o Windows 11 mediante un único archivo de instalación ejecutable. Este proceso fue diseñado para ser lo más sencillo posible y no requiere conocimientos técnicos avanzados, ni instalar programas adicionales.
 
-> ⚠️ **Atención:** Antes de iniciar la instalación, verifique que **Docker Desktop** esté instalado y corriendo en su computador (debe ver el ícono de la ballena blanca cerca del reloj de Windows). Si no lo tiene, solicítelo al área de TI.
+> ⚠️ **Atención:** El instalador es **autocontenido** — no requiere Docker, ni WSL2, ni ningún otro software previo. Durante la instalación, el sistema verificará e instalará automáticamente PostgreSQL (la base de datos) si no está presente.
 
 ### ✅ Paso a Paso para la Instalación
 
@@ -256,25 +252,40 @@ El programa mostrará una serie de pantallas guiadas. En cada una, revise la inf
 - **Acceso directo en el escritorio:** Asegúrese de que esta casilla esté marcada. Así tendrá el ícono de Handler TrackSamples directamente en su escritorio.
 
 **Paso 4 — Esperar la instalación automática:**
-Durante este paso, el instalador realiza de forma automática y transparente varias acciones en segundo plano: descarga e instala la base de datos local (PostgreSQL dentro de Docker), prepara todos los datos iniciales del sistema (proveedores, anaqueles, líneas de mercado) y configura los permisos necesarios. Este proceso puede tardar entre **2 y 5 minutos** dependiendo de la velocidad del computador.
+Durante este paso, el instalador realiza de forma automática y transparente varias acciones en segundo plano:
+- Verifica si PostgreSQL (la base de datos) está instalado. Si no lo encuentra, lo descarga e instala automáticamente.
+- Configura la base de datos y crea los servicios necesarios para que el sistema funcione correctamente.
+- Prepara los datos iniciales del sistema (proveedores, anaqueles, líneas de mercado).
+
+Este proceso puede tardar entre **2 y 5 minutos** dependiendo de la velocidad del computador y de la descarga.
 
 **Paso 5 — Finalizar:**
-Cuando aparezca la pantalla de "Instalación completada", el sistema está listo para usarse. Puede hacer clic en "Finalizar". Si la casilla "Iniciar Handler TrackSamples ahora" está marcada, la aplicación se abrirá automáticamente.
+Cuando aparezca la pantalla de "Instalación completada", haga clic en "Finalizar". Si la casilla "Iniciar Handler TrackSamples ahora" está marcada, la aplicación se abrirá automáticamente.
+
+### ✅ Primer Arranque — Asistente de Configuración
+
+La **primera vez** que abra la aplicación después de instalar, el sistema lo guiará a través de un asistente de configuración (Setup Web Wizard) en su navegador. Este asistente le pedirá:
+
+1. **Datos de conexión a la base de datos:** Normalmente no necesita cambiar nada aquí, los valores vienen precargados.
+2. **Creación del usuario Administrador:** Ingrese un nombre de usuario y una contraseña segura para el administrador del sistema.
+3. **Finalización:** El sistema verificará la conexión y completará la configuración.
+
+Una vez completado este asistente, la aplicación estará lista para usarse.
 
 ---
 
 ## 4.2. Cómo Abrir (Ejecutar) el Sistema
 
-Una vez instalado, para abrir la aplicación en cualquier momento:
+Una vez instalado y configurado, para abrir la aplicación en cualquier momento:
 
 1. Busque el ícono de **"Handler TrackSamples"** en su escritorio de Windows.
 2. Haga **doble clic** sobre él.
 3. La ventana principal de la aplicación se abrirá mostrando la pantalla de inicio de sesión.
 
-> 📌 **Nota:** Antes de abrir la aplicación, asegúrese de que el ícono de Docker Desktop (la ballena blanca) esté visible y activo en la bandeja del sistema de Windows (esquina inferior derecha, cerca del reloj). Si Docker no está activo, la aplicación mostrará un error al intentar cargar los datos.
+> 📌 **Nota:** El sistema se inicia automáticamente con Windows. No es necesario realizar ninguna verificación previa antes de abrir la aplicación.
 
-**Credenciales de acceso inicial (proporcionadas por su administrador):**
-- Las credenciales de usuario (nombre de usuario y contraseña) son asignadas por el Administrador del sistema. Contacte al administrador de TI si es su primera vez usando el sistema.
+**Credenciales de acceso:**
+- Las credenciales de usuario (nombre de usuario y contraseña) son asignadas por el Administrador del sistema. Si es su primera vez usando el sistema, use las credenciales que creó durante el asistente de configuración inicial, o contacte al administrador de TI.
 
 ---
 
@@ -288,6 +299,13 @@ Si la aplicación se congela, responde muy lentamente, o la vista del Almacén 3
 2. Espere 5 segundos para que todos los procesos internos terminen correctamente.
 3. Haga doble clic nuevamente en el ícono del escritorio para abrir la aplicación.
 
+### ✅ Reinicio de los Servicios de Fondo (si el problema persiste)
+
+Si después del reinicio normal el sistema sigue sin responder correctamente, solicite al área de TI que reinicie los servicios del sistema:
+
+1. El área de TI debe reiniciar el servicio "HandlerTrackSamples" desde la herramienta de servicios de Windows.
+2. Espere 15 segundos y vuelva a abrir la aplicación.
+
 ### Reinicio Forzado (si la aplicación no responde)
 
 Si la ventana está completamente bloqueada y no responde al clic en la "X":
@@ -300,7 +318,7 @@ Si la ventana está completamente bloqueada y no responde al clic en la "X":
 
 ## 4.4. Cómo Desinstalar el Sistema
 
-> ⚠️ **Atención Importante:** Antes de desinstalar el sistema, asegúrese de haber realizado un backup de toda la información. Una desinstalación completa eliminará permanentemente todos los datos del inventario almacenados en el computador. Esta acción es **irreversible**.
+> ⚠️ **Atención Importante:** Antes de desinstalar el sistema, asegúrese de haber realizado un backup de toda la información. Una desinstalación eliminará la aplicación, pero **los datos persistentes (base de datos, archivos subidos, backups) NO se eliminan automáticamente**. Si desea una limpieza completa, debe informar al área de TI.
 
 ### ✅ Paso a Paso para Desinstalar
 
@@ -316,7 +334,16 @@ Si la ventana está completamente bloqueada y no responde al clic en la "X":
 2. Haga doble clic en el archivo `uninstall.exe`.
 3. Siga las instrucciones del asistente.
 
-El proceso de desinstalación elimina automáticamente el programa y detiene la base de datos local. Si el asistente ofrece la opción "Eliminar todos los datos", **sólo márquela si está completamente seguro** de que no necesitará recuperar la información.
+### ¿Qué se elimina y qué se conserva?
+
+| Se elimina | Se conserva |
+|---|---|
+| Archivos del programa en `C:\Program Files\Handler TrackSamples\` | Base de datos PostgreSQL (los datos del inventario) |
+| Acceso directo del escritorio y menú Inicio | Archivos subidos (Certificados de Análisis PDF) |
+| Servicio de Windows "HandlerTrackSamples" | Backups exportados en `C:\ProgramData\HandlerTrackSamples\backups\` |
+| Regla del Firewall de Windows | Logs del sistema |
+
+> 📌 **Nota:** Si necesita eliminar también los datos persistentes, contacte al área de TI para que realice la limpieza manual del directorio `C:\ProgramData\HandlerTrackSamples\`. **Esta acción es irreversible: una vez eliminados los datos, no podrá recuperarlos a menos que tenga un backup externo.**
 
 
 ---
@@ -661,16 +688,17 @@ El sistema no reconoce la combinación de usuario y contraseña ingresada.
 **¿Qué está pasando?**
 La ventana de la aplicación se abre correctamente, pero al intentar iniciar sesión o navegar entre módulos, aparece un mensaje de error de red o la pantalla se queda cargando indefinidamente.
 
-**Causa:** La base de datos local del sistema (que corre dentro de **Docker Desktop**) no está activa.
+**Causa:** El servicio de base de datos local (PostgreSQL) no está activo, o el servicio de la aplicación (HandlerTrackSamples) no se inició correctamente.
 
 **Solución paso a paso:**
-1. Mire la **bandeja del sistema de Windows** (la esquina inferior derecha de su pantalla, donde está el reloj).
-2. Busque el ícono con forma de **ballena blanca** (Docker Desktop).
-3. **Si no lo ve:** Vaya al Menú de Inicio de Windows, busque "Docker Desktop" y ábralo. Espere aproximadamente 60 segundos hasta que el ícono aparezca y ya no esté animándose.
-4. **Si ve el ícono pero con un punto rojo o de advertencia:** Haga clic derecho sobre él y seleccione "Restart Docker" (Reiniciar Docker). Espere a que termine de reiniciarse.
-5. Una vez que Docker esté activo (ícono de ballena blanca sin animaciones), **cierre y vuelva a abrir** Handler TrackSamples desde el acceso directo del escritorio.
-
-> 📌 **Consejo:** Para evitar este inconveniente en el futuro, configure Docker Desktop para que se inicie automáticamente con Windows. En Docker Desktop, vaya a `Configuración (ícono de engranaje) → General → Start Docker Desktop when you sign in to your computer` y asegúrese de que esté habilitado.
+1. **Cierre la aplicación** completamente (haga clic en la "X" roja).
+2. **Espere 10 segundos** y vuelva a abrir la aplicación desde el escritorio. Los servicios de fondo deberían iniciarse automáticamente.
+3. Si el problema persiste, **verifique que los servicios de Windows estén activos:**
+   - Presione `Ctrl + Alt + Supr` y seleccione "Administrador de tareas".
+   - Vaya a la pestaña "Servicios" o "Servicios".
+   - Busque "HandlerTrackSamples" y "postgresql-x64-15". Ambos deben mostrar estado "En ejecución".
+4. Si alguno aparece "Detenido", **solicite al área de TI** que reinicie los servicios.
+5. Si el problema continúa, reinicie el computador completamente.
 
 ---
 
@@ -741,9 +769,9 @@ El sistema lo redirigió a la pantalla de inicio de sesión sin que usted lo hay
 | Causa | Solución |
 |---|---|
 | El computador tiene poca memoria RAM disponible | Cierre los programas que no esté usando (navegadores con muchas pestañas, reproductores de video, etc.) para liberar memoria. |
-| Docker Desktop está consumiendo demasiados recursos | Reinicie Docker Desktop desde su ícono en la bandeja del sistema. |
 | El disco duro está casi lleno | Verifique que tenga al menos 5 GB libres en el disco donde está instalado el sistema. |
 | La aplicación lleva mucho tiempo abierta sin reiniciarse | Cierre y vuelva a abrir la aplicación para liberar la memoria acumulada (Reinicio normal del punto 4.3). |
+| El servicio de base de datos está consumiendo muchos recursos | Si el problema es recurrente, solicite al área de TI que verifique la configuración de PostgreSQL. |
 
 
 ---
@@ -794,11 +822,6 @@ Proceso de fraccionar el contenido de una muestra global (recipiente grande de m
 
 ---
 
-**Docker Desktop**
-Programa de sistema que crea y gestiona un entorno virtualizado (contenedor) dentro de Windows donde se ejecuta la base de datos PostgreSQL del sistema. Debe estar activo (corriendo) para que Handler TrackSamples pueda acceder y guardar información. Se identifica por el ícono de una ballena blanca en la bandeja del sistema de Windows.
-
----
-
 **GHS (Globally Harmonized System)**
 Nombre en inglés del Sistema Globalmente Armonizado de clasificación y etiquetado de productos químicos. Es una norma de las Naciones Unidas adoptada mundialmente para estandarizar la comunicación de los peligros de los productos químicos mediante pictogramas, palabras de señal y etiquetas de advertencia uniformes.
 
@@ -835,7 +858,7 @@ Símbolo visual estandarizado dentro de un rombo rojo (o negro sobre fondo blanc
 ---
 
 **PostgreSQL**
-Motor de base de datos relacional de código abierto que utiliza Handler TrackSamples para almacenar toda la información del inventario. Opera de forma completamente local dentro de un contenedor Docker en el computador del usuario, en el lenguaje SQL (Structured Query Language). No requiere conexión a internet.
+Motor de base de datos relacional de código abierto que utiliza Handler TrackSamples para almacenar toda la información del inventario. Se ejecuta como un servicio nativo de Windows (no requiere Docker). Se instala automáticamente durante la instalación del sistema y se inicia con Windows. No requiere conexión a internet para funcionar.
 
 ---
 

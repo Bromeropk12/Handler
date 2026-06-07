@@ -96,15 +96,6 @@ export const useMovementMode = ({
     };
   }, [phase, escToCancel, cancel]);
 
-  // Si cambia el anaquel, cancelar el modo movimiento.
-  useEffect(() => {
-    if (phase !== PICKING) return;
-    const firstShelf = movingSamples[0]?.shelf_id;
-    if (firstShelf && currentShelfId && firstShelf !== currentShelfId) {
-      cancel();
-    }
-  }, [currentShelfId, movingSamples, phase, cancel]);
-
   return {
     phase,
     isActive: phase === PICKING,

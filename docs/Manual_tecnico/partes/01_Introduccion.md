@@ -4,7 +4,7 @@
 
 El presente **Manual Técnico del Sistema** constituye el documento normativo e instructivo oficial del proyecto de grado denominado **Handler TrackSamples**, desarrollado para la Facultad de Ingeniería de Sistemas de la institución, en el marco del proceso de evaluación de la Unidad para el Desarrollo de la Ciencia, la Investigación y la Innovación (UDCII).
 
-Este manual está dirigido exclusivamente al personal técnico especializado: ingenieros de software, administradores de bases de datos relacionales, profesionales de infraestructura y soporte de Tecnologías de la Información (TI). Su contenido presupone un conocimiento previo en arquitecturas de software Cliente-Servidor, lenguaje SQL, ecosistemas Node.js, Docker, y programación orientada a componentes con React.
+Este manual está dirigido exclusivamente al personal técnico especializado: ingenieros de software, administradores de bases de datos relacionales, profesionales de infraestructura y soporte de Tecnologías de la Información (TI). Su contenido presupone un conocimiento previo en arquitecturas de software Cliente-Servidor, lenguaje SQL, ecosistemas Node.js y programación orientada a componentes con React.
 
 El objetivo primordial de este documento es proporcionar al equipo técnico un conocimiento exhaustivo de:
 - La arquitectura de software interna del aplicativo y sus tres capas fundamentales.

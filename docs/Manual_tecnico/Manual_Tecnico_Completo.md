@@ -25,8 +25,8 @@
 | **Tipo de Documento** | Manual Técnico del Sistema |
 | **Nombre del Sistema** | Handler TrackSamples |
 | **Versión del Software** | v1.0.0 |
-| **Versión del Documento** | 1.0 |
-| **Fecha de Elaboración** | Mayo de 2026 |
+| **Versión del Documento** | 1.1 |
+| **Fecha de Elaboración** | Junio de 2026 |
 | **Estado** | Versión Final — Entrega de Grado |
 
 ---
@@ -52,10 +52,11 @@
 ## CONTROL DE VERSIONES DEL DOCUMENTO
 
 | Versión | Fecha | Descripción del Cambio | Responsable |
-|---|---|---|---|
+|---|---|---|---|---|
 | 0.1 | Abril 2026 | Borrador inicial — análisis arquitectónico | Equipo de Desarrollo |
 | 0.5 | Abril 2026 | Incorporación de esquema SQL y módulos API | Equipo de Desarrollo |
 | 1.0 | Mayo 2026 | Versión final para entrega de grado | Equipo de Desarrollo |
+| 1.1 | Junio 2026 | Migración de Docker a PostgreSQL nativo. Actualización de instalación, arquitectura y seguridad | Equipo de Desarrollo |
 
 &nbsp;
 
@@ -70,7 +71,8 @@
 **Documento:** FIS – UDCII – G05  
 **Tipo:** Manual Técnico del Sistema  
 **Versión del Software:** 1.0.0  
-**Fecha de Elaboración:** Mayo de 2026  
+**Versión del Documento:** 1.1  
+**Fecha de Elaboración:** Junio de 2026  
 **Elaborado por:** Equipo de Desarrollo — Handler S.A.S.  
 **Presentado a:** Unidad para el Desarrollo de la Ciencia, la Investigación y la Innovación (UDCII)
 
@@ -78,17 +80,18 @@
 
 ## TABLA DE CONTENIDO
 
-1. [Introducción](./01_Introduccion.md)
-2. [Descripción General del Sistema](./02_Descripcion_General.md)
-3. [Modelo de Base de Datos y Esquema SQL](./03_Base_de_Datos.md)
-4. [Arquitectura de Módulos y API REST](./04_Arquitectura_Modulos.md)
-5. [Características de los Usuarios y Control de Acceso](./05_Usuarios_y_Control_Acceso.md)
-6. [Requisitos de Hardware y Software](./06_Requisitos_Sistema.md)
-7. [Instalación, Configuración y Ejecución](./07_Instalacion_y_Configuracion.md)
-8. [Interfaz de Usuario — Módulos del Sistema](./08_Interfaz_Modulos.md)
-9. [Sistema de Backups y Recuperación de Datos](./09_Backups_y_Recuperacion.md)
-10. [Desinstalación del Sistema](./10_Desinstalacion.md)
-11. [Solución de Problemas](./11_Solucion_Problemas.md)
+1. [Introducción](#1-introducción)
+2. [Descripción General del Sistema](#2-descripción-general-del-sistema)
+3. [Modelo de Base de Datos y Esquema SQL](#3-modelo-de-base-de-datos-y-esquema-sql)
+4. [Arquitectura de Módulos y API REST](#4-arquitectura-de-módulos-y-api-rest)
+5. [Características de los Usuarios y Control de Acceso](#5-características-de-los-usuarios-y-control-de-acceso)
+6. [Requisitos de Hardware y Software](#6-requisitos-de-hardware-y-software)
+7. [Instalación, Configuración y Ejecución](#7-instalación-configuración-y-ejecución)
+8. [Interfaz de Usuario — Módulos del Sistema](#8-interfaz-de-usuario--módulos-del-sistema)
+9. [Sistema de Backups y Recuperación de Datos](#9-sistema-de-backups-y-recuperación-de-datos)
+10. [Desinstalación del Sistema](#10-desinstalación-del-sistema)
+11. [Solución de Problemas](#11-solución-de-problemas-troubleshooting)
+12. [Evaluación de Seguridad](#12-evaluación-de-seguridad-del-sistema)
 
 
 ---
@@ -99,7 +102,7 @@
 
 El presente **Manual Técnico del Sistema** constituye el documento normativo e instructivo oficial del proyecto de grado denominado **Handler TrackSamples**, desarrollado para la Facultad de Ingeniería de Sistemas de la institución, en el marco del proceso de evaluación de la Unidad para el Desarrollo de la Ciencia, la Investigación y la Innovación (UDCII).
 
-Este manual está dirigido exclusivamente al personal técnico especializado: ingenieros de software, administradores de bases de datos relacionales, profesionales de infraestructura y soporte de Tecnologías de la Información (TI). Su contenido presupone un conocimiento previo en arquitecturas de software Cliente-Servidor, lenguaje SQL, ecosistemas Node.js, Docker, y programación orientada a componentes con React.
+Este manual está dirigido exclusivamente al personal técnico especializado: ingenieros de software, administradores de bases de datos relacionales, profesionales de infraestructura y soporte de Tecnologías de la Información (TI). Su contenido presupone un conocimiento previo en arquitecturas de software Cliente-Servidor, lenguaje SQL, ecosistemas Node.js y programación orientada a componentes con React.
 
 El objetivo primordial de este documento es proporcionar al equipo técnico un conocimiento exhaustivo de:
 - La arquitectura de software interna del aplicativo y sus tres capas fundamentales.
@@ -142,33 +145,37 @@ A lo largo de este manual se utilizan las siguientes convenciones:
 
 ## 2.1. Paradigma de Distribución
 
-**Handler TrackSamples** ha sido concebido y desarrollado bajo el paradigma de **Aplicación de Escritorio Nativa para Windows** (Native Desktop Application), utilizando el framework **Electron v41** como contenedor de distribución. Esto significa que el sistema completo se empaqueta y se instala en la máquina del usuario a través de un único instalador ejecutable (`Handler_TrackSamples_Setup.exe`), compilado mediante el instalador NSIS (Nullsoft Scriptable Install System).
+**Handler TrackSamples** ha sido concebido y desarrollado bajo el paradigma de **Aplicación de Escritorio Nativa para Windows** (Native Desktop Application), utilizando el framework **Electron v41** como contenedor de distribución. Esto significa que el sistema completo se empaqueta y se instala en la máquina del usuario a través de un único instalador ejecutable (`Handler_TrackSamples_Setup.exe`), compilado mediante el instalador NSIS (Nullsoft Scriptable Install System) y empaquetado con **electron-builder**.
 
-El sistema opera de forma **totalmente local y autónoma**. Toda la infraestructura de datos (motor PostgreSQL 15), la lógica de negocio (API Node.js/Express) y la interfaz de usuario (React 18/TailwindCSS/Three.js) se ejecutan íntegramente en la máquina anfitriona del usuario, sin requerir conectividad a internet ni dependencias de servicios en la nube para su funcionamiento cotidiano.
+El sistema opera de forma **totalmente local y autónoma**. Toda la infraestructura de datos (motor PostgreSQL 15 instalado nativamente en Windows), la lógica de negocio (API Node.js/Express compilada a `backend.exe`) y la interfaz de usuario (React 18/TailwindCSS/Three.js) se ejecutan íntegramente en la máquina anfitriona del usuario, sin requerir conectividad a internet ni dependencias de servicios en la nube para su funcionamiento cotidiano.
 
-> **Plataforma Exclusiva:** El aplicativo está diseñado, compilado, probado y soportado **únicamente para los sistemas operativos Microsoft Windows 10 (Build 19041 o superior) y Windows 11**. No se soporta la ejecución nativa en macOS, Linux ni versiones anteriores de Windows. Alternativamente, puede consumirse a través del navegador Google Chrome o Microsoft Edge en la misma máquina, accediendo a `http://localhost:3000`.
+> **Plataforma Exclusiva:** El aplicativo está diseñado, compilado, probado y soportado **únicamente para los sistemas operativos Microsoft Windows 10 (Build 19041 o superior) y Windows 11**. No se soporta la ejecución nativa en macOS, Linux ni versiones anteriores de Windows. Alternativamente, puede consumirse a través del navegador Google Chrome o Microsoft Edge en la misma máquina, accediendo a `http://localhost:3001`.
 
 ## 2.2. Arquitectura de Software en Tres Capas
 
 El sistema implementa una arquitectura desacoplada de tres capas verticales claramente definidas:
 
 ```
-┌────────────────────────────────────────────────────────┐
-│          CAPA DE PRESENTACIÓN (Frontend)               │
-│   React 18 + TailwindCSS 3 + Three.js (WebGL)         │
-│   Electron v41 → Ejecutable .exe nativo Windows        │
-│   Puerto: localhost:3000                               │
-├────────────────────────────────────────────────────────┤
-│          CAPA DE LÓGICA DE NEGOCIO (Backend API)       │
-│   Node.js v18+ + Express.js 4.18                       │
-│   12 módulos REST + Middleware de seguridad JWT         │
-│   Puerto: localhost:3001                               │
-├────────────────────────────────────────────────────────┤
-│          CAPA DE PERSISTENCIA (Base de Datos Local)    │
-│   PostgreSQL 15 en contenedor Docker                   │
-│   8 tablas relacionales + 4 vistas SQL + 21 políticas  │
-│   Puerto: localhost:5432                               │
-└────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│            CAPA DE PRESENTACIÓN (Frontend)                   │
+│   React 18 + TailwindCSS 3 + Three.js (WebGL)               │
+│   Electron v41 → Ejecutable .exe nativo Windows              │
+│   Servido por el backend en producción                        │
+│   Puerto: localhost:3001 (servido por Express)                │
+├──────────────────────────────────────────────────────────────┤
+│            CAPA DE LÓGICA DE NEGOCIO (Backend API)           │
+│   Node.js v18+ → Compilado a backend.exe (pkg)               │
+│   15 módulos REST + Middleware de seguridad JWT               │
+│   Instalado como Servicio Windows "HandlerTrackSamples"       │
+│   Gestión: NSSM (Non-Sucking Service Manager)                 │
+│   Puerto: localhost:3001                                     │
+├──────────────────────────────────────────────────────────────┤
+│            CAPA DE PERSISTENCIA (Base de Datos Local)        │
+│   PostgreSQL 15 — Instalación nativa en Windows               │
+│   Instalado automáticamente vía winget durante el setup .exe  │
+│   8 tablas relacionales + 4 vistas SQL + 21 políticas RLS    │
+│   Servicio: postgresql-x64-15 + Puerto: localhost:5432       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### 2.2.1. Capa de Presentación — Frontend
@@ -188,10 +195,13 @@ El sistema implementa una arquitectura desacoplada de tres capas verticales clar
 | QR Generator | qrcode.react | 4.2.0 | Generación de imágenes QR en componentes React |
 | Resiliencia | react-error-boundary | 4.0.13 | Captura de errores en árbol de componentes |
 | Desktop | Electron | 41.1.1 | Empaquetado y distribución como aplicación Windows |
+| Circuit Breaker | opossum | 7.0.0 | Aísla fallos del backend para evitar cascada |
 
 ### 2.2.2. Capa de Lógica de Negocio — Backend API
 
-El backend expone **12 módulos REST** accesibles bajo el prefijo `/api/`. Cada módulo posee su propio router, controlador y responsabilidades de validación.
+El backend es un servidor **Express.js** compilado a un ejecutable independiente de Windows (`backend.exe`) mediante la herramienta **pkg**. En producción, este ejecutable se instala como un **servicio de Windows** llamado `HandlerTrackSamples`, gestionado por **NSSM (Non-Sucking Service Manager)**, lo que garantiza que se inicie automáticamente con el sistema operativo, se ejecute en segundo plano y se reinicie automáticamente en caso de fallo.
+
+El backend expone **15 módulos REST** accesibles bajo el prefijo `/api/`. Cada módulo posee su propio router, controlador y responsabilidades de validación.
 
 | Módulo | Ruta Base | Descripción |
 |---|---|---|
@@ -207,6 +217,14 @@ El backend expone **12 módulos REST** accesibles bajo el prefijo `/api/`. Cada 
 | Líneas de Mercado | `/api/market-lines` | CRUD de categorías de negocio |
 | Anaquel-Proveedor | `/api/shelf-suppliers` | Relación muchos-a-muchos entre anaqueles y proveedores |
 | Backup | `/api/backup` | Creación, listado, restauración y eliminación de backups |
+| Configuración | `/api/settings` | Parámetros globales del sistema (CoA dir, backup config) |
+| Administración | `/api/admin` | Rutas internas de administración del servicio (solo localhost) |
+| Setup Inicial | `/api/setup` | Asistente web de configuración inicial (primer arranque) |
+
+Además, expone:
+- **`GET /health`** → Health check del backend (estado, versión, modo setup)
+- **`GET /api/events`** → Canal SSE (Server-Sent Events) para notificaciones en tiempo real
+- **`GET /api-docs`** → Documentación Swagger/OpenAPI (solo en desarrollo)
 
 **Librerías clave del backend:**
 
@@ -223,38 +241,55 @@ El backend expone **12 módulos REST** accesibles bajo el prefijo `/api/`. Cada 
 | `qrcode` | 1.5.4 | Generación de imágenes QR en el backend |
 | `uuid` | 9.0.1 | Generación de UUID v4 para identificadores únicos |
 | `winston` | 3.11.0 | Logging estructurado en formato JSON con timestamps |
+| `winston-daily-rotate-file` | — | Rotación diaria de archivos de log (retención: 14 días) |
 | `cookie-parser` | 1.4.7 | Parseo de cookies HTTP |
 | `cors` | 2.8.5 | Control CORS (localhost + IPs de red local 192.168.x.x) |
 | `dotenv` | 16.3.1 | Gestión de variables de entorno desde archivo `.env` |
+| `swagger-jsdoc` | — | Generación de especificación OpenAPI |
+| `swagger-ui-express` | — | Interfaz web de documentación de API |
 
-### 2.2.3. Capa de Persistencia — Base de Datos Local (PostgreSQL + Docker)
+### 2.2.3. Capa de Persistencia — Base de Datos Local (PostgreSQL Nativo en Windows)
 
-La base de datos relacional es el componente central de la arquitectura. Se ejecuta en un contenedor **Docker** usando la imagen oficial `postgres:15-alpine`, la cual se levanta de forma completamente automática durante la instalación del sistema mediante el instalador `.exe`.
+La base de datos relacional es el componente central de la arquitectura. Utiliza **PostgreSQL 15** instalado de forma nativa en Windows. El instalador `.exe` detecta automáticamente si PostgreSQL está presente en el sistema y, si no es así, lo instala mediante **winget** (el gestor de paquetes oficial de Windows). **No requiere Docker, WSL2 ni ninguna otra capa de virtualización.**
 
 **Características del motor de persistencia:**
 
-- **Motor:** PostgreSQL 15 (imagen Alpine, optimizada para contenedores)
+- **Motor:** PostgreSQL 15 (instalación nativa Windows, servicio `postgresql-x64-15`)
 - **Nombre de la Base de Datos:** `handler_track_samples`
 - **Usuario de Servicio:** `handler_user`
+- **Contraseña de Instalación:** `!Handler2026` (configurable posteriormente)
 - **Puerto Expuesto Localmente:** `5432`
-- **Persistencia de Datos:** Volumen Docker nombrado (`postgres_data`) que sobrevive reinicios
+- **Persistencia de Datos:** Almacenamiento en `C:\Program Files\PostgreSQL\15\data\` (estándar de instalación Windows)
 - **Seguridad a Nivel de Base de Datos:** Row Level Security (RLS) habilitada en 8 tablas con 21 políticas granulares
 - **Conección del Backend:** Pool de hasta 20 conexiones simultáneas con timeout de 10 segundos
+- **Backend:** Compilado a `backend.exe`, instalado como servicio Windows `HandlerTrackSamples` mediante NSSM
 
 ## 2.3. Flujo de Comunicación entre Capas
 
 ```
-[Usuario → Electron/Chrome]
-       ↕ React App (localhost:3000)
-       ↕ Axios HTTP requests
-[API REST → Node.js/Express (localhost:3001)]
-       ↕ Middleware: JWT Auth → Validación Joi → Controlador
-       ↕ Driver pg (Pool de conexiones)
-[PostgreSQL 15 → Docker (localhost:5432)]
+[Usuario → Electron App / Navegador Chrome]
+       ↕ React App (servida por Express en localhost:3001)
+       ↕ Axios HTTP requests + JWT en Authorization header
+[API REST → backend.exe (Servicio Windows "HandlerTrackSamples")]
+       ↕ Middleware: Helmet → CORS → Rate Limit → Logger → Auth JWT → Controlador
+       ↕ Driver pg (Pool de conexiones, máx. 20)
+[PostgreSQL 15 → Servicio Windows "postgresql-x64-15" (localhost:5432)]
        ↕ Sentencias SQL parametrizadas
        ↕ Políticas RLS
 [Tablas relacionales + Vistas SQL + Triggers]
 ```
+
+## 2.4. Componentes del Sistema en Producción
+
+| Componente | Tipo | Gestión | Ruta / Comando |
+|---|---|---|---|
+| Aplicación de escritorio | Electron .exe | Acceso directo escritorio | `C:\Program Files\Handler TrackSamples\Handler TrackSamples.exe` |
+| Backend API | Servicio Windows | NSSM (auto-start) | `resources\backend\backend.exe` |
+| PostgreSQL | Servicio Windows | Service Manager (auto-start) | `postgresql-x64-15` |
+| Archivo `.env` | Configuración persistente | — | `C:\ProgramData\HandlerTrackSamples\.env` |
+| Logs del backend | Rotación diaria | Winston (14 días) | `C:\ProgramData\HandlerTrackSamples\logs\` |
+| Uploads (CoA) | Almacenamiento local | — | `C:\ProgramData\HandlerTrackSamples\uploads\coa\` |
+| Configuración de BD | Settings DB | Tabla `settings` | Consultable vía API `/api/settings` |
 
 
 ---
@@ -521,29 +556,39 @@ El esquema define **18 índices** estratégicos para garantizar consultas < 500m
 
 ## 4.1. Punto de Entrada del Backend
 
-El servidor se inicializa en el archivo `backend/src/index.js`. La secuencia de arranque es la siguiente:
+El servidor se compila a un ejecutable independiente `backend.exe` mediante **pkg** y se ejecuta como un **servicio de Windows** gestionado por **NSSM** (Non-Sucking Service Manager). En desarrollo, se ejecuta directamente con Node.js. El punto de entrada es `backend/src/index.js`. La secuencia de arranque es la siguiente:
 
-1. Carga de variables de entorno desde `.env` mediante `dotenv`.
-2. Validación de variables obligatorias (`NODE_ENV`, `PORT`, `JWT_SECRET`, `DATABASE_URL`).
-3. Instanciación de la aplicación Express con todos los middlewares de seguridad.
-4. Registro de los 12 routers de módulo bajo el prefijo `/api/`.
-5. Inicio del servidor en el puerto `3001`, escuchando en `0.0.0.0` (acepta conexiones de red local).
-6. Activación del programador automático de backups (`backupScheduler`).
+1. **Carga de variables de entorno:** Intenta cargar `.env` desde `C:\ProgramData\HandlerTrackSamples\.env` (producción); si no existe, carga desde `backend/.env` local (desarrollo).
+2. **Validación de variables obligatorias** (`NODE_ENV`, `PORT`, `JWT_SECRET`, `DATABASE_URL`). Si faltan, entra en **SETUP_MODE**.
+3. **Creación de directorios persistentes:** Crea `logs/`, `uploads/coa/` y `backups/` en `C:\ProgramData\HandlerTrackSamples\`.
+4. **Instanciación de la aplicación Express** con todos los middlewares de seguridad.
+5. **Registro de los 15 routers de módulo** bajo el prefijo `/api/`.
+6. **En producción:** Sirve los archivos estáticos del frontend React compilado (`resources/app/`).
+7. **En setup mode:** Redirige todo el tráfico a `/setup`.
+8. **Inicio del servidor** en el puerto `3001`, escuchando en `0.0.0.0`.
+9. **Migraciones automáticas:** Ejecuta `runMigrationsSilent()`.
+10. **Activación del programador automático de backups** (`backupScheduler`).
 
 **Variables de entorno requeridas (`.env`):**
 
 | Variable | Valor por Defecto | Descripción |
 |---|---|---|
-| `NODE_ENV` | `development` | Entorno de ejecución |
+| `NODE_ENV` | `development` | Entorno de ejecución (`production` en el servicio Windows) |
 | `PORT` | `3001` | Puerto del servidor API |
-| `JWT_SECRET` | *(clave larga)* | Secreto criptográfico para firmar tokens JWT |
-| `DATABASE_URL` | `postgresql://...@localhost:5432/handler_track_samples` | Cadena de conexión PostgreSQL |
+| `JWT_SECRET` | *(clave generada aleatoriamente en setup)* | Secreto criptográfico para firmar tokens JWT |
+| `DATABASE_URL` | `postgresql://handler_user:...@localhost:5432/handler_track_samples` | Cadena de conexión PostgreSQL |
+| `DB_HOST` | `localhost` | Host de PostgreSQL (alternativa a DATABASE_URL) |
+| `DB_PORT` | `5432` | Puerto de PostgreSQL |
+| `DB_NAME` | `handler_track_samples` | Nombre de la base de datos |
+| `DB_USER` | `handler_user` | Usuario de PostgreSQL |
+| `DB_PASSWORD` | `handler_password` | Contraseña de PostgreSQL |
 | `JWT_EXPIRES_IN` | `8h` | Tiempo de expiración de las sesiones |
 | `BCRYPT_ROUNDS` | `12` | Rondas de hashing para contraseñas |
 | `RATE_LIMIT_WINDOW` | `15` | Ventana de tiempo para rate limiting (minutos) |
 | `RATE_LIMIT_MAX_REQUESTS` | `5000` | Máximo de peticiones por IP en la ventana |
-| `COA_BASE_DIR` | `C:/Handler/CoA` | Directorio local donde se almacenan los PDFs de CoA |
+| `COA_BASE_DIR` | `C:/ProgramData/HandlerTrackSamples/uploads/coa` | Directorio local donde se almacenan los PDFs de CoA |
 | `MAX_FILE_SIZE` | `10485760` | Tamaño máximo de archivos subidos (10 MB) |
+| `HOST` | `0.0.0.0` | Interfaz de red donde escucha el servidor |
 
 ## 4.2. Middlewares de Seguridad
 
@@ -906,31 +951,32 @@ Cada usuario en el sistema tiene **dos contraseñas independientes**, ambas alma
 
 > **Advertencia:** No se soporta la ejecución en Windows 7, Windows 8, Windows Server, macOS, distribuciones Linux, ni arquitecturas ARM. El empaquetado Electron genera exclusivamente binarios `win-x64`.
 
-## 6.2. Requisitos de Software del Sistema Anfitrión
+## 6.2. Software del Sistema Anfitrión
 
-Antes de ejecutar el instalador, la estación de trabajo debe contar con el siguiente software instalado y operativo:
+El instalador `Handler_TrackSamples_Setup.exe` es **autocontenido** y gestiona automáticamente todas las dependencias de software necesarias. **No se requiere instalar ningún componente manualmente** previo a la instalación.
 
-| Software | Versión Mínima Requerida | Propósito |
+| Software | Propósito | Gestionado por |
 |---|---|---|
-| **Docker Desktop for Windows** | 4.0 o superior | Orquestación del contenedor PostgreSQL local |
-| WSL2 (Windows Subsystem for Linux 2) | Kernel 5.10+ | Requerido internamente por Docker Desktop en Windows |
+| PostgreSQL 15 | Motor de base de datos relacional | Instalado automáticamente por el instalador vía winget si no está presente |
+| Node.js 18+ | Entorno de ejecución del backend (Express) | Compilado dentro de `backend.exe` mediante pkg — no requiere instalación |
+| Chromium | Motor de renderizado de Electron | Empaquetado dentro del instalador `.exe` |
 
-> **Nota Técnica:** El instalador `.exe` verificará la presencia de Docker Desktop en el sistema antes de proceder. Si Docker Desktop no está instalado, el asistente de instalación mostrará una advertencia y detendrá el proceso hasta que la dependencia sea satisfecha. Docker Desktop puede descargarse gratuitamente desde `https://www.docker.com/products/docker-desktop/`.
+> **Nota Técnica:** El instalador verifica la presencia de PostgreSQL mediante `Get-Service postgresql*`. Si no encuentra el servicio, ejecuta `winget install --id PostgreSQL.PostgreSQL` para instalarlo de forma silenciosa con puerto `5432` y configura el servicio para inicio automático. Todo este proceso es transparente para el usuario.
 
 ## 6.3. Requisitos de Hardware — Mínimos
 
 Las siguientes especificaciones representan el **umbral mínimo absoluto** para que el sistema pueda arrancar y operar con funcionalidad básica. Por debajo de estos valores, se producirán bloqueos, tiempos de carga inaceptables o fallos del motor WebGL.
 
-La razón del alto requerimiento de RAM radica en la carga simultánea de: el demonio de Docker Desktop (que reserva recursos para el contenedor PostgreSQL), el proceso Node.js del backend API (ejecutado internamente por Electron), y el motor de renderizado Chromium de Electron con gráficos WebGL activos para el módulo de Almacén 3D.
+La razón principal del requerimiento de RAM es la ejecución simultánea de: el servicio PostgreSQL, el proceso del backend API (`backend.exe`), y el motor de renderizado Chromium de Electron con gráficos WebGL activos para el módulo de Almacén 3D.
 
 | Componente | Especificación Mínima |
 |---|---|
 | **Procesador (CPU)** | Intel Core i3 de 8.ª generación / AMD Ryzen 3 3000 series — Quad-Core a 2.0 GHz mínimo — Arquitectura x64 |
-| **Memoria RAM** | 8 GB DDR4 |
-| **Almacenamiento** | 10 GB de espacio libre — SSD obligatorio (los discos duros mecánicos HDD producen retardos severos de I/O en Docker) |
+| **Memoria RAM** | 6 GB DDR4 |
+| **Almacenamiento** | 10 GB de espacio libre — SSD recomendado |
 | **Gráficos** | Tarjeta de video con soporte WebGL 1.0 (Intel UHD 620 o equivalente). Los controladores deben estar actualizados |
 | **Resolución de Pantalla** | 1366 × 768 px mínimo |
-| **Puertos de Red Locales** | Puertos `3000`, `3001` y `5432` deben estar disponibles (no usados por otro proceso) |
+| **Puertos de Red Locales** | Puertos `3001` y `5432` deben estar disponibles (no usados por otro proceso) |
 
 ## 6.4. Requisitos de Hardware — Recomendados para Producción
 
@@ -939,21 +985,10 @@ Para garantizar una experiencia de usuario fluida, especialmente durante el rend
 | Componente | Especificación Recomendada |
 |---|---|
 | **Procesador (CPU)** | Intel Core i5 de 10.ª gen. o superior / AMD Ryzen 5 5000 series — 6 núcleos o más |
-| **Memoria RAM** | 16 GB DDR4 o superior |
+| **Memoria RAM** | 12 GB DDR4 o superior |
 | **Almacenamiento** | 30+ GB en SSD NVMe M.2 (velocidad de escritura > 1500 MB/s) |
 | **Gráficos** | GPU dedicada NVIDIA GTX 1650 / AMD RX 5500M o superior, con soporte completo WebGL 2.0 y OpenGL 4.5 |
 | **Resolución de Pantalla** | 1920 × 1080 px (Full HD) o superior |
-
-## 6.5. Configuración de Docker Desktop Recomendada
-
-Para maximizar el rendimiento del contenedor PostgreSQL local, se recomienda ajustar los recursos asignados a Docker Desktop desde su interfaz de configuración (Configuración → Recursos):
-
-| Recurso | Valor Recomendado |
-|---|---|
-| CPUs | 2 núcleos mínimo |
-| Memoria RAM | 3 GB mínimo asignados al demonio Docker |
-| Swap | 1 GB |
-| Integración WSL2 | Habilitada |
 
 
 ---
@@ -962,25 +997,18 @@ Para maximizar el rendimiento del contenedor PostgreSQL local, se recomienda aju
 
 ## 7.1. Prerrequisitos Obligatorios
 
-Antes de iniciar el proceso de instalación, el técnico responsable debe verificar que la estación de trabajo cumple con los siguientes prerrequisitos. El incumplimiento de cualquiera de ellos impedirá la correcta inicialización del sistema.
+Antes de iniciar el proceso de instalación, el técnico responsable debe verificar que la estación de trabajo cumple con los siguientes prerrequisitos:
 
 **Lista de verificación previa a la instalación:**
 
 - [ ] Sistema operativo: Windows 10 (Build 19041+) o Windows 11 — 64-bit.
-- [ ] Docker Desktop instalado (versión 4.0 o superior) y en estado de ejecución activo.
-- [ ] WSL2 habilitado en Windows (verificar en: Panel de control → Programas → Activar o desactivar características de Windows → Subsistema de Windows para Linux).
-- [ ] Puertos `3000`, `3001` y `5432` libres (sin conflictos con otros servicios).
-- [ ] Al menos 10 GB de espacio libre en disco SSD.
-- [ ] El usuario de Windows tiene privilegios de Administrador local.
+- [ ] Puertos `3001` y `5432` libres (sin conflictos con otros servicios).
+- [ ] Al menos 10 GB de espacio libre en disco (SSD recomendado).
+- [ ] El usuario de Windows tiene privilegios de Administrador local (requerido para instalar servicios).
+- [ ] Conexión a internet disponible para la descarga de PostgreSQL vía winget (solo si no está preinstalado).
+- [ ] *No requiere* Docker Desktop, WSL2, ni ningún software de virtualización.
 
-### Verificación del Estado de Docker Desktop
-
-Antes de ejecutar el instalador, confirmar que el icono de Docker Desktop (ballena blanca) aparece en la bandeja del sistema de Windows con estado "Running". Si no está activo, iniciarlo manualmente:
-
-```
-Menú Inicio de Windows → Buscar "Docker Desktop" → Abrir → 
-Esperar hasta que el icono deje de animar y muestre "Docker is running"
-```
+> **Nota Técnica:** El instalador es autocontenido. Cualquier dependencia faltante (PostgreSQL) es detectada y gestionada automáticamente durante la instalación.
 
 ## 7.2. Proceso de Instalación del Ejecutable `.exe`
 
@@ -1015,89 +1043,159 @@ El asistente NSIS presentará las siguientes pantallas secuenciales:
 - Confirmación de creación de acceso directo en el escritorio y en el menú de Inicio.
 
 **Paso 3 — Extracción y despliegue de archivos:**
-El instalador extrae todos los binarios de la aplicación Electron, los archivos estáticos del frontend React compilado (`build/`), los scripts SQL de inicialización de la base de datos, y los recursos multimedia (logos de proveedores en `recursos/proveedores/`).
+El instalador extrae todos los binarios de la aplicación Electron, el frontend React compilado (`resources/app/`), el backend compilado (`resources/backend/backend.exe`), el gestor de servicios NSSM (`resources/backend/nssm.exe`), los scripts SQL de inicialización, y los recursos multimedia.
 
-**Paso 4 — Aprovisionamiento automático de la Base de Datos:**
-Durante la fase de instalación, el setup ejecuta de forma transparente los comandos Docker necesarios para:
-1. Descargar la imagen `postgres:15-alpine` (si no está disponible localmente).
-2. Crear el contenedor `handler-track-samples-db` con el volumen persistente `postgres_data`.
-3. Ejecutar el script SQL de inicialización completo (`schema-completo-produccion.sql`) que crea todas las tablas, tipos ENUM, vistas, triggers, índices y el usuario administrador por defecto.
-4. Habilitar las políticas de Row Level Security (RLS) en las 8 tablas.
+**Paso 4 — Aprovisionamiento automático de PostgreSQL:**
+Durante la instalación, el instalador ejecuta automáticamente:
 
-**Paso 5 — Configuración de variables de entorno:**
-El instalador genera automáticamente el archivo `.env` en el directorio de instalación con los valores correctos para el entorno local, incluyendo la cadena de conexión a PostgreSQL en `localhost:5432`.
+1. **Detección:** Verifica si PostgreSQL está instalado mediante `Get-Service postgresql*`.
+2. **Instalación** (si no está presente): Ejecuta `winget install --id PostgreSQL.PostgreSQL` con:
+   - Puerto: `5432`
+   - Contraseña del superusuario `postgres`: `!Handler2026`
+   - Instalación silenciosa
+3. **Espera de servicio:** Espera hasta 90 segundos a que el servicio `postgresql-x64-15` esté en "Running".
+4. Si PostgreSQL ya está instalado, omite este paso.
 
-**Paso 6 — Finalización:**
-Al completarse, el asistente muestra la pantalla de éxito. El acceso directo "Handler TrackSamples" es creado en el escritorio y en el Menú de Inicio de Windows. Opcionalmente, el usuario puede ejecutar la aplicación de inmediato marcando la casilla "Iniciar Handler TrackSamples ahora".
+**Paso 5 — Configuración del Servicio de Windows (Backend):**
+El instalador usa **NSSM** para crear un servicio de Windows:
+```powershell
+nssm install HandlerTrackSamples "$INSTDIR\resources\backend\backend.exe"
+nssm set HandlerTrackSamples AppDirectory "$INSTDIR\resources\backend"
+nssm set HandlerTrackSamples AppEnvironmentExtra "NODE_ENV=production" "PORT=3001"
+nssm set HandlerTrackSamples Start SERVICE_AUTO_START
+nssm start HandlerTrackSamples
+```
 
-## 7.3. Estructura de Directorios Post-Instalación
+**Paso 6 — Configuración del Firewall de Windows:**
+```powershell
+netsh advfirewall firewall add rule name="HandlerTrackSamples" `
+  dir=in action=allow protocol=TCP localport=3001 profile=private,public
+```
 
-Tras la instalación, el directorio raíz del sistema tiene la siguiente estructura:
+**Paso 7 — Finalización:**
+Al completarse, el asistente muestra la pantalla de éxito. El acceso directo "Handler TrackSamples" es creado en el escritorio y en el Menú de Inicio.
+
+## 7.3. Configuración de Variables de Entorno
+
+El archivo `.env` se almacena en `C:\ProgramData\HandlerTrackSamples\.env` y es generado automáticamente por el **Asistente de Configuración Inicial** (Setup Web Wizard) en el primer arranque.
+
+### 7.3.1. Setup Web Wizard (Primer Arranque)
+
+Cuando el sistema se inicia por primera vez sin un `.env` configurado, el backend entra en **SETUP_MODE** y redirige al usuario a `http://localhost:3001/setup`.
+
+**Pantallas del asistente:**
+1. **Conexión a BD:** Host, puerto, usuario, contraseña, nombre de BD.
+2. **Verificación:** Prueba la conexión y crea la BD si no existe.
+3. **Configuración de Admin:** Usuario y contraseña del administrador.
+4. **Generación de JWT_SECRET:** Clave criptográfica aleatoria de 64 caracteres.
+5. **Finalización:** Escribe `.env`, ejecuta migraciones SQL, crea tablas auxiliares, inserta datos iniciales (3 líneas de mercado, 7 proveedores, 14 anaqueles), y reinicia el servicio.
+
+### 7.3.2. Configuración Manual del `.env`
+
+```env
+NODE_ENV=production
+PORT=3001
+HOST=0.0.0.0
+JWT_SECRET=<clave_aleatoria_de_64_caracteres>
+DATABASE_URL=postgresql://handler_user:handler_password@localhost:5432/handler_track_samples
+JWT_EXPIRES_IN=8h
+BCRYPT_ROUNDS=12
+RATE_LIMIT_WINDOW=15
+RATE_LIMIT_MAX_REQUESTS=5000
+COA_BASE_DIR=C:\ProgramData\HandlerTrackSamples\uploads\coa
+MAX_FILE_SIZE=10485760
+```
+
+## 7.4. Estructura de Directorios Post-Instalación
+
+### Directorio de Instalación de la Aplicación
 
 ```
 C:\Program Files\Handler TrackSamples\
 ├── Handler TrackSamples.exe          ← Ejecutable principal (Electron)
+├── uninstall.exe                     ← Desinstalador oficial del sistema
 ├── resources\
-│   ├── app\
-│   │   ├── build\                    ← Frontend React compilado (HTML/CSS/JS)
-│   │   ├── backend\                  ← API Node.js/Express
-│   │   │   ├── src\
-│   │   │   │   ├── modules\          ← 12 módulos de la API
-│   │   │   │   ├── services\         ← database.js, backupScheduler.js
-│   │   │   │   └── index.js          ← Punto de entrada del servidor
-│   │   │   └── .env                  ← Variables de entorno locales
-│   │   ├── database\
-│   │   │   └── scripts\              ← schema-completo-produccion.sql
-│   │   └── recursos\
-│   │       └── proveedores\          ← Logos de los 7 proveedores preconfigurados
-│   └── electron.js                   ← Proceso principal de Electron
-├── backups\                           ← [Creada automáticamente] Carpeta interna de backups
-└── uninstall.exe                      ← Desinstalador oficial del sistema
+│   ├── app\                          ← Frontend React compilado
+│   │   ├── index.html                ← Punto de entrada SPA
+│   │   ├── static\                   ← Assets compilados (JS, CSS)
+│   │   ├── electron.js               ← Proceso principal de Electron
+│   │   ├── preload.js                ← Bridge de seguridad (contextBridge)
+│   │   ├── admin_panel.html          ← Panel de control admin
+│   │   └── recursos\                 ← Imágenes, iconos
+│   └── backend\                      ← Backend compilado
+│       ├── backend.exe               ← Express API compilada (pkg)
+│       ├── create_tables.exe         ← Utilidad de creación de tablas
+│       └── nssm.exe                  ← Non-Sucking Service Manager
 ```
 
-> **Nota Técnica:** La carpeta `backups\` es creada automáticamente por el sistema la primera vez que se ejecuta un backup. Los archivos `.json` de respaldo se almacenan en esta ubicación interna, completamente local a la instalación del software, sin requerir transmisión a servicios externos.
+### Directorio de Datos Persistentes
 
-## 7.4. Verificación Post-Instalación
+```
+C:\ProgramData\HandlerTrackSamples\   ← Datos persistentes (NO se pierden al actualizar)
+├── .env                              ← Variables de entorno del sistema
+├── logs\                             ← Logs del backend con rotación diaria
+│   ├── combined-YYYY-MM-DD.log       ← Log general
+│   ├── error.log                     ← Solo errores
+│   └── database.log                  ← Consultas a la base de datos
+├── uploads\                          ← Archivos subidos
+│   ├── coa\                          ← PDFs de Certificados de Análisis
+│   └── ...                           ← Otros archivos
+└── backups\                          ← Backups exportados a archivo JSON
+    └── backup_handler_*.json
+```
+
+> **Nota Técnica:** El directorio `C:\ProgramData\HandlerTrackSamples\` se utiliza para datos persistentes porque no se elimina durante las actualizaciones del software. Esto garantiza que los logs, uploads y backups sobrevivan a reinstalaciones.
+
+## 7.5. Verificación Post-Instalación
 
 Tras la instalación, el técnico debe verificar que todos los componentes están operativos:
 
-**1. Verificar el contenedor de base de datos:**
+**1. Verificar el servicio de PostgreSQL:**
 ```powershell
-# En PowerShell con Docker Desktop activo:
-docker ps
-
-# Resultado esperado:
-# CONTAINER ID   IMAGE                PORTS                    NAMES
-# xxxxxxxxxxxx   postgres:15-alpine   0.0.0.0:5432->5432/tcp   handler-track-samples-db
+Get-Service postgresql* | Format-List Name, Status, StartType
+# Resultado: postgresql-x64-15, Running, Automatic
 ```
 
-**2. Verificar el health check de la API:**
-Abrir un navegador web y navegar a:
-```
-http://localhost:3001/health
-```
-Respuesta esperada:
-```json
-{
-  "status": "OK",
-  "timestamp": "2026-05-04T...",
-  "service": "Handler TrackSamples Backend",
-  "version": "1.0.0"
-}
+**2. Verificar el servicio de la aplicación:**
+```powershell
+Get-Service HandlerTrackSamples | Format-List Name, Status, StartType
+# Resultado: HandlerTrackSamples, Running, Automatic
 ```
 
-**3. Verificar la interfaz de usuario:**
-Navegar a `http://localhost:3000` o abrir la aplicación desde el acceso directo del escritorio. Debe aparecer la pantalla de inicio de sesión.
+**3. Verificar el health check de la API:**
+```powershell
+Invoke-RestMethod -Uri http://localhost:3001/health
+# Resultado: { status: "OK", service: "Handler TrackSamples Backend", version: "1.0.0" }
+```
 
-**Credenciales de primer acceso (cambiar inmediatamente en producción):**
-- **Usuario:** `admin`
-- **Contraseña:** `admin123`
+**4. Verificar la interfaz de usuario:**
+Abrir la aplicación desde el acceso directo del escritorio o navegar a `http://localhost:3001`.
 
-## 7.5. Ejecución Cotidiana del Sistema
+## 7.6. Ejecución Cotidiana del Sistema
 
-Una vez instalado, el sistema se inicia con un doble clic en el acceso directo "Handler TrackSamples" del escritorio. Electron levanta internamente el proceso Node.js del backend y renderiza la interfaz React en la ventana Chromium. No se requiere ninguna acción adicional del usuario.
+Una vez instalado y configurado:
+1. **Servicios de fondo:** Al encender el computador, `postgresql-x64-15` y `HandlerTrackSamples` se inician automáticamente.
+2. **Inicio:** El usuario hace doble clic en el acceso directo del escritorio.
+3. **Cierre:** Al cerrar la ventana de Electron, solo se cierra la interfaz. Los servicios de fondo continúan ejecutándose.
 
-> **Prerequisito cotidiano:** Docker Desktop debe estar activo antes de abrir la aplicación. Si Docker no está corriendo, la aplicación mostrará errores de conexión a la base de datos en la pantalla de login. El icono de Docker (ballena) debe aparecer en la bandeja del sistema antes de iniciar Handler TrackSamples.
+> **Nota Técnica:** A diferencia de versiones anteriores basadas en Docker, el sistema actual no requiere verificación manual antes de iniciar. Los servicios se inician automáticamente con Windows.
+
+## 7.7. Gestión de Servicios (IT)
+
+### Servicio HandlerTrackSamples
+```powershell
+nssm status HandlerTrackSamples
+nssm restart HandlerTrackSamples
+nssm stop HandlerTrackSamples
+nssm start HandlerTrackSamples
+```
+
+### Servicio PostgreSQL
+```powershell
+Get-Service postgresql*
+Restart-Service postgresql-x64-15
+netstat -ano | Select-String ":5432"
+```
 
 
 ---
@@ -1449,7 +1547,7 @@ Retorna la lista de los últimos 10 backups (ordenados por fecha descendente) co
 
 ## 10.1. Consideraciones Previas a la Desinstalación
 
-La desinstalación de **Handler TrackSamples** implica la remoción permanente de la aplicación de escritorio, la detención y eliminación del contenedor de base de datos PostgreSQL local (Docker) y, opcionalmente, la eliminación del volumen de datos persistente. Es fundamental considerar que **toda la información almacenada en la base de datos se perderá de forma irreversible** si el volumen de Docker es eliminado sin haber realizado previamente un backup exportado.
+La desinstalación de **Handler TrackSamples** implica la remoción permanente de la aplicación de escritorio, la detención y eliminación del servicio de Windows HandlerTrackSamples y, opcionalmente, la eliminación de los datos persistentes. Es fundamental considerar que **toda la información almacenada en la base de datos se perderá de forma irreversible** si el directorio `C:\ProgramData\HandlerTrackSamples\` es eliminado sin haber realizado previamente un backup exportado.
 
 **Lista de verificación pre-desinstalación:**
 
@@ -1483,57 +1581,80 @@ El proceso de desinstalación ejecuta las siguientes acciones en orden:
 **Paso 1 — Detención de la aplicación:**
 El desinstalador verifica si el proceso `Handler TrackSamples.exe` está activo y lo cierra forzosamente si es necesario.
 
-**Paso 2 — Detención y eliminación del contenedor Docker:**
-El desinstalador ejecuta internamente los siguientes comandos de Docker para limpiar la infraestructura de base de datos local:
+**Paso 2 — Detención y eliminación del servicio de Windows:**
+El desinstalador ejecuta internamente los siguientes comandos para limpiar el servicio del backend:
 ```powershell
-# Detener el contenedor de PostgreSQL
-docker stop handler-track-samples-db
+# Detener el servicio
+nssm stop HandlerTrackSamples
 
-# Eliminar el contenedor
-docker rm handler-track-samples-db
+# Eliminar el servicio
+nssm remove HandlerTrackSamples confirm
 ```
 
-**Paso 3 — Eliminación del volumen de datos (opcional):**
-Si el usuario elige la opción "Eliminar todos los datos" en el asistente de desinstalación:
+**Paso 3 — Eliminación de la regla del Firewall:**
 ```powershell
-# Eliminar el volumen de datos persistente (IRREVERSIBLE)
-docker volume rm postgres_data
+netsh advfirewall firewall delete rule name="HandlerTrackSamples"
 ```
-> ⚠️ **Advertencia Crítica:** La eliminación del volumen `postgres_data` destruye permanentemente toda la información de la base de datos local: inventario, movimientos, usuarios, proveedores, configuración de anaqueles y backups almacenados en la BD. Esta acción **no tiene recuperación** si no se realizó un backup previo.
 
 **Paso 4 — Eliminación de archivos del sistema:**
 El desinstalador borra el directorio de instalación completo, incluyendo:
 - Binarios de Electron y Chromium.
 - Frontend React compilado.
-- Módulos del backend Node.js.
+- Backend compilado (`backend.exe`).
 - Scripts SQL y recursos estáticos.
 - Accesos directos del escritorio y el menú de Inicio.
 - Entradas del registro de Windows asociadas a la aplicación.
 
-**Paso 5 — Limpieza de reglas del Firewall (si aplica):**
-Si el instalador original configuró reglas de entrada en el Firewall de Windows para los puertos `3000` y `3001`, el desinstalador las elimina.
+**Paso 5 — Datos persistentes:**
+El desinstalador **NO elimina** `C:\ProgramData\HandlerTrackSamples\` para preservar logs, uploads y backups. Si se requiere una limpieza completa, el administrador debe eliminar este directorio manualmente:
+```powershell
+Remove-Item -Recurse -Force "C:\ProgramData\HandlerTrackSamples\"
+```
+> ⚠️ **Advertencia Crítica:** La eliminación de `C:\ProgramData\HandlerTrackSamples\` destruye permanentemente toda la información de la base de datos local: inventario, movimientos, usuarios, proveedores, configuración de anaqueles y backups almacenados en la BD. Esta acción **no tiene recuperación** si no se realizó un backup previo.
+
+**Paso 6 — Desinstalación de PostgreSQL (opcional):**
+El desinstalador **NO elimina** PostgreSQL automáticamente, ya que podría estar siendo usado por otras aplicaciones. Si se desea eliminar:
+```powershell
+winget uninstall --id PostgreSQL.PostgreSQL
+```
 
 ## 10.4. Verificación Post-Desinstalación
 
 Tras completar el proceso, el técnico puede verificar que no quedaron componentes residuales:
 
 ```powershell
-# Verificar que el contenedor fue eliminado
-docker ps -a | Select-String "handler"
-# Resultado esperado: sin resultados
+# Verificar que el servicio fue eliminado
+Get-Service HandlerTrackSamples -ErrorAction SilentlyContinue
+# Resultado esperado: error "no se encontró el servicio"
 
 # Verificar que el directorio fue eliminado
 Test-Path "C:\Program Files\Handler TrackSamples"
 # Resultado esperado: False
 
-# Verificar que el volumen fue eliminado (si se eligió esa opción)
-docker volume ls | Select-String "postgres_data"
+# Verificar que el puerto ya no está en uso
+netstat -ano | Select-String ":3001"
 # Resultado esperado: sin resultados
+
+# Verificar que PostgreSQL sigue funcionando (si no se desinstaló)
+Get-Service postgresql*
+# Resultado esperado: postgresql-x64-15, Running
 ```
 
-## 10.5. Reinstalación
+## 10.5. Reinstalación y Actualización
 
-Si se desea volver a instalar el sistema después de una desinstalación completa, el proceso es idéntico al de la primera instalación descrito en la **Sección 7**. El script SQL de inicialización recreará toda la estructura de la base de datos desde cero, incluyendo los datos iniciales de líneas de mercado, proveedores y anaqueles preconfigurados.
+### Reinstalación Completa
+Si se desea volver a instalar el sistema después de una desinstalación completa:
+1. Ejecutar `Handler_TrackSamples_Setup.exe` nuevamente.
+2. El instalador creará el servicio, la regla de firewall y reextraerá todos los archivos.
+3. En el primer arranque, el Setup Web Wizard permitirá configurar la base de datos nuevamente.
+4. Si `C:\ProgramData\HandlerTrackSamples\` no fue eliminado, los datos anteriores y la configuración de BD persistirán.
+
+### Actualización a Nueva Versión
+Cuando se instala una nueva versión del software **sin desinstalar la anterior**:
+- El instalador NSIS sobrescribe automáticamente los archivos de la aplicación.
+- El servicio `HandlerTrackSamples` es reiniciado automáticamente durante la instalación.
+- El directorio `C:\ProgramData\HandlerTrackSamples\` **NO se modifica** — los datos persistentes, incluyendo `.env` con la configuración de base de datos, permanecen intactos.
+- Si se requiere una reinstalación limpia con nueva configuración de BD, se debe eliminar manualmente el directorio `C:\ProgramData\HandlerTrackSamples\` antes de reinstalar, y luego ejecutar el Setup Web Wizard nuevamente.
 
 
 ---
@@ -1551,69 +1672,90 @@ Esta sección documenta las incidencias técnicas más frecuentes en el ciclo de
 Error en query: connect ECONNREFUSED 127.0.0.1:5432
 ```
 
-**Causa Raíz:** El contenedor Docker `handler-track-samples-db` con PostgreSQL no está en ejecución. Esto ocurre si:
-- Docker Desktop fue cerrado o no se inició con Windows.
-- El contenedor quedó en estado `Exited` por una terminación abrupta del sistema.
-- WSL2 experimentó un fallo y el motor de Docker no pudo inicializarse.
+**Causa Raíz:** El servicio de PostgreSQL `postgresql-x64-15` no está en ejecución. Esto ocurre si:
+- El servicio no se inició automáticamente con Windows.
+- El servicio falló por corrupción de datos o falta de espacio en disco.
+- El puerto `5432` está siendo ocupado por otro proceso.
 
 **Procedimiento de Resolución:**
 ```powershell
-# Paso 1: Verificar estado del demonio Docker
-docker info
-# Si falla: Abrir Docker Desktop y esperar estado "Running"
+# Paso 1: Verificar estado del servicio PostgreSQL
+Get-Service postgresql* | Format-List Name, Status, StartType
 
-# Paso 2: Verificar estado del contenedor
-docker ps -a | Select-String "handler"
+# Paso 2a: Si el servicio está detenido (Stopped), iniciarlo:
+Start-Service postgresql-x64-15
 
-# Paso 3a: Si el contenedor existe pero está detenido (Exited):
-docker start handler-track-samples-db
+# Paso 2b: Si el servicio no se inicia, revisar los logs:
+Get-Content "$env:ProgramFiles\PostgreSQL\15\data\log\postgresql-*.log" -Tail 20
 
-# Paso 3b: Si el contenedor no existe (fue eliminado):
-# Volver a ejecutar Handler_TrackSamples_Setup.exe en modo "Reparar"
-# o ejecutar manualmente:
-docker run -d `
-  --name handler-track-samples-db `
-  -e POSTGRES_USER=handler_user `
-  -e POSTGRES_PASSWORD=handler_password `
-  -e POSTGRES_DB=handler_track_samples `
-  -p 5432:5432 `
-  -v postgres_data:/var/lib/postgresql/data `
-  postgres:15-alpine
+# Paso 3: Verificar que PostgreSQL escucha en el puerto correcto:
+netstat -ano | Select-String ":5432"
 
-# Paso 4: Verificar conectividad
-docker exec -it handler-track-samples-db psql -U handler_user -d handler_track_samples -c "SELECT version();"
+# Paso 4: Probar conexión directa:
+& "$env:ProgramFiles\PostgreSQL\15\bin\psql.exe" -U handler_user -d handler_track_samples -c "SELECT 1;"
+
+# Paso 5: Verificar el servicio de la aplicación:
+Get-Service HandlerTrackSamples | Format-List Name, Status
 ```
 
 ---
 
-## 11.2. Colisión de Puertos Locales (EADDRINUSE)
+## 11.2. Colisión de Puertos Locales (EADDRINUSE en puerto 3001)
 
-**Síntoma:** El proceso de backend de Electron falla silenciosamente al arrancar. En los logs internos:
+**Síntoma:** El servicio `HandlerTrackSamples` se detiene inmediatamente después de iniciar. En los logs de Windows (Visor de eventos → Registros de Windows → Aplicación) o en los logs de Winston:
 ```
 Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
 ```
 
-**Causa Raíz:** Otro proceso en Windows ya está escuchando en el puerto `3001` (API) o `3000` (frontend). Puede ser una instancia anterior del sistema que quedó en segundo plano, o un servicio de terceros con el mismo puerto.
+**Causa Raíz:** Otro proceso en Windows ya está escuchando en el puerto `3001` (API). Puede ser una instancia anterior del servicio, otro servicio de terceros, o una instancia de desarrollo que se ejecuta manualmente.
 
 **Procedimiento de Resolución:**
 ```powershell
 # Identificar el proceso que ocupa el puerto 3001
 netstat -ano | Select-String ":3001"
-# Anotar el PID de la última columna
 
-# Terminar el proceso por PID
+# Anotar el PID de la última columna y terminar el proceso
 taskkill /PID [NUMERO_PID] /F
 
-# Repetir para el puerto 3000 si también hay conflicto
-netstat -ano | Select-String ":3000"
-taskkill /PID [NUMERO_PID] /F
-
-# Reiniciar la aplicación Handler TrackSamples
+# Reiniciar el servicio HandlerTrackSamples
+nssm restart HandlerTrackSamples
+# o
+Restart-Service HandlerTrackSamples
 ```
 
 ---
 
-## 11.3. Fallo de Renderizado WebGL — Módulo Almacén 3D (Pantalla Negra)
+## 11.3. Servicio HandlerTrackSamples no Inicia (Error 1053)
+
+**Síntoma:** Al intentar iniciar el servicio manualmente, Windows muestra:
+```
+Error 1053: El servicio no respondió a la solicitud de inicio o control en forma oportuna.
+```
+
+**Causa Raíz:**
+- El backend `backend.exe` falla durante la inicialización (usualmente por configuración inválida en `.env`).
+- El archivo `.env` en `C:\ProgramData\HandlerTrackSamples\` tiene valores incorrectos.
+- La base de datos no está accesible y el tiempo de espera del servicio se agota.
+
+**Procedimiento de Resolución:**
+```powershell
+# Paso 1: Verificar el archivo .env
+Get-Content "C:\ProgramData\HandlerTrackSamples\.env"
+
+# Paso 2: Revisar los logs de Winston
+Get-Content "C:\ProgramData\HandlerTrackSamples\logs\error.log" -Tail 30
+
+# Paso 3: Probar el backend manualmente (fuera del servicio)
+& "C:\Program Files\Handler TrackSamples\resources\backend\backend.exe"
+# Si falla, corregir .env según la sección 7.3.2
+
+# Paso 4: Reiniciar el servicio
+nssm restart HandlerTrackSamples
+```
+
+---
+
+## 11.4. Fallo de Renderizado WebGL — Módulo Almacén 3D (Pantalla Negra)
 
 **Síntoma:** Al navegar al módulo de Almacén, el canvas 3D aparece completamente negro o con artefactos gráficos. La consola del Inspector de Electron muestra:
 ```
@@ -1637,7 +1779,7 @@ THREE.WebGLRenderer: A WebGL context could not be created.
 
 ---
 
-## 11.4. JWT Expirado — Sesión Invalidada Inesperadamente
+## 11.5. JWT Expirado — Sesión Invalidada Inesperadamente
 
 **Síntoma:** El usuario estaba trabajando y de repente la aplicación lo redirige a la pantalla de login mostrando "Sesión expirada".
 
@@ -1648,11 +1790,14 @@ THREE.WebGLRenderer: A WebGL context could not be created.
 # Opciones válidas: '8h', '12h', '24h', '7d'
 JWT_EXPIRES_IN=24h
 ```
-Luego reiniciar la aplicación para que el cambio surta efecto.
+Luego reiniciar el servicio para que el cambio surta efecto:
+```powershell
+nssm restart HandlerTrackSamples
+```
 
 ---
 
-## 11.5. Error en la Restauración de Backup — ROLLBACK Automático
+## 11.6. Error en la Restauración de Backup — ROLLBACK Automático
 
 **Síntoma:** Al intentar restaurar un backup, el sistema devuelve un error y no se producen cambios en la base de datos.
 
@@ -1664,12 +1809,12 @@ Luego reiniciar la aplicación para que el cambio surta efecto.
 
 **Procedimiento de Resolución:**
 1. Verificar que la contraseña ingresada es la correcta para el usuario administrador.
-2. Revisar los logs de Winston en el directorio de instalación para obtener el detalle del error SQL específico.
+2. Revisar los logs de Winston en `C:\ProgramData\HandlerTrackSamples\logs\error.log` para obtener el detalle del error SQL específico.
 3. Si el backup está corrompido, seleccionar un backup anterior disponible en el listado.
 
 ---
 
-## 11.6. Columna `total_capacity` — Error al Insertar en `shelves`
+## 11.7. Columna `total_capacity` — Error al Insertar en `shelves`
 
 **Síntoma:** Al intentar insertar datos directamente en la tabla `shelves` mediante SQL externo, se produce el error:
 ```
@@ -1682,7 +1827,31 @@ ERROR: column "total_capacity" is a generated column
 
 ---
 
-## 11.7. Tabla de Errores HTTP Frecuentes
+## 11.8. Diagnóstico Rápido (Quick Diagnostic)
+
+```powershell
+# Estado de servicios
+Get-Service postgresql*, HandlerTrackSamples | Format-Table Name, Status
+
+# Puertos en uso
+netstat -ano | Select-String ":3001|:5432"
+
+# Logs de errores recientes
+Get-Content "C:\ProgramData\HandlerTrackSamples\logs\error.log" -Tail 15
+
+# Conexión a BD
+& "$env:ProgramFiles\PostgreSQL\15\bin\psql.exe" -U handler_user -d handler_track_samples -c "SELECT NOW();"
+
+# Versión del backend
+Invoke-RestMethod -Uri http://localhost:3001/health
+
+# Espacio en disco
+Get-PSDrive C | Select-Object Used, Free
+```
+
+---
+
+## 11.9. Tabla de Errores HTTP Frecuentes
 
 | Código HTTP | Error | Causa Probable |
 |---|---|---|
@@ -1693,6 +1862,286 @@ ERROR: column "total_capacity" is a generated column
 | `409 Conflict` | Duplicado: `UNIQUE constraint` violado | Username, QR code o nombre de anaquel ya existe |
 | `429 Too Many Requests` | Rate limit excedido | Más de 5000 peticiones en 15 minutos desde la misma IP |
 | `500 Internal Server Error` | Error inesperado en el controlador | Revisar logs de Winston; usualmente es un error de conexión a PostgreSQL |
+
+---
+
+# 12. SEGURIDAD
+
+## 12.1. Introducción
+
+Este apéndice documenta las medidas de seguridad implementadas en Handler TrackSamples. La aplicación maneja información sensible de inventario, trazabilidad de muestras y credenciales de usuario, por lo que la protección de datos es un aspecto fundamental del diseño. A continuación, se presentan los controles de seguridad implementados por capa, así como los riesgos conocidos y las prácticas recomendadas para el despliegue en producción.
+
+## 12.2. Seguridad en la Comunicación (Transport Layer)
+
+### 12.2.1. HTTPS
+
+- **Estado:** ❌ No implementado en la instalación local.
+- La aplicación está diseñada para ejecutarse en un entorno de red local (localhost o LAN). El backend Express escucha en `0.0.0.0:3001` sin TLS.
+- **Riesgo:** Las contraseñas y tokens JWT viajan en texto plano en la red local.
+- **Recomendación:** En despliegues corporativos donde el acceso sea a través de la red, se recomienda ubicar un proxy inverso (IIS ARR, nginx, o Caddy) frente al puerto `3001` para terminar TLS. Alternativamente, configurar un túnel VPN para acceso remoto.
+
+### 12.2.2. Helmet (HTTP Security Headers)
+
+La aplicación utiliza **Helmet** para establecer cabeceras de seguridad HTTP:
+
+| Cabecera | Valor | Propósito |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | Previene MIME sniffing |
+| `X-Frame-Options` | `DENY` | Previene clickjacking |
+| `X-XSS-Protection` | `1; mode=block` | Protección básica XSS (legacy) |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | HSTS (solo cuando se use HTTPS) |
+| `Content-Security-Policy` | (ver sección 12.2.3) | Restringe orígenes de contenido |
+
+### 12.2.3. Content Security Policy (CSP)
+
+La política CSP actual permite:
+
+| Directiva | Valor | Justificación |
+|---|---|---|
+| `default-src` | `'self'` | Solo contenido propio |
+| `script-src` | `'self' 'unsafe-inline'` | Requerido por el panel admin inline y Material UI |
+| `style-src` | `'self' 'unsafe-inline'` | Requerido por Material UI y emotion |
+| `img-src` | `'self' data: blob:` | Para imágenes en almacén 3D y capturas |
+| `connect-src` | `'self' ws:` | WebSocket para Three.js en almacén 3D |
+| `font-src` | `'self' data:` | Fuentes embebidas |
+| `frame-ancestors` | `'none'` | Previene incrustación en iframes |
+
+> ⚠️ **Riesgo conocido:** La presencia de `'unsafe-inline'` en `script-src` y `style-src` debilita la protección CSP. Esto es necesario porque el frontend React inyecta estilos (emotion) y el panel de administración utiliza JavaScript inline. Una migración futura a nonces o hashes CSP eliminaría esta debilidad.
+
+## 12.3. Autenticación y Control de Acceso
+
+### 12.3.1. JWT (JSON Web Tokens)
+
+| Propiedad | Valor | Descripción |
+|---|---|---|
+| Algoritmo | `HS256` | HMAC con SHA-256 |
+| Secreto | `JWT_SECRET` en `.env` | Clave de 64 caracteres generada aleatoriamente durante el setup |
+| Expiración | `8h` (configurable) | Refresh token no implementado |
+| Claims incluidos | `id`, `username`, `role`, `permissions` | Información del usuario en el payload |
+
+**Flujo de autenticación:**
+1. El usuario envía credenciales (`username` + `password`) a `POST /api/auth/login`.
+2. El servidor verifica el `password_hash` almacenado con `bcrypt.compare()`.
+3. Si es correcto, genera un JWT firmado con `JWT_SECRET` y lo devuelve.
+4. El frontend almacena el token en memoria (variable JS) — no en localStorage ni cookies.
+5. Cada petición posterior incluye el token en el header `Authorization: Bearer <token>`.
+6. El middleware `authenticate` verifica la firma y expiración en cada request.
+
+### 12.3.2. Bcrypt (Hashing de Contraseñas)
+
+| Propiedad | Valor |
+|---|---|
+| Algoritmo | `bcrypt` |
+| Rondas (salt rounds) | `12` (configurable en `.env` como `BCRYPT_ROUNDS`) |
+| Costo computacional | ~250ms por comparación |
+
+**Características de seguridad:**
+- Cada contraseña tiene un salt único generado automáticamente.
+- Con 12 rondas, un ataque de fuerza bruta requiere aproximadamente 2ⁿ × 250ms por intento (para una contraseña de 8 caracteres alfanuméricos, ~2×10⁷ años con hardware moderno).
+- El hash se almacena en la columna `password_hash` de la tabla `users`.
+- La contraseña original **nunca** se almacena ni se loguea.
+
+### 12.3.3. Autorización Granular por Permisos JSONB
+
+Cada usuario tiene un campo `permissions` de tipo `JSONB` que contiene un objeto con permisos detallados:
+
+```json
+{
+  "dashboard": { "view": true },
+  "inventory": { "view": true, "create": false, "edit": false, "delete": false },
+  "movements": { "view": true, "register": true },
+  "storage": { "view": true, "edit": false },
+  "admin": { "manage_users": false, "view_logs": true },
+  "reports": { "export_pdf": true, "export_csv": false }
+}
+```
+
+**Middleware `authorize`:** Cada ruta protegida especifica qué acción requiere (ej. `authorize('inventory', 'create')`). Si el permiso no existe o es `false`, devuelve `403 Forbidden`.
+
+**Permisos totales en el sistema:** 47 permisos granulares distribuidos en 7 categorías.
+
+## 12.4. Seguridad a Nivel de Base de Datos
+
+### 12.4.1. Row Level Security (RLS)
+
+Handler TrackSamples implementa **Row Level Security** en PostgreSQL para el aislamiento de datos entre líneas de mercado. Las 8 tablas principales tienen RLS habilitado:
+
+| Tabla | Política RLS | Efecto |
+|---|---|---|
+| `samples` | `market_line_id = current_setting('app.current_market_line_id')::integer` | Solo ve muestras de su línea |
+| `movements` | JOIN con `samples` para filtrar por línea | Solo ve movimientos de su línea |
+| `certificates_of_analysis` | JOIN con `samples` para filtrar por línea | Solo ve CoAs de su línea |
+| `shelves` | `market_line_id = current_setting(...)` | Solo ve anaqueles de su línea |
+| `grid_configurations` | JOIN con `shelves` | Solo ve configuraciones de su línea |
+| `lots` | JOIN con `samples` | Solo ve lotes de su línea |
+| `market_lines` | `id = current_setting(...)` | Solo ve su propia línea |
+| `shelf_contents` | JOIN con `shelves` | Solo ve contenido de sus anaqueles |
+
+**Total:** 21 políticas RLS (algunas tablas tienen múltiples políticas: SELECT, INSERT, UPDATE, DELETE).
+
+### 12.4.2. Segregación de Usuarios de Base de Datos
+
+| Usuario BD | Propósito | Permisos |
+|---|---|---|
+| `handler_user` | Usuario de la aplicación | Lectura/escritura en tablas de la aplicación (`samples`, `movements`, etc.) |
+| `postgres` | Superusuario (solo instalación) | Acceso completo, usado solo durante el setup del instalador |
+
+### 12.4.3. Prepared Statements
+
+Todas las consultas a la base de datos utilizan **prepared statements** con parámetros posicionales (`$1`, `$2`, ...) mediante la librería `pg`:
+
+```javascript
+// Correcto (parametrizado):
+await pool.query('SELECT * FROM samples WHERE id = $1', [sampleId]);
+
+// Incorrecto (NUNCA usado — concatenación de strings):
+await pool.query(`SELECT * FROM samples WHERE id = '${sampleId}'`);
+```
+
+Esto elimina el riesgo de **SQL Injection** en todas las consultas del sistema.
+
+## 12.5. Seguridad en la Aplicación
+
+### 12.5.1. Rate Limiting (express-rate-limit)
+
+| Parámetro | Valor |
+|---|---|
+| Ventana de tiempo | 15 minutos |
+| Máximo de peticiones | 5000 |
+| Mensaje de error | `{ error: 'Demasiadas peticiones, intente de nuevo más tarde' }` |
+
+- Se aplica globalmente a todas las rutas `/api/*`.
+- Previene ataques de fuerza bruta y denegación de servicio básicos.
+
+### 12.5.2. Sanitización de Logs
+
+El módulo `sanitizer.js` en `backend/src/utils/sanitizer.js` intercepta y redacta información sensible antes de escribir en los logs de Winston:
+
+**Patrones redactados (reemplazados por `[REDACTED]`):**
+
+| Patrón | Ejemplo | Reemplazo |
+|---|---|---|
+| `password` en body | `"password": "admin123"` | `[REDACTED]` |
+| `newPassword` en body | `"newPassword": "newpass"` | `[REDACTED]` |
+| `token` en body | `"token": "eyJhbG..."` | `[REDACTED]` |
+| `Authorization` header | `Bearer eyJhbGciOiJI...` | `[REDACTED]` |
+| `JWT_SECRET` value | `JWT_SECRET=abc123` | `[REDACTED]` |
+| `DB_PASSWORD` value | `DB_PASSWORD=handler_pwd` | `[REDACTED]` |
+
+### 12.5.3. Validación de Entradas (Joi)
+
+Todas las rutas de la API utilizan el middleware de validación `validateRequest` que:
+
+1. Define un esquema Joi para cada operación.
+2. Valida `req.body`, `req.params` y `req.query` contra el esquema.
+3. Si la validación falla, devuelve `400 Bad Request` con los errores específicos.
+4. **Nunca** se ejecuta la lógica del controlador si la validación falla.
+
+**Ejemplo de esquema Joi para creación de muestras:**
+```javascript
+const createSampleSchema = Joi.object({
+  code: Joi.string().max(50).required(),
+  description: Joi.string().max(300).optional(),
+  market_line_id: Joi.number().integer().required(),
+  lot_number: Joi.string().max(100).required(),
+  supplier_id: Joi.number().integer().required(),
+  quantity: Joi.number().positive().required(),
+  unit: Joi.string().valid('kg', 'g', 'L', 'mL', 'units').required()
+});
+```
+
+### 12.5.4. Path Traversal Protection
+
+El módulo de subida de archivos (CoA) implementa protección contra **path traversal**:
+
+**Mecanismo:**
+- Si `COA_BASE_DIR` es `C:/ProgramData/HandlerTrackSamples/uploads/coa`, el sistema verifica que la ruta final esté dentro de este directorio usando `path.resolve()` y `path.startsWith()`.
+- Cualquier intento de usar `../` en el nombre del archivo es rechazado con `400 Bad Request`.
+
+**Ejemplo:**
+```javascript
+const safePath = path.resolve(COA_BASE_DIR, filename);
+if (!safePath.startsWith(path.resolve(COA_BASE_DIR))) {
+  return res.status(400).json({ error: 'Ruta de archivo inválida' });
+}
+```
+
+### 12.5.5. CORS (Cross-Origin Resource Sharing)
+
+```javascript
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3001'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
+```
+
+- Solo se permiten orígenes locales (`localhost:3000` para desarrollo, `localhost:3001` para producción).
+- Métodos HTTP restringidos a los necesarios.
+- No se permiten credenciales entre dominios.
+
+## 12.6. Seguridad Física y del Entorno
+
+### 12.6.1. Almacenamiento Local de Datos
+
+Toda la información se almacena localmente en la estación de trabajo del usuario:
+- **Base de datos:** PostgreSQL corre como servicio local en `localhost:5432`.
+- **Archivos subidos (CoA PDFs):** `C:\ProgramData\HandlerTrackSamples\uploads\coa\`.
+- **Backups exportados:** `C:\ProgramData\HandlerTrackSamples\backups\`.
+- **Variables de entorno:** `C:\ProgramData\HandlerTrackSamples\.env`.
+
+### 12.6.2. Puerto de Escucha
+
+- El backend escucha en `0.0.0.0:3001`, lo que significa que es accesible desde cualquier equipo en la misma red local.
+- El firewall de Windows debe tener el puerto `3001` abierto para que la aplicación funcione correctamente en la red local.
+
+## 12.7. Riesgos Conocidos y Mitigaciones
+
+| # | Riesgo | Severidad | Descripción | Mitigación |
+|---|---|---|---|---|
+| R1 | Contraseña PostgreSQL hardcodeada | **Alta** | El instalador usa `!Handler2026` como contraseña del superusuario `postgres` | Cambiar inmediatamente después de la instalación usando `ALTER USER postgres WITH PASSWORD 'nueva_contraseña';` |
+| R2 | Sin HTTPS en la API | **Media** | Las credenciales viajan en texto plano en la red local | Usar proxy inverso con TLS en despliegues corporativos |
+| R3 | `unsafe-inline` en CSP | **Media** | Debilita la protección contra XSS | Requerido por las librerías del frontend; migrar a nonces |
+| R4 | Sin refresh de JWT | **Media** | Al expirar el token (8h), el usuario pierde el trabajo no guardado | Configurar `JWT_EXPIRES_IN` a `24h` si es necesario |
+| R5 | Sin bloqueo por intentos fallidos | **Media** | El rate limit global (5000/15min) no previene ataques de fuerza bruta dirigidos | Implementar bloqueo temporal tras N intentos fallidos de login |
+| R6 | Token en memoria volátil | **Baja** | Si hay un XSS, el token puede ser exfiltrado | Almacenar en memoria es la práctica recomendada; no hay alternativa más segura en SPA |
+| R7 | Sin autenticación en la BD entre servicios | **Baja** | `handler_user` se conecta con contraseña en texto plano en `.env` | La BD solo escucha en localhost; mitigado por el alcance local |
+
+## 12.8. Prácticas Recomendadas para Producción
+
+1. **Cambiar la contraseña de PostgreSQL** inmediatamente después de la instalación:
+   ```powershell
+   & "$env:ProgramFiles\PostgreSQL\15\bin\psql.exe" -U postgres -c "ALTER USER postgres WITH PASSWORD 'nueva_contraseña_segura';"
+   ```
+
+2. **Configurar HTTPS** mediante proxy inverso (IIS con ARR, nginx o Caddy).
+
+3. **Ajustar el tiempo de expiración del JWT** según la política de seguridad de la organización:
+   ```env
+   JWT_EXPIRES_IN=4h
+   ```
+
+4. **Realizar respaldos periódicos** de la base de datos y del directorio `C:\ProgramData\HandlerTrackSamples\`.
+
+5. **Monitorear logs** en `C:\ProgramData\HandlerTrackSamples\logs\error.log` para detectar intentos de acceso no autorizados.
+
+6. **Restringir el acceso al `.env`** mediante permisos NTFS:
+   ```powershell
+   icacls "C:\ProgramData\HandlerTrackSamples\.env" /inheritance:r /grant "SYSTEM:(R)" "Administrators:(R)"
+   ```
+
+7. **Deshabilitar la cuenta `postgres`** para acceso remoto (por defecto solo escucha en `localhost`, pero verificar `pg_hba.conf`).
+
+8. **Actualizar regularmente** el software a la última versión para recibir parches de seguridad.
+
+## 12.9. Registro de Incidentes de Seguridad
+
+| Fecha | Incidente | Severidad | Acción Tomada | Resuelto |
+|---|---|---|---|---|
+| — | — | — | — | — |
+
+*Este registro debe ser mantenido por el equipo de IT de la organización que despliega el software.*
 
 
 ---

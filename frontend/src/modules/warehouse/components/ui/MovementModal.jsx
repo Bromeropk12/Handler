@@ -14,6 +14,8 @@
  *  - currentShelfId: string
  *  - onCancel: () => void
  *  - onConfirm: () => void
+ *  - compatibleShelves: Array
+ *  - onTargetChange: (newTarget) => void
  */
 import React from 'react';
 import { formatSampleId } from '../../utils/formatSampleId';
@@ -33,12 +35,27 @@ const MovementModal = ({
   currentShelfId,
   onCancel,
   onConfirm,
+  compatibleShelves = [],
+  onTargetChange,
 }) => {
   if (!target || samples.length === 0) return null;
 
   const isCrossShelf = target.shelfId && currentShelfId && target.shelfId !== currentShelfId;
   const compatibleCount = samples.length - conflicts.length;
   const canExecute = conflicts.length === 0 && !isExecuting;
+
+  // Encontrar anaquel de destino
+  const targetShelf = compatibleShelves.find(s => s.id === target.shelfId) || {
+    id: currentShelfId,
+    name: target.shelfName || 'Anaquel actual',
+    grid_width: mapData?.shelf?.grid_width || 10,
+    grid_height: mapData?.shelf?.grid_height || 10,
+    shelf_depth: mapData?.shelf?.shelf_depth || 10,
+  };
+
+  const gridWidth = targetShelf.grid_width || 10;
+  const gridHeight = targetShelf.grid_height || 10;
+  const shelfDepth = targetShelf.shelf_depth || 10;
 
   return (
     <div
@@ -61,7 +78,7 @@ const MovementModal = ({
           border: '1px solid rgba(56, 189, 248, 0.3)',
           borderRadius: RADIUS.XL,
           padding: PADDING.PANEL,
-          width: 'min(540px, calc(100vw - 32px))',
+          width: 'min(580px, calc(100vw - 32px))',
           maxHeight: 'calc(100vh - 64px)',
           overflowY: 'auto',
           boxShadow: `${SHADOW.PANEL}, 0 0 0 1px rgba(56, 189, 248, 0.1) inset`,
@@ -94,6 +111,163 @@ const MovementModal = ({
                 ? `Muestra ${formatSampleId(samples[0].id)}`
                 : `${samples.length} muestras · batch atómico`}
             </p>
+          </div>
+        </div>
+
+        {/* Dynamic Target Selectors */}
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid rgba(255, 255, 255, 0.04)',
+          borderRadius: RADIUS.MD,
+          padding: 12,
+          marginBottom: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}>
+          <h3 style={{
+            margin: 0, fontSize: 10, fontWeight: 800, color: '#94a3b8',
+            letterSpacing: 0.5, textTransform: 'uppercase'
+          }}>Ajustar Ubicación de Destino</h3>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {/* Dropdown de Anaquel */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Anaquel</label>
+              <select
+                value={target.shelfId}
+                onChange={(e) => {
+                  const shelf = compatibleShelves.find(s => s.id === e.target.value);
+                  if (shelf && onTargetChange) {
+                    onTargetChange({
+                      x: 0,
+                      y: 0,
+                      z: 0,
+                      shelfId: shelf.id,
+                      shelfName: shelf.name,
+                    });
+                  }
+                }}
+                style={{
+                  background: 'rgba(9, 13, 22, 0.8)',
+                  border: '1px solid rgba(56, 189, 248, 0.2)',
+                  borderRadius: RADIUS.SM,
+                  padding: '6px 8px',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  outline: 'none',
+                }}
+              >
+                {compatibleShelves.length > 0 ? (
+                  compatibleShelves.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {s.id === currentShelfId ? '(actual)' : ''}
+                    </option>
+                  ))
+                ) : (
+                  <option value={target.shelfId}>{target.shelfName || 'Anaquel destino'}</option>
+                )}
+              </select>
+            </div>
+
+            {/* Dropdown de Nivel (Y) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Nivel (Y)</label>
+              <select
+                value={target.y}
+                onChange={(e) => {
+                  if (onTargetChange) {
+                    onTargetChange({
+                      ...target,
+                      y: parseInt(e.target.value, 10),
+                    });
+                  }
+                }}
+                style={{
+                  background: 'rgba(9, 13, 22, 0.8)',
+                  border: '1px solid rgba(56, 189, 248, 0.2)',
+                  borderRadius: RADIUS.SM,
+                  padding: '6px 8px',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  outline: 'none',
+                }}
+              >
+                {Array.from({ length: gridHeight }).map((_, i) => (
+                  <option key={i} value={i}>
+                    Nivel {i}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {/* Selector de X */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Columna (X)</label>
+              <select
+                value={target.x}
+                onChange={(e) => {
+                  if (onTargetChange) {
+                    onTargetChange({
+                      ...target,
+                      x: parseInt(e.target.value, 10),
+                    });
+                  }
+                }}
+                style={{
+                  background: 'rgba(9, 13, 22, 0.8)',
+                  border: '1px solid rgba(56, 189, 248, 0.2)',
+                  borderRadius: RADIUS.SM,
+                  padding: '6px 8px',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  outline: 'none',
+                }}
+              >
+                {Array.from({ length: gridWidth }).map((_, i) => (
+                  <option key={i} value={i}>
+                    Columna {i}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Selector de Z */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Profundidad (Z)</label>
+              <select
+                value={target.z}
+                onChange={(e) => {
+                  if (onTargetChange) {
+                    onTargetChange({
+                      ...target,
+                      z: parseInt(e.target.value, 10),
+                    });
+                  }
+                }}
+                style={{
+                  background: 'rgba(9, 13, 22, 0.8)',
+                  border: '1px solid rgba(56, 189, 248, 0.2)',
+                  borderRadius: RADIUS.SM,
+                  padding: '6px 8px',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  outline: 'none',
+                }}
+              >
+                {Array.from({ length: shelfDepth }).map((_, i) => (
+                  <option key={i} value={i}>
+                    Profundidad {i}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 

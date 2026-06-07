@@ -88,6 +88,46 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   const isGroupMode = selection.count >= 2;
   const isMoving = movementMode.isActive;
 
+  // Estados para movimientos cross-shelf
+  const [compatibleShelves, setCompatibleShelves] = useState([]);
+  const [targetMapData, setTargetMapData] = useState(null);
+
+  // Cargar anaqueles compatibles de la misma línea de mercado
+  useEffect(() => {
+    if (!isMoving || !selectedShelf?.id) {
+      setCompatibleShelves([]);
+      return;
+    }
+    warehouseAPI.getCompatibleShelves(selectedShelf.id)
+      .then(res => {
+        setCompatibleShelves(res.data.data || []);
+      })
+      .catch(() => {
+        setCompatibleShelves([]);
+      });
+  }, [isMoving, selectedShelf?.id]);
+
+  // Cargar dinámicamente el mapa 3D del anaquel de destino
+  useEffect(() => {
+    if (!movementMode.target?.shelfId) {
+      setTargetMapData(null);
+      return;
+    }
+    if (movementMode.target.shelfId === selectedShelf?.id) {
+      setTargetMapData(mapData);
+      return;
+    }
+    let active = true;
+    warehouseAPI.getShelfMap(movementMode.target.shelfId)
+      .then(res => {
+        if (active) setTargetMapData(res.data.data);
+      })
+      .catch(() => {
+        if (active) setTargetMapData(null);
+      });
+    return () => { active = false; };
+  }, [movementMode.target?.shelfId, mapData, selectedShelf?.id]);
+
   const groupDrag = useGroupDrag({
     groupSamples: selection.selectedSamples,
     onChangeShelf: () => {
@@ -124,14 +164,15 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
     if (!isMoving) return;
     if (movementMode.movingSamples.length === 0) return;
     const first = movementMode.movingSamples[0];
-    const shelfId = first?.shelf_id || selectedShelf?.id;
+    const sourceShelfId = first?.shelf_id || selectedShelf?.id;
+    const targetShelfId = movementMode.target?.shelfId || selectedShelf?.id;
     groupPreview.loadPreview(
-      shelfId,
+      sourceShelfId,
       movementMode.movingSamples.map(s => s.id),
-      shelfId
+      targetShelfId
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMoving, movementMode.movingSamples[0]?.id]);
+  }, [isMoving, movementMode.movingSamples[0]?.id, movementMode.target?.shelfId]);
 
   // Build validity map for LevelDetailMap
   const validityByKey = useMemo(() => {
@@ -373,7 +414,9 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 onEmptyCellClick={(pos) => {
                   if (isMoving) {
                     movementMode.selectTarget({
-                      x: pos.x, y: selectedLevel, z: pos.z,
+                      x: pos.x,
+                      y: pos.y !== undefined ? pos.y : selectedLevel,
+                      z: pos.z,
                       shelfId: selectedShelf?.id,
                       shelfName: selectedShelf?.name,
                     });
@@ -403,6 +446,15 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   onMoveGroup={() => {
                     if (isGroupMode) {
                       movementMode.startMove(selection.selectedSamples);
+                      const anchor = selection.selectedSamples[0];
+                      movementMode.selectTarget({
+                        x: anchor.position_x || 0,
+                        y: anchor.position_y || 0,
+                        z: anchor.position_z || 0,
+                        shelfId: anchor.shelf_id,
+                        shelfName: selectedShelf?.name || '',
+                      });
+                      setMovementModalOpen(true);
                     }
                   }}
                 />
@@ -436,10 +488,12 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   samples={movementMode.movingSamples}
                   target={movementMode.target}
                   conflicts={movementMode.conflicts}
-                  mapData={mapData}
+                  mapData={targetMapData || mapData}
                   isExecuting={movementExecuting}
                   error={movementModalError}
                   currentShelfId={selectedShelf?.id}
+                  compatibleShelves={compatibleShelves}
+                  onTargetChange={movementMode.selectTarget}
                   onCancel={() => {
                     setMovementModalOpen(false);
                     setMovementModalError(null);

@@ -2,9 +2,9 @@
 
 ## 4.1. Instalación del Sistema
 
-El sistema **Handler TrackSamples** se instala en su computador con Windows 10 o Windows 11 mediante un único archivo de instalación ejecutable. Este proceso fue diseñado para ser lo más sencillo posible y no requiere conocimientos técnicos avanzados, aunque se recomienda que la primera instalación sea realizada o supervisada por el personal del área de Tecnologías de la Información (TI).
+Handler TrackSamples se instala con un único archivo ejecutable. El instalador gestiona **todo automáticamente**: instala la base de datos PostgreSQL, configura el servicio del backend, abre los puertos necesarios en el Firewall de Windows, y prepara la aplicación para su uso inmediato.
 
-> ⚠️ **Atención:** Antes de iniciar la instalación, verifique que **Docker Desktop** esté instalado y corriendo en su computador (debe ver el ícono de la ballena blanca cerca del reloj de Windows). Si no lo tiene, solicítelo al área de TI.
+> ⚠️ **Atención:** Asegúrese de tener privilegios de Administrador en su computador Windows antes de iniciar la instalación. El instalador los necesita para instalar servicios y configurar el firewall.
 
 ### ✅ Paso a Paso para la Instalación
 
@@ -20,25 +20,43 @@ El programa mostrará una serie de pantallas guiadas. En cada una, revise la inf
 - **Acceso directo en el escritorio:** Asegúrese de que esta casilla esté marcada. Así tendrá el ícono de Handler TrackSamples directamente en su escritorio.
 
 **Paso 4 — Esperar la instalación automática:**
-Durante este paso, el instalador realiza de forma automática y transparente varias acciones en segundo plano: descarga e instala la base de datos local (PostgreSQL dentro de Docker), prepara todos los datos iniciales del sistema (proveedores, anaqueles, líneas de mercado) y configura los permisos necesarios. Este proceso puede tardar entre **2 y 5 minutos** dependiendo de la velocidad del computador.
+Durante este paso, el instalador realiza de forma automática y transparente varias acciones en segundo plano, **sin necesidad de que usted haga nada**:
+
+1. **Instala PostgreSQL 15** (si no está instalado en su computador) mediante el gestor de paquetes de Windows (winget).
+2. **Configura el servicio del backend** como un servicio de Windows que se inicia automáticamente con el equipo.
+3. **Abre el puerto 3001** en el Firewall de Windows para permitir el acceso desde otros equipos de la red local.
+4. **Inicia el servicio** automáticamente.
+
+Este proceso puede tardar entre **3 y 8 minutos** dependiendo de la velocidad de su computador y de su conexión a internet (si necesita descargar PostgreSQL).
 
 **Paso 5 — Finalizar:**
-Cuando aparezca la pantalla de "Instalación completada", el sistema está listo para usarse. Puede hacer clic en "Finalizar". Si la casilla "Iniciar Handler TrackSamples ahora" está marcada, la aplicación se abrirá automáticamente.
+Cuando aparezca la pantalla de "Instalación completada", el sistema está listo para usarse. Puede hacer clic en "Finalizar". Si la casilla **"Iniciar Handler TrackSamples ahora"** está marcada, la aplicación se abrirá automáticamente.
+
+### Configuración Inicial (Primer Arranque)
+
+La primera vez que abra el sistema después de instalarlo, verá un **Asistente de Configuración Inicial** en su navegador web. Este asistente le guiará para:
+
+1. **Configurar la conexión a la base de datos** (generalmente solo necesita hacer clic en "Siguiente" aceptando los valores por defecto).
+2. **Crear su cuenta de administrador** (elija un nombre de usuario y una contraseña segura).
+3. **Finalizar la configuración** — el sistema preparará automáticamente la base de datos con los datos iniciales.
+
+> 📌 **Nota:** Este asistente solo aparece la primera vez. Una vez completado, el sistema arrancará directamente en la pantalla de inicio de sesión.
 
 ---
 
 ## 4.2. Cómo Abrir (Ejecutar) el Sistema
 
-Una vez instalado, para abrir la aplicación en cualquier momento:
+Una vez instalado y configurado, para abrir la aplicación en cualquier momento:
 
 1. Busque el ícono de **"Handler TrackSamples"** en su escritorio de Windows.
 2. Haga **doble clic** sobre él.
 3. La ventana principal de la aplicación se abrirá mostrando la pantalla de inicio de sesión.
 
-> 📌 **Nota:** Antes de abrir la aplicación, asegúrese de que el ícono de Docker Desktop (la ballena blanca) esté visible y activo en la bandeja del sistema de Windows (esquina inferior derecha, cerca del reloj). Si Docker no está activo, la aplicación mostrará un error al intentar cargar los datos.
+> 📌 **Nota:** Los servicios necesarios (base de datos y backend) se inician automáticamente con Windows. No necesita verificar nada manualmente.
 
-**Credenciales de acceso inicial (proporcionadas por su administrador):**
-- Las credenciales de usuario (nombre de usuario y contraseña) son asignadas por el Administrador del sistema. Contacte al administrador de TI si es su primera vez usando el sistema.
+**Credenciales de acceso inicial:**
+- Las credenciales de usuario (nombre de usuario y contraseña) son las que usted configuró durante el asistente de configuración inicial.
+- Si su cuenta fue creada por el Administrador del sistema, contacte a él para obtener sus credenciales.
 
 ---
 
@@ -80,4 +98,6 @@ Si la ventana está completamente bloqueada y no responde al clic en la "X":
 2. Haga doble clic en el archivo `uninstall.exe`.
 3. Siga las instrucciones del asistente.
 
-El proceso de desinstalación elimina automáticamente el programa y detiene la base de datos local. Si el asistente ofrece la opción "Eliminar todos los datos", **sólo márquela si está completamente seguro** de que no necesitará recuperar la información.
+El proceso de desinstalación elimina automáticamente el programa, detiene y remueve el servicio del backend, y elimina las reglas del Firewall. Si el asistente ofrece la opción **"Eliminar todos los datos"**, **sólo márquela si está completamente seguro** de que no necesitará recuperar la información.
+
+> 📌 **Nota sobre PostgreSQL:** El desinstalador **no elimina PostgreSQL** automáticamente, ya que puede estar siendo usado por otras aplicaciones. Si desea eliminar PostgreSQL, debe hacerlo manualmente desde "Programas y características" en el Panel de Control de Windows.

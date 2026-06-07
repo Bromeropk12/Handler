@@ -6,7 +6,8 @@
 **Documento:** FIS – UDCII – G05  
 **Tipo:** Manual Técnico del Sistema  
 **Versión del Software:** 1.0.0  
-**Fecha de Elaboración:** Mayo de 2026  
+**Versión del Documento:** 1.1  
+**Fecha de Elaboración:** Junio de 2026  
 **Elaborado por:** Equipo de Desarrollo — Handler S.A.S.  
 **Presentado a:** Unidad para el Desarrollo de la Ciencia, la Investigación y la Innovación (UDCII)
 
@@ -25,3 +26,4 @@
 9. [Sistema de Backups y Recuperación de Datos](./09_Backups_y_Recuperacion.md)
 10. [Desinstalación del Sistema](./10_Desinstalacion.md)
 11. [Solución de Problemas](./11_Solucion_Problemas.md)
+12. [Evaluación de Seguridad](./12_Seguridad.md)

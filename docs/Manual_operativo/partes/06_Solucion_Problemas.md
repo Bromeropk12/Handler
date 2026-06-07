@@ -25,16 +25,18 @@ El sistema no reconoce la combinación de usuario y contraseña ingresada.
 **¿Qué está pasando?**
 La ventana de la aplicación se abre correctamente, pero al intentar iniciar sesión o navegar entre módulos, aparece un mensaje de error de red o la pantalla se queda cargando indefinidamente.
 
-**Causa:** La base de datos local del sistema (que corre dentro de **Docker Desktop**) no está activa.
+**Causa:** El servicio de base de datos PostgreSQL no está activo en su computador.
 
 **Solución paso a paso:**
-1. Mire la **bandeja del sistema de Windows** (la esquina inferior derecha de su pantalla, donde está el reloj).
-2. Busque el ícono con forma de **ballena blanca** (Docker Desktop).
-3. **Si no lo ve:** Vaya al Menú de Inicio de Windows, busque "Docker Desktop" y ábralo. Espere aproximadamente 60 segundos hasta que el ícono aparezca y ya no esté animándose.
-4. **Si ve el ícono pero con un punto rojo o de advertencia:** Haga clic derecho sobre él y seleccione "Restart Docker" (Reiniciar Docker). Espere a que termine de reiniciarse.
-5. Una vez que Docker esté activo (ícono de ballena blanca sin animaciones), **cierre y vuelva a abrir** Handler TrackSamples desde el acceso directo del escritorio.
+1. Presione las teclas `Ctrl + Shift + Esc` para abrir el **Administrador de tareas**.
+2. Vaya a la pestaña **"Servicios"**.
+3. Busque **"postgresql-x64-15"** en la lista (puede ordenarla por nombre).
+4. Verifique que su estado sea **"En ejecución"**.
+5. Si aparece como **"Detenido"**, haga clic derecho sobre él y seleccione **"Iniciar"**.
+6. Espere 10 segundos y cierre la aplicación Handler TrackSamples (si está abierta).
+7. Vuelva a abrir la aplicación desde el acceso directo del escritorio.
 
-> 📌 **Consejo:** Para evitar este inconveniente en el futuro, configure Docker Desktop para que se inicie automáticamente con Windows. En Docker Desktop, vaya a `Configuración (ícono de engranaje) → General → Start Docker Desktop when you sign in to your computer` y asegúrese de que esté habilitado.
+> 📌 **Consejo:** Si este problema ocurre con frecuencia, configure el servicio de PostgreSQL para que se inicie automáticamente con Windows. Para hacerlo, abra `services.msc` (Servicios), busque `postgresql-x64-15`, haga clic derecho → Propiedades → Tipo de inicio: Automático.
 
 ---
 
@@ -105,6 +107,6 @@ El sistema lo redirigió a la pantalla de inicio de sesión sin que usted lo hay
 | Causa | Solución |
 |---|---|
 | El computador tiene poca memoria RAM disponible | Cierre los programas que no esté usando (navegadores con muchas pestañas, reproductores de video, etc.) para liberar memoria. |
-| Docker Desktop está consumiendo demasiados recursos | Reinicie Docker Desktop desde su ícono en la bandeja del sistema. |
+| El servicio PostgreSQL se reinició mal o está consumiendo muchos recursos | Reinicie el servicio: abra `services.msc`, busque `postgresql-x64-15`, haga clic derecho → **"Reiniciar"** |
 | El disco duro está casi lleno | Verifique que tenga al menos 5 GB libres en el disco donde está instalado el sistema. |
 | La aplicación lleva mucho tiempo abierta sin reiniciarse | Cierre y vuelva a abrir la aplicación para liberar la memoria acumulada (Reinicio normal del punto 4.3). |

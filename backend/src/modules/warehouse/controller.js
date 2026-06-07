@@ -8,7 +8,8 @@ const {
   getShelves,
   getShelfById,
   updateShelf,
-  deleteShelf
+  deleteShelf,
+  getCompatibleShelves
 } = require('./shelf-operations');
 
 const {
@@ -42,7 +43,7 @@ const databaseService = require('../../services/database');
  *
  * Permisos: warehouse.view
  */
-exports.previewGroupMove = async (req, res, next) => {
+const previewGroupMove = async (req, res, next) => {
   try {
     const { id: shelfId } = req.params;
     const { sample_ids, target_shelf_id } = req.body;
@@ -80,7 +81,7 @@ exports.previewGroupMove = async (req, res, next) => {
  *
  * Permisos: warehouse.move_sample
  */
-exports.moveGroup = async (req, res, next) => {
+const moveGroup = async (req, res, next) => {
   try {
     const { id: shelfId } = req.params;
     const { target_shelf_id, moves } = req.body;
@@ -116,6 +117,7 @@ module.exports = {
   getShelfById,
   updateShelf,
   deleteShelf,
+  getCompatibleShelves,
   getShelfMap,
   placeSample,
   moveSample,
@@ -123,6 +125,6 @@ module.exports = {
   autoPlaceSamples,
   defragmentShelf,
   confirmDefragMove,
-  previewGroupMove: exports.previewGroupMove,
-  moveGroup: exports.moveGroup,
+  previewGroupMove,
+  moveGroup,
 };
