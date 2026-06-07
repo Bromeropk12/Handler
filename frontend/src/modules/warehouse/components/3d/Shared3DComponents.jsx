@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
+import GroupChip from './GroupChip';
+import SampleTooltip from './SampleTooltip';
 
 // ─── Status Helper ─────────────────────────────────────────────────────────────
 export const getCellStatus = (cell) => {
@@ -240,6 +242,14 @@ export const SampleCube = ({
   isInGroupDrag = false,        // true si esta muestra es parte del grupo que se está arrastrando
   onDragStart,                 // callback (sample) al iniciar drag
   ghsDangerClass,              // opcional, si el padre lo provee (más rápido que cell.ghs_danger_class)
+  // v2.0 — UI flotante: tooltip sobre el cubo cuando está seleccionado, chip cuando es parte de un grupo
+  showTooltip = false,          // true cuando el cubo está clickeado y debe mostrar SampleTooltip
+  showGroupChip = false,        // true cuando el cubo es parte de un grupo seleccionado
+  movementMode = false,         // true cuando estamos en modo "mover": no muestra tooltip
+  onTooltipViewDetail,          // () => void
+  onTooltipMove,                // () => void
+  onTooltipClose,               // () => void
+  groupChipColor,               // hex color del grupo (opcional, default sky)
 }) => {
   // cubeGroupRef wraps both the cube mesh AND the 3D stamp so they animate in sync.
   const cubeGroupRef = useRef();
@@ -294,8 +304,6 @@ export const SampleCube = ({
     }
   });
 
-  const statusLabel     = { occupied: 'Activa', warning: 'Por Vencer', expired: 'Vencida' };
-  const statusTextColor = { occupied: '#34d399', warning: '#facc15',  expired: '#f87171' };
   const stampColor   = STATUS_COLORS[status] || STATUS_COLORS.occupied;
   const letterColor  = status === 'warning' ? '#000000' : '#ffffff';
   const statusLetter = status === 'warning' ? 'P' : status === 'expired' ? 'V' : 'A';
@@ -392,10 +400,45 @@ export const SampleCube = ({
         </mesh>
       )}
 
-      {/* ── Tooltip eliminado en PR5 (v1.1.0) ──
-          El detalle de la muestra se muestra ahora en el bottom sheet
-          contextual (SampleDetailView). El cubo 3D ya no levanta un
-          `<Html>` flotante al seleccionarse. */}
+      {/* ── v2.0 — UI flotante sobre el cubo ──
+          Cuando showTooltip=true, monta el SampleTooltip via <Html>
+          anclado encima del cubo. Cuando showGroupChip=true, monta
+          el GroupChip. Solo uno de los dos puede estar visible a la vez
+          (el tooltip se oculta en movement mode y cuando hay grupo). */}
+
+      {showGroupChip && !showTooltip && (
+        <Html
+          position={[0, baseY + 1.0, 0]}
+          center
+          zIndexRange={[80, 0]}
+          style={{ pointerEvents: 'none' }}
+        >
+          <GroupChipInline
+            sample={cell}
+            sgaColor={groupChipColor || (ghsDangerClass ? getSGAColor(ghsDangerClass) : (cell.ghs_danger_class ? getSGAColor(cell.ghs_danger_class) : '#38bdf8'))}
+          />
+        </Html>
+      )}
+
+      {showTooltip && !movementMode && !showGroupChip && (
+        <Html
+          position={[0, baseY + 1.0, 0]}
+          center
+          zIndexRange={[90, 0]}
+          distanceFactor={8}
+          style={{ pointerEvents: 'auto' }}
+        >
+          <SampleTooltip
+            sample={cell}
+            sgaColor={ghsDangerClass ? getSGAColor(ghsDangerClass) : (cell.ghs_danger_class ? getSGAColor(cell.ghs_danger_class) : '#38bdf8')}
+            onViewDetail={onTooltipViewDetail}
+            onMove={onTooltipMove}
+            onClose={onTooltipClose}
+          />
+        </Html>
+      )}
     </group>
   );
 };
+
+const GroupChipInline = GroupChip;

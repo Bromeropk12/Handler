@@ -9,22 +9,15 @@ import DefragmentationTool from './DefragmentationTool';
 import { ShelfOverviewMap } from './3d/ShelfOverviewMap';
 import { LevelDetailMap }   from './3d/LevelDetailMap';
 import { useSampleSelection } from '../hooks/useSampleSelection';
-import { useSampleMovement } from '../hooks/useSampleMovement';
 import { useGroupDrag }     from '../hooks/useGroupDrag';
 import { useGroupPreview }  from '../hooks/useGroupPreview';
 import { useShelfStaleness } from '../hooks/useShelfStaleness';
-// (SampleMovementToolbar + MovementModeOverlay + TargetShelfPicker +
-//  MovementConfirmModal eliminados en PR4; reemplazados por MovementView
-//  dentro del BottomSheet contextual.)
-import GroupDragGhost from './3d/GroupDragGhost'; // eslint-disable-line no-unused-vars
-// GroupDragGhost: componente R3F (disponible para Módulo E / integración con mini-mapa)
-import ShelfMiniMap3D from './minimap/ShelfMiniMap3D';
-import BottomSheet from './bottom/BottomSheet';
-import EmptyView from './bottom/EmptyView';
-import SampleDetailView from './bottom/SampleDetailView';
-import GroupView from './group/GroupView';
-import GroupConfirmView from './bottom/GroupConfirmView';
-import MovementView from './bottom/MovementView';
+import { useMovementMode } from '../hooks/useMovementMode';
+import FloatingGroupBar from './ui/FloatingGroupBar';
+import SampleDetailModal from './ui/SampleDetailModal';
+import MovementModal from './ui/MovementModal';
+import ToastReject from './ui/ToastReject';
+import { getSGAColor } from './3d/Shared3DComponents';
 
 // ─── Stat Pill ─────────────────────────────────────────────────────────────────
 const StatPill = ({ label, value, color }) => (
@@ -58,53 +51,63 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   const [showStats,      setShowStats]      = useState(true);
 
   const selection = useSampleSelection();
-  const movement = useSampleMovement(() => {
-    selection.clearSelection();
-    fetchMapData();
-  });
   const groupPreview = useGroupPreview();
   const { isStale } = useShelfStaleness(selectedShelf?.id, mapData);
 
-  // Group flow state
-  const [groupTarget, setGroupTarget] = useState(null); // {x,y,z,shelfId,shelfName}
-  const [groupConfirmOpen, setGroupConfirmOpen] = useState(false);
-  const [groupExecuting, setGroupExecuting] = useState(false);
-  const [groupError, setGroupError] = useState(null);
-  const [groupConflicts, setGroupConflicts] = useState([]);
-  const [validationModal, setValidationModal] = useState(null);
-  // { type: 'type'|'dimension'|'limit'|'status'|'multiShelf'|'partial', ...payload }
+  // v2.0 — modales y feedback (declarados antes de useMovementMode para que su onCancel los pueda referenciar)
+  const [detailModalSample, setDetailModalSample] = useState(null);
+  const [movementModalOpen, setMovementModalOpen] = useState(false);
+  const [movementModalError, setMovementModalError] = useState(null);
+  const [movementExecuting, setMovementExecuting] = useState(false);
+  const [toastReject, setToastReject] = useState(null);
 
-  // Cross-shelf mini-mapa state
-  const [crossShelfData, setCrossShelfData] = useState(null); // mapData del anaquel destino
-  const [crossShelfId, setCrossShelfId] = useState(null);
-  const [crossShelfOpen, setCrossShelfOpen] = useState(false);
+  // ── v2.0 — Estado simplificado del flujo de movimiento ─────────────
+  // movementMode es la nueva pieza clave: el usuario clickea "Mover"
+  // (de un tooltip o del floating bar), entra en mode PICKING, las
+  // celdas válidas se iluminan en verde, clickea una, modal confirma.
+  const movementMode = useMovementMode({
+    currentShelfId: selectedShelf?.id,
+    onCancel: () => {
+      setSelectedCell(null);
+      setMovementModalOpen(false);
+      setMovementModalError(null);
+    },
+  });
 
-  // Listen for rejection events from useSampleSelection
+  // v2.0 — Cuando el toast de rechazo expira o se descarta
+  const dismissRejection = useCallback(() => {
+    setToastReject(null);
+    selection.clearRejection();
+  }, [selection]);
+
   useEffect(() => {
     if (!selection.rejectionEvent) return;
-    const ev = selection.rejectionEvent;
-    setValidationModal(ev);
+    setToastReject(selection.rejectionEvent);
   }, [selection.rejectionEvent]);
 
   const isGroupMode = selection.count >= 2;
+  const isMoving = movementMode.isActive;
 
   const groupDrag = useGroupDrag({
     groupSamples: selection.selectedSamples,
     onChangeShelf: () => {
-      // Cancel group drag if user changes shelf mid-drag
       groupPreview.clearCache();
     },
     onDropValid: (cell) => {
       const first = selection.selectedSamples[0];
       const targetShelfId = first?.shelf_id || selectedShelf?.id;
       const targetShelfName = selectedShelf?.name;
-      setGroupTarget({ x: cell.x, y: cell.y, z: cell.z, shelfId: targetShelfId, shelfName: targetShelfName });
-      setGroupConflicts(groupPreview.cache?.conflicts || []);
-      setGroupConfirmOpen(true);
+      movementMode.startMove(selection.selectedSamples);
+      movementMode.selectTarget({
+        x: cell.x, y: cell.y, z: cell.z,
+        shelfId: targetShelfId,
+        shelfName: targetShelfName,
+      });
+      setMovementModalOpen(true);
     },
   });
 
-  // Trigger preview when hovered cell changes (only in group mode)
+  // Trigger preview cuando hovered cell cambia durante drag-en-grupo
   useEffect(() => {
     if (!groupDrag.dragState.isDragging) return;
     if (!isGroupMode) return;
@@ -116,6 +119,20 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupDrag.dragState.hoveredCell?.x, groupDrag.dragState.hoveredCell?.y, groupDrag.dragState.hoveredCell?.z]);
 
+  // v2.0 — Trigger preview al entrar en movement mode (click+click flow)
+  useEffect(() => {
+    if (!isMoving) return;
+    if (movementMode.movingSamples.length === 0) return;
+    const first = movementMode.movingSamples[0];
+    const shelfId = first?.shelf_id || selectedShelf?.id;
+    groupPreview.loadPreview(
+      shelfId,
+      movementMode.movingSamples.map(s => s.id),
+      shelfId
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMoving, movementMode.movingSamples[0]?.id]);
+
   // Build validity map for LevelDetailMap
   const validityByKey = useMemo(() => {
     const out = {};
@@ -126,15 +143,6 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
     }
     return out;
   }, [groupPreview.cache]);
-
-  // Si la selección del grupo se limpia, cerrar cross-shelf
-  useEffect(() => {
-    if (selection.count === 0) {
-      setCrossShelfOpen(false);
-      setCrossShelfData(null);
-      setCrossShelfId(null);
-    }
-  }, [selection.count]);
 
   const fetchMapData = useCallback(async () => {
     if (!selectedShelf) return;
@@ -265,7 +273,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
             mapData={mapData}
             selectedLevel={selectedLevel}
             onSelectLevel={setSelectedLevel}
-            isTargetPickerMode={movement.mode === 'moving'}
+            isTargetPickerMode={isMoving}
           />
         </div>
 
@@ -291,29 +299,48 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 cameraView="default"
                 showExpired={showExpired}
                 showWarnings={showWarnings}
-                isSelectionMode={selection.count > 0}
-                isMovementMode={movement.mode === 'moving'}
+                isSelectionMode={selection.count > 0 || isMoving}
+                isMovementMode={isMoving}
                 isGroupDragMode={isGroupMode}
                 isGroupDragging={groupDrag.dragState.isDragging}
                 validityByKey={validityByKey}
                 selectedSampleIds={selection.selectedSamples}
-                assignedTargets={movement.assignments}
+                assignedTargets={[]}
+                // v2.0 — UI flotante
+                movementMode={isMoving}
+                showTooltipFor={isMoving ? null : (selectedCell?.id ?? null)}
+                showGroupChipFor={isMoving ? new Set() : new Set(selection.selectedSamples.map(s => s.id))}
+                groupChipColor={
+                  selection.selectionType?.dangerClass
+                    ? getSGAColor(selection.selectionType.dangerClass)
+                    : '#38bdf8'
+                }
+                onTooltipViewDetail={() => {
+                  if (selectedCell) {
+                    setDetailModalSample(selectedCell);
+                    setSelectedCell(null);
+                  }
+                }}
+                onTooltipMove={() => {
+                  if (selectedCell) {
+                    movementMode.startMove([selectedCell]);
+                    setSelectedCell(null);
+                  }
+                }}
+                onTooltipClose={() => setSelectedCell(null)}
                 onSampleClick={(sample) => {
-                  if (movement.mode === 'idle') {
-                    if (isGroupMode) {
-                      // In group mode: a click also starts drag-en-grupo
-                      groupDrag.startDrag(sample);
-                    } else {
-                      selection.toggleSample(sample);
-                    }
-                  } else if (movement.mode === 'moving') {
-                    const isAssigned = movement.assignments.some(a => a.sampleData.id === sample.id && a.targetShelfId !== null);
-                    if (isAssigned) movement.unassignTarget(sample.id);
+                  if (isMoving) {
+                    return;
+                  }
+                  if (isGroupMode) {
+                    selection.toggleSample(sample);
+                  } else {
+                    setSelectedCell(sample);
                   }
                 }}
                 onSampleDragStart={(sample, evt) => {
+                  if (!isGroupMode) return;
                   groupDrag.startDrag(sample);
-                  // capture mouse globally
                   const moveHandler = (e) => {
                     const dx = Math.round(e.movementX || 0);
                     const dy = Math.round(e.movementY || 0);
@@ -335,209 +362,145 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   }
                 }}
                 onEmptyCellClick={(pos) => {
+                  if (isMoving) {
+                    movementMode.selectTarget({
+                      x: pos.x, y: selectedLevel, z: pos.z,
+                      shelfId: selectedShelf?.id,
+                      shelfName: selectedShelf?.name,
+                    });
+                    setMovementModalOpen(true);
+                    return;
+                  }
                   if (isGroupMode && groupDrag.dragState.isDragging) {
-                    // Group mode: hovering empty cell during drag → preview
-                    groupDrag.setHoveredCell(pos, validityByKey[`${pos.x},${pos.y},${pos.z}`] || 'unknown');
-                  } else if (movement.mode === 'moving' && movement.nextUnassignedSampleId) {
-                    movement.assignTarget(movement.nextUnassignedSampleId, pos, movement.activeTargetShelf);
+                    groupDrag.setHoveredCell(pos, validityByKey[`${pos.x},${pos.y ?? selectedLevel},${pos.z}`] || 'unknown');
                   }
                 }}
               />
 
-              {/* ── Bottom Sheet (sample detail / group / confirm / movement) ── */}
-              <BottomSheet
-                view={
-                  movement.mode === 'moving' || movement.mode === 'confirming' ? 'movement' :
-                  groupConfirmOpen ? 'confirm' :
-                  selection.count >= 2 ? 'group' :
-                  selection.count === 1 ? 'sample' :
-                  'empty'
-                }
-                headerTitle={
-                  movement.mode === 'moving' ? 'Mover muestras' :
-                  movement.mode === 'confirming' ? 'Confirmar movimiento' :
-                  groupConfirmOpen ? 'Confirmar movimiento de grupo' :
-                  selection.count === 0 ? 'Información de muestra' :
-                  `${selection.count} muestras seleccionadas`
-                }
-                persistKey="detail"
-                onClose={() => {
-                  setSelectedCell(null);
-                }}
-              >
-                {movement.mode === 'moving' || movement.mode === 'confirming' ? (
-                  <MovementView
-                    mode={movement.mode}
-                    assignments={movement.assignments}
-                    activeTargetShelf={movement.activeTargetShelf}
-                    isExecuting={movement.isExecuting}
-                    executionErrors={movement.executionErrors}
-                    nextUnassignedSampleId={movement.nextUnassignedSampleId}
-                    isFullyAssigned={movement.isFullyAssigned}
-                    assignedCount={movement.assignedCount}
-                    totalToAssign={movement.totalToAssign}
-                    onCancelMove={movement.cancelMove}
-                    onAssignTarget={movement.assignTarget}
-                    onChangeShelf={movement.changeTargetShelf}
-                    onReviewMove={movement.reviewMove}
-                    onConfirmMove={() => movement.confirmMove(selectedShelf.id)}
-                    currentShelfId={selectedShelf.id}
-                    currentMapData={mapData}
-                  />
-                ) : groupConfirmOpen ? (
-                  <GroupConfirmView
-                    samples={selection.selectedSamples}
-                    target={groupTarget}
-                    conflicts={groupConflicts}
-                    targetMapData={crossShelfOpen ? crossShelfData : mapData}
-                    isExecuting={groupExecuting}
-                    error={groupError}
-                    onCancel={() => {
-                      setGroupConfirmOpen(false);
-                      setGroupError(null);
-                      groupPreview.clearCache();
-                    }}
-                    onConfirm={async () => {
-                      if (!groupTarget) return;
-                      setGroupExecuting(true);
-                      setGroupError(null);
-                      try {
-                        await warehouseAPI.moveGroup(selectedShelf.id, {
-                          sample_ids: selection.selectedSamples.map(s => s.id),
-                          target_shelf_id: groupTarget.shelfId,
-                          target_x: groupTarget.x,
-                          target_y: groupTarget.y,
-                          target_z: groupTarget.z,
-                        });
-                        setGroupConfirmOpen(false);
-                        groupPreview.clearCache();
-                        selection.clearSelection();
-                        await fetchMapData();
-                      } catch (err) {
-                        setGroupError(err.response?.data?.message || err.message || 'Error al mover el grupo');
-                      } finally {
-                        setGroupExecuting(false);
-                      }
-                    }}
-                    onChangeShelf={async (targetShelfId) => {
-                      if (targetShelfId === selectedShelf.id) return;
-                      try {
-                        const res = await warehouseAPI.getShelfMap(targetShelfId);
-                        setCrossShelfData(res.data.data);
-                        setCrossShelfId(targetShelfId);
-                        setCrossShelfOpen(true);
-                        if (groupTarget) {
-                          setGroupTarget({ ...groupTarget, shelfId: targetShelfId });
-                        }
-                      } catch {
-                        setGroupError('No se pudo cargar el anaquel destino');
-                      }
-                    }}
-                    currentShelfId={selectedShelf.id}
-                  />
-                ) : selection.count >= 2 ? (
-                  <GroupView
-                    samples={selection.selectedSamples}
-                    selectionType={selection.selectionType}
-                    rejection={selection.rejectionEvent}
-                    isStale={isStale}
-                    onRemoveSample={(id) => selection.toggleSample({ id })}
-                    onClearAll={() => {
-                      groupDrag.cancelDrag();
-                      groupPreview.clearCache();
-                      selection.clearSelection();
-                    }}
-                    onConfirm={() => {
-                      if (!groupTarget) return;
-                      setGroupConfirmOpen(true);
-                    }}
-                    onReplaceGroup={() => {
-                      const newS = selection.rejectionEvent?.newSample;
-                      selection.clearRejection();
-                      selection.clearSelection();
-                      if (newS) selection.toggleSample(newS);
-                    }}
-                    onDismissRejection={() => selection.clearRejection()}
-                    crossShelfButton={
-                      crossShelfOpen ? (
-                        <button
-                          onClick={() => {
-                            setCrossShelfOpen(false);
-                            setCrossShelfData(null);
-                            setCrossShelfId(null);
-                          }}
-                          data-testid="group-cross-shelf-toggle"
-                          style={{
-                            padding: '6px 10px',
-                            background: 'rgba(56,189,248,0.1)',
-                            border: '1px solid rgba(56,189,248,0.3)',
-                            borderRadius: 8,
-                            color: '#38bdf8',
-                            fontSize: 10, fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        >↩ Anaquel origen</button>
-                      ) : null
-                    }
-                  />
-                ) : selection.count === 1 ? (
-                  <SampleDetailView
-                    sample={selection.selectedSamples[0]}
-                    isInGroup={true}
-                    isAlreadyInGroupOfOne={true}
-                    onAddToGroup={() => {}}
-                    onRemoveFromGroup={() => selection.toggleSample(selection.selectedSamples[0])}
-                    onMoveSingle={() => {
-                      movement.startMove([selection.selectedSamples[0]], selectedShelf);
-                    }}
-                    onClose={() => selection.clearSelection()}
-                  />
-                ) : selectedCell ? (
-                  <SampleDetailView
-                    sample={selectedCell}
-                    isInGroup={false}
-                    isAlreadyInGroupOfOne={false}
-                    onAddToGroup={() => selection.toggleSample(selectedCell)}
-                    onRemoveFromGroup={() => selection.toggleSample(selectedCell)}
-                    onMoveSingle={() => {
-                      movement.startMove([selectedCell], selectedShelf);
-                      setSelectedCell(null);
-                    }}
-                    onClose={() => setSelectedCell(null)}
-                  />
-                ) : (
-                  <EmptyView hasActiveSelection={false} />
-                )}
-              </BottomSheet>
+              {/* ── v2.0 — UI flotante (no es un panel persistente) ── */}
 
-              {/* Cross-shelf mini-mapa (visible durante group mode) */}
-              {isGroupMode && crossShelfOpen && crossShelfData && (
-                <ShelfMiniMap3D
-                  mapData={crossShelfData}
-                  target={groupTarget && groupTarget.shelfId === crossShelfId
-                    ? { x: groupTarget.x, y: groupTarget.y, z: groupTarget.z }
-                    : null}
-                  validity={groupTarget && groupTarget.shelfId === crossShelfId
-                    ? (validityByKey[`${groupTarget.x},${groupTarget.y},${groupTarget.z}`] || 'unknown')
-                    : 'unknown'}
-                  title={crossShelfData.shelf.name}
-                  onSelectCell={(cell) => {
-                    if (!crossShelfId) return;
-                    setGroupTarget({
-                      x: cell.x, y: cell.y, z: cell.z,
-                      shelfId: crossShelfId,
-                      shelfName: crossShelfData.shelf.name,
-                    });
-                    // Run preview against cross shelf
-                    const first = selection.selectedSamples[0];
-                    const sourceShelfId = first?.shelf_id || selectedShelf.id;
-                    groupPreview.loadPreview(
-                      sourceShelfId,
-                      selection.selectedSamples.map(s => s.id),
-                      crossShelfId
-                    );
+              {/* FloatingGroupBar: aparece cuando hay 2+ muestras seleccionadas */}
+              {isGroupMode && !isMoving && (
+                <FloatingGroupBar
+                  count={selection.count}
+                  selectionType={selection.selectionType}
+                  isStale={isStale}
+                  onClear={() => {
+                    groupDrag.cancelDrag();
+                    groupPreview.clearCache();
+                    selection.clearSelection();
+                    setSelectedCell(null);
+                  }}
+                  onMoveGroup={() => {
+                    if (isGroupMode) {
+                      movementMode.startMove(selection.selectedSamples);
+                    }
                   }}
                 />
+              )}
+
+              {/* Modal de detalle completo */}
+              {detailModalSample && (
+                <SampleDetailModal
+                  sample={detailModalSample}
+                  onClose={() => setDetailModalSample(null)}
+                  onMoveSingle={() => {
+                    const s = detailModalSample;
+                    setDetailModalSample(null);
+                    if (s) {
+                      movementMode.startMove([s]);
+                    }
+                  }}
+                />
+              )}
+
+              {/* Modal de confirmación de movimiento */}
+              {movementModalOpen && movementMode.target && (
+                <MovementModal
+                  samples={movementMode.movingSamples}
+                  target={movementMode.target}
+                  conflicts={movementMode.conflicts}
+                  mapData={mapData}
+                  isExecuting={movementExecuting}
+                  error={movementModalError}
+                  currentShelfId={selectedShelf?.id}
+                  onCancel={() => {
+                    setMovementModalOpen(false);
+                    setMovementModalError(null);
+                    movementMode.cancel();
+                  }}
+                  onConfirm={async () => {
+                    if (!movementMode.target) return;
+                    setMovementExecuting(true);
+                    setMovementModalError(null);
+                    try {
+                      const samples = movementMode.movingSamples;
+                      const target = movementMode.target;
+                      const sourceShelfId = samples[0]?.shelf_id || selectedShelf.id;
+                      // Usar el endpoint /move-group para 1 o N muestras (atómico)
+                      await warehouseAPI.moveGroup(sourceShelfId, {
+                        sample_ids: samples.map(s => s.id),
+                        target_shelf_id: target.shelfId,
+                        target_x: target.x,
+                        target_y: target.y,
+                        target_z: target.z,
+                      });
+                      setMovementModalOpen(false);
+                      movementMode.reset();
+                      selection.clearSelection();
+                      setSelectedCell(null);
+                      await fetchMapData();
+                    } catch (err) {
+                      setMovementModalError(err.response?.data?.message || err.message || 'Error al mover');
+                    } finally {
+                      setMovementExecuting(false);
+                    }
+                  }}
+                />
+              )}
+
+              {/* Toast de rechazo (auto-dismiss 3s) */}
+              <ToastReject
+                rejection={toastReject}
+                onReplace={() => {
+                  const newS = toastReject?.newSample;
+                  setToastReject(null);
+                  selection.clearRejection();
+                  selection.clearSelection();
+                  if (newS) selection.toggleSample(newS);
+                }}
+                onDismiss={dismissRejection}
+              />
+
+              {/* Indicador sutil de movement mode (bottom-center, pequeño) */}
+              {isMoving && (
+                <div
+                  data-testid="movement-mode-indicator"
+                  style={{
+                    position: 'absolute', bottom: 20, left: '50%',
+                    transform: 'translateX(-50%)',
+                    padding: '8px 14px',
+                    background: 'rgba(56, 189, 248, 0.12)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    borderRadius: 12,
+                    boxShadow: '0 4px 16px rgba(56, 189, 248, 0.3)',
+                    zIndex: 25,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    fontFamily: 'system-ui, sans-serif',
+                    color: '#f1f5f9',
+                    fontSize: 11, fontWeight: 700,
+                    letterSpacing: 0.3,
+                    animation: 'floatingBarIn 200ms ease-out',
+                  }}
+                >
+                  <span style={{
+                    width: 8, height: 8, borderRadius: 4, background: '#38bdf8',
+                    boxShadow: '0 0 8px #38bdf8',
+                    animation: 'pulse 1.2s ease-in-out infinite',
+                  }} />
+                  Modo mover activo · Click celda verde · Esc para cancelar
+                </div>
               )}
 
               {/* ── Stats card (top-right overlay) ── */}
@@ -783,15 +746,6 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
           />
         </div>
       )}
-
-      {/* ── Movement Components (legacy) ──────────────────────────────────── */}
-      {/* (v1.0.0 modales legacy reemplazados por MovementView dentro del
-          BottomSheet contextual. SampleMovementToolbar + MovementModeOverlay
-          + TargetShelfPicker + MovementConfirmModal eliminados en PR4.) */}
-
-      {/* ════════════════════ GROUP FLOW (drag-en-grupo) ════════════════════ */}
-
-      {/* (v1.0.0 modales legacy reemplazados por BottomSheet contextual en el detail map) */}
     </div>
   );
 };

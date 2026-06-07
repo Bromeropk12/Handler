@@ -65,6 +65,15 @@ export const LevelDetailMap = ({
   onSampleClick,
   onEmptyCellClick,
   onSampleDragStart,                 // (sample, event) al iniciar drag-en-grupo
+
+  // v2.0 — UI flotante sobre cubos
+  movementMode = false,              // true durante "modo mover": oculta tooltips, ilumina celdas verde/rojo
+  showTooltipFor = null,             // sample.id (number) del cubo cuyo tooltip debe estar visible
+  showGroupChipFor = new Set(),      // Set<number> de ids que son parte del grupo seleccionado
+  groupChipColor = '#38bdf8',
+  onTooltipViewDetail,               // () => void
+  onTooltipMove,                     // () => void
+  onTooltipClose,                    // () => void
 }) => {
   const totalCols   = mapData.shelf.grid_width  || 10;
   const totalDepth  = mapData.shelf.shelf_depth || 10;
@@ -173,6 +182,14 @@ export const LevelDetailMap = ({
                 isInGroupDrag={isInGroupDrag}
                 status={status}
                 ghsDangerClass={sample.ghs_danger_class}
+                // v2.0 — UI flotante
+                showTooltip={showTooltipFor === sample.id}
+                showGroupChip={showGroupChipFor.has(sample.id)}
+                movementMode={movementMode}
+                groupChipColor={groupChipColor}
+                onTooltipViewDetail={onTooltipViewDetail}
+                onTooltipMove={onTooltipMove}
+                onTooltipClose={onTooltipClose}
                 onHover={(c) => setHoveredCell(c ? sample : null)}
                 onClick={() => {
                   if (isSelectionMode || isMovementMode) {

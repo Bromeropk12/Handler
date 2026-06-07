@@ -360,6 +360,48 @@
     50%      { opacity: 0.45; }
   }
 
+  /* ──────────────────────────────────────────────────────────
+     Warehouse v2.0 — animaciones del nuevo sistema de UI
+     (tooltip 3D, modal centrado, floating bar, toast)
+  ────────────────────────────────────────────────────────── */
+
+  @keyframes sampleTooltipIn {
+    from { opacity: 0; transform: translateY(6px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes floatingBarIn {
+    from { opacity: 0; transform: translate(-50%, 12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+
+  @keyframes modalFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  @keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(20px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes toastSlideDown {
+    from { opacity: 0; transform: translate(-50%, -12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+
+  /* Celda válida (verde) en movement mode — LevelDetailMap las usa con inline style,
+     pero exponemos un helper para transiciones de color. */
+  @keyframes cellValidPulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(52, 211, 153, 0.5); }
+    50%      { box-shadow: 0 0 14px rgba(52, 211, 153, 0.85); }
+  }
+
+  @keyframes cellInvalidPulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(248, 113, 113, 0.5); }
+    50%      { box-shadow: 0 0 14px rgba(248, 113, 113, 0.85); }
+  }
+
   .grid-block-3d.is-selected {
     animation: levitate-cube 4s ease-in-out infinite;
     z-index: 60;
