@@ -2,31 +2,26 @@
  * MovementModal
  *
  * Modal flotante centrado que confirma un movimiento (single o group)
- * antes de ejecutar la API. Se abre cuando el usuario hace click en
- * una celda válida durante movement mode.
- *
- * Muestra:
- *  - Cantidad de muestras (1 / N)
- *  - Posición destino (X, Y, Z)
- *  - Nombre del anaquel destino (con badge "cruzado" si es diferente)
- *  - Mini-mapa 3D del destino (opcional, prop `mapData`)
- *  - Barra de conflictos (verde / rojo)
- *  - Errores del backend (si los hay)
+ * antes de ejecutar la API.
  *
  * Props:
  *  - samples: Array<sample>
  *  - target: { x, y, z, shelfId, shelfName }
- *  - conflicts: Array              ← del preview del backend
- *  - mapData: object|null          ← para mini-mapa 3D
+ *  - conflicts: Array
+ *  - mapData: object|null
  *  - isExecuting: boolean
  *  - error: string|null
- *  - currentShelfId: string        ← para detectar cross-shelf
+ *  - currentShelfId: string
  *  - onCancel: () => void
  *  - onConfirm: () => void
  */
 import React from 'react';
 import { formatSampleId } from '../../utils/formatSampleId';
 import ShelfMiniMap3D from '../minimap/ShelfMiniMap3D';
+import {
+  SURFACE, BLUR, RADIUS, PADDING, BACKDROP, FONT, ANIM, SHADOW,
+  BUTTON,
+} from '../../constants';
 
 const MovementModal = ({
   samples = [],
@@ -51,26 +46,26 @@ const MovementModal = ({
       onClick={!isExecuting ? onCancel : undefined}
       style={{
         position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.55)',
-        backdropFilter: 'blur(8px)',
+        background: BACKDROP.BG,
+        backdropFilter: BACKDROP.FILTER,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 110,
-        animation: 'modalFadeIn 160ms ease',
+        zIndex: BACKDROP.Z_INDEX,
+        animation: ANIM.FADE_IN,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'rgba(13, 18, 28, 0.96)',
-          backdropFilter: 'blur(24px)',
+          background: SURFACE.PANEL,
+          backdropFilter: BLUR.XL,
           border: '1px solid rgba(56, 189, 248, 0.3)',
-          borderRadius: 16,
-          padding: '20px 24px',
+          borderRadius: RADIUS.XL,
+          padding: PADDING.PANEL,
           width: 'min(540px, calc(100vw - 32px))',
           maxHeight: 'calc(100vh - 64px)',
           overflowY: 'auto',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(56,189,248,0.1) inset',
-          animation: 'modalSlideUp 220ms ease',
+          boxShadow: `${SHADOW.PANEL}, 0 0 0 1px rgba(56, 189, 248, 0.1) inset`,
+          animation: ANIM.SLIDE_UP,
         }}
       >
         {/* Header */}
@@ -79,7 +74,7 @@ const MovementModal = ({
           marginBottom: 16,
         }}>
           <div style={{
-            width: 40, height: 40, borderRadius: 10,
+            width: 40, height: 40, borderRadius: RADIUS.MD + 2,
             background: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 16, fontWeight: 800, color: '#fff',
@@ -87,7 +82,9 @@ const MovementModal = ({
           }}>→</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 style={{
-              margin: 0, fontSize: 15, fontWeight: 800, color: '#f1f5f9',
+              margin: 0, fontSize: FONT.HEADING_SM.SIZE,
+              fontWeight: FONT.HEADING_SM.WEIGHT,
+              color: FONT.HEADING_SM.COLOR,
               letterSpacing: 0.2,
             }}>Confirmar movimiento</h2>
             <p style={{
@@ -109,7 +106,7 @@ const MovementModal = ({
         }}>
           {mapData && (
             <div style={{
-              width: 220, height: 160, borderRadius: 10,
+              width: 220, height: 160, borderRadius: RADIUS.MD + 2,
               border: '1px solid rgba(56, 189, 248, 0.2)',
               background: 'rgba(9, 13, 22, 0.5)',
               position: 'relative', overflow: 'hidden',
@@ -156,7 +153,7 @@ const MovementModal = ({
               </div>
               <div style={{
                 height: 4, borderRadius: 2,
-                background: 'rgba(255,255,255,0.04)',
+                background: 'rgba(255, 255, 255, 0.04)',
                 overflow: 'hidden',
               }}>
                 <div style={{
@@ -176,7 +173,7 @@ const MovementModal = ({
                 marginTop: 6, padding: '8px 10px',
                 background: 'rgba(239, 68, 68, 0.1)',
                 border: '1px solid rgba(239, 68, 68, 0.3)',
-                borderRadius: 6,
+                borderRadius: RADIUS.SM,
                 color: '#fca5a5',
                 fontSize: 10, fontWeight: 700,
               }}>✕ {error}</div>
@@ -188,7 +185,7 @@ const MovementModal = ({
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           justifyContent: 'flex-end',
-          borderTop: '1px solid rgba(255,255,255,0.04)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.04)',
           paddingTop: 12,
         }}>
           <button
@@ -196,13 +193,15 @@ const MovementModal = ({
             disabled={isExecuting}
             data-testid="movement-modal-cancel"
             style={{
-              padding: '9px 18px',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
-              color: '#cbd5e1', fontSize: 11, fontWeight: 700,
-              cursor: isExecuting ? 'not-allowed' : 'pointer',
-              letterSpacing: 0.3,
+              padding: BUTTON.GHOST.PAD,
+              background: BUTTON.GHOST.BG,
+              border: BUTTON.GHOST.BORDER,
+              borderRadius: BUTTON.GHOST.RADIUS,
+              color: BUTTON.GHOST.COLOR,
+              fontSize: BUTTON.GHOST.FONT_SIZE,
+              fontWeight: BUTTON.GHOST.FONT_WEIGHT,
+              cursor: isExecuting ? BUTTON.DISABLED.CURSOR : 'pointer',
+              letterSpacing: BUTTON.GHOST.LETTER_SPACING,
               opacity: isExecuting ? 0.5 : 1,
             }}
           >✕ Cancelar</button>
@@ -211,16 +210,18 @@ const MovementModal = ({
             disabled={!canExecute}
             data-testid="movement-modal-confirm"
             style={{
-              padding: '9px 20px',
+              padding: BUTTON.PRIMARY_GREEN.PAD,
               background: canExecute
-                ? 'linear-gradient(180deg, #10b981 0%, #059669 100%)'
-                : 'rgba(100,116,139,0.4)',
-              border: '1px solid rgba(16,185,129,0.4)',
-              borderRadius: 8,
-              color: '#fff', fontSize: 11, fontWeight: 800,
-              cursor: canExecute ? 'pointer' : 'not-allowed',
-              letterSpacing: 0.4,
-              boxShadow: canExecute ? '0 4px 14px rgba(16,185,129,0.3)' : 'none',
+                ? BUTTON.PRIMARY_GREEN.GRADIENT
+                : BUTTON.DISABLED.BG,
+              border: BUTTON.PRIMARY_GREEN.BORDER,
+              borderRadius: BUTTON.PRIMARY_GREEN.RADIUS,
+              color: BUTTON.PRIMARY_GREEN.COLOR,
+              fontSize: BUTTON.PRIMARY_GREEN.FONT_SIZE,
+              fontWeight: BUTTON.PRIMARY_GREEN.FONT_WEIGHT,
+              cursor: canExecute ? 'pointer' : BUTTON.DISABLED.CURSOR,
+              letterSpacing: BUTTON.PRIMARY_GREEN.LETTER_SPACING,
+              boxShadow: canExecute ? BUTTON.PRIMARY_GREEN.SHADOW : 'none',
             }}
           >{isExecuting ? '⟳ Ejecutando…' : `→ Mover ${samples.length}`}</button>
         </div>

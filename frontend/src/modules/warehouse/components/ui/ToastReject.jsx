@@ -5,21 +5,14 @@
  * del viewport cuando el usuario intenta agregar al grupo una muestra
  * incompatible. NO es un modal: no bloquea la interacción.
  *
- * Tipos:
- *  - 'type'      → rojo, "Tipo de muestra diferente"
- *  - 'dimension' → ámbar, "Dimensiones incompatibles"
- *  - 'limit'     → azul, "Máximo 10 muestras por grupo"
- *  - 'status'    → azul, "Solo se pueden agrupar muestras almacenadas"
- *  - 'multiShelf'→ azul, "Las muestras deben estar en el mismo anaquel"
- *  - 'partial'   → azul, "Algunas muestras no se pudieron agregar"
- *
  * Props:
  *  - rejection: { type, message, newSample }
- *  - onReplace: () => void          ← "Reemplazar grupo"
+ *  - onReplace: () => void
  *  - onDismiss: () => void
- *  - autoDismissMs: number          ← default 3000
+ *  - autoDismissMs: number
  */
 import React, { useEffect } from 'react';
+import { RADIUS, PADDING, ANIM, SHADOW } from '../../constants';
 
 const TYPE_CONFIG = {
   type:       { color: '#f87171', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.35)', icon: '⚠', label: 'Tipo diferente' },
@@ -58,14 +51,14 @@ const ToastReject = ({
         transform: 'translateX(-50%)',
         zIndex: 200,
         display: 'flex', alignItems: 'flex-start', gap: 10,
-        padding: '10px 14px',
+        padding: PADDING.TOAST,
         minWidth: 280, maxWidth: 400,
         background: cfg.bg,
         backdropFilter: 'blur(16px)',
         border: `1px solid ${cfg.border}`,
-        borderRadius: 10,
-        boxShadow: `0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px ${cfg.color}15 inset`,
-        animation: 'toastSlideDown 220ms ease',
+        borderRadius: RADIUS.MD + 2,
+        boxShadow: `${SHADOW.TOAST}, 0 0 0 1px ${cfg.color}15 inset`,
+        animation: ANIM.TOAST_DOWN,
         pointerEvents: 'auto',
         fontFamily: 'system-ui, sans-serif',
       }}
@@ -96,8 +89,8 @@ const ToastReject = ({
               data-testid="toast-reject-dismiss"
               style={{
                 padding: '4px 10px',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.1)', borderRadius: 5,
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 5,
                 color: '#94a3b8', fontSize: 10, fontWeight: 700,
                 cursor: 'pointer', letterSpacing: 0.3,
               }}

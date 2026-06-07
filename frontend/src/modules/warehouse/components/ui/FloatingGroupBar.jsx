@@ -2,28 +2,22 @@
  * FloatingGroupBar
  *
  * Barra flotante que aparece en el CENTRO INFERIOR del viewport 3D
- * cuando hay 2+ muestras seleccionadas. Es la única "UI persistente"
- * de la nueva arquitectura: NO es un panel que se expande, es una
- * pill compacta que se auto-muestra/oculta.
- *
- * Muestra:
- *  - Contador grande con el número de muestras
- *  - Nombre del producto (truncado)
- *  - Badge SGA (color + letra)
- *  - Indicador 🟡 "stale" si los datos están desactualizados
- *  - Botón [✕ Limpiar]
- *  - Botón [→ Mover grupo]
+ * cuando hay 2+ muestras seleccionadas. Pill compacta que se
+ * auto-muestra/oculta.
  *
  * Props:
  *  - count: número de muestras seleccionadas
  *  - selectionType: { id, name, dangerClass, dimensions, lot }
  *  - isStale: boolean
- *  - disabled: boolean       ← durante movement mode, etc.
+ *  - disabled: boolean
  *  - onClear: () => void
  *  - onMoveGroup: () => void
  */
 import React from 'react';
 import { getSGAColor } from '../3d/Shared3DComponents';
+import {
+  SURFACE, BLUR, RADIUS, PADDING, ANIM, SHADOW,
+} from '../../constants';
 
 const FloatingGroupBar = ({
   count = 0,
@@ -53,21 +47,21 @@ const FloatingGroupBar = ({
         display: 'flex',
         alignItems: 'center',
         gap: 10,
-        padding: '8px 10px 8px 14px',
-        background: 'rgba(9, 13, 22, 0.92)',
-        backdropFilter: 'blur(20px)',
+        padding: PADDING.BAR,
+        background: SURFACE.BAR,
+        backdropFilter: BLUR.LG,
         border: `1px solid ${sgaColor}40`,
-        borderRadius: 14,
-        boxShadow: `0 8px 28px rgba(0,0,0,0.55), 0 0 0 1px ${sgaColor}20 inset`,
+        borderRadius: RADIUS.XL - 2,
+        boxShadow: `${SHADOW.BAR}, 0 0 0 1px ${sgaColor}20 inset`,
         zIndex: 30,
-        animation: 'floatingBarIn 220ms ease-out',
+        animation: ANIM.BAR_IN,
         maxWidth: 'calc(100% - 32px)',
       }}
     >
       {/* Contador */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        minWidth: 32, height: 32, borderRadius: 8,
+        minWidth: 32, height: 32, borderRadius: RADIUS.MD,
         background: `${sgaColor}15`,
         border: `1px solid ${sgaColor}40`,
         color: sgaColor,
@@ -125,7 +119,7 @@ const FloatingGroupBar = ({
       {/* Separador */}
       <div style={{
         width: 1, height: 24,
-        background: 'rgba(255,255,255,0.08)',
+        background: 'rgba(255, 255, 255, 0.08)',
         flexShrink: 0,
       }} />
 
@@ -138,9 +132,9 @@ const FloatingGroupBar = ({
           aria-label="Limpiar selección"
           style={{
             padding: '6px 10px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 8,
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: RADIUS.MD,
             color: '#cbd5e1',
             fontSize: 10, fontWeight: 700,
             cursor: disabled ? 'not-allowed' : 'pointer',
@@ -158,15 +152,15 @@ const FloatingGroupBar = ({
           style={{
             padding: '6px 12px',
             background: disabled
-              ? 'rgba(100,116,139,0.3)'
+              ? 'rgba(100, 116, 139, 0.3)'
               : 'linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%)',
-            border: '1px solid rgba(14,165,233,0.4)',
-            borderRadius: 8,
+            border: '1px solid rgba(14, 165, 233, 0.4)',
+            borderRadius: RADIUS.MD,
             color: '#fff',
             fontSize: 10, fontWeight: 800,
             cursor: disabled ? 'not-allowed' : 'pointer',
             letterSpacing: 0.3,
-            boxShadow: disabled ? 'none' : '0 2px 8px rgba(14,165,233,0.3)',
+            boxShadow: disabled ? 'none' : '0 2px 8px rgba(14, 165, 233, 0.3)',
             flexShrink: 0,
             whiteSpace: 'nowrap',
           }}

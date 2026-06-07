@@ -106,9 +106,11 @@ const Sidebar = ({ collapsed, onToggle }) => {
         <div className="h-16 flex items-center px-4 border-b border-gray-700/50 shrink-0">
           {collapsed ? (
             <div className="w-full flex justify-center">
-              <div className="w-8 h-8 bg-handler-red rounded-lg flex items-center justify-center">
-                <span className="text-white font-black text-sm">H</span>
-              </div>
+              <img
+                src="/icohandler.png"
+                alt="Händler"
+                className="h-9 w-9 object-contain"
+              />
             </div>
           ) : (
             <div className="flex items-center gap-3">

@@ -423,7 +423,7 @@ export const SampleCube = ({
 
       {showTooltip && !movementMode && !showGroupChip && (
         <Html
-          position={[0, baseY + 1.0, 0]}
+          position={[width / 2 + 0.8, baseY + 0.8, -depth / 2 - 0.8]}
           center
           zIndexRange={[90, 0]}
           distanceFactor={8}

@@ -643,7 +643,7 @@ async function commitGroupMove({
       // (Igual que en validatePlacement.)
       const neighborsResult = await client.query(
         `
-        SELECT id, ghs_danger_class, position_x, position_y, position_z
+        SELECT ds.id, gs.ghs_danger_class, ds.position_x, ds.position_y, ds.position_z
         FROM dispensed_samples ds
         JOIN global_samples gs ON ds.global_sample_id = gs.id
         WHERE ds.shelf_id = $1

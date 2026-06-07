@@ -453,13 +453,18 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                       const samples = movementMode.movingSamples;
                       const target = movementMode.target;
                       const sourceShelfId = samples[0]?.shelf_id || selectedShelf.id;
-                      // Usar el endpoint /move-group para 1 o N muestras (atómico)
+                      // Calcular posiciones por muestra usando anchor (primera muestra)
+                      // para mantener el layout relativo del grupo
+                      const anchor = samples[0];
+                      const moves = samples.map(s => ({
+                        sample_id: s.id,
+                        new_position_x: (s.position_x || 0) - (anchor.position_x || 0) + target.x,
+                        new_position_y: (s.position_y || 0) - (anchor.position_y || 0) + target.y,
+                        new_position_z: (s.position_z || 0) - (anchor.position_z || 0) + target.z,
+                      }));
                       await warehouseAPI.moveGroup(sourceShelfId, {
-                        sample_ids: samples.map(s => s.id),
                         target_shelf_id: target.shelfId,
-                        target_x: target.x,
-                        target_y: target.y,
-                        target_z: target.z,
+                        moves,
                       });
                       setMovementModalOpen(false);
                       movementMode.reset();
