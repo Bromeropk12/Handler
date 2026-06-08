@@ -15,7 +15,7 @@ import { useShelfStaleness } from '../hooks/useShelfStaleness';
 import { useMovementMode } from '../hooks/useMovementMode';
 import FloatingGroupBar from './ui/FloatingGroupBar';
 import SampleDetailModal from './ui/SampleDetailModal';
-import MovementModal from './ui/MovementModal';
+// MovementModal removed — all movements now use ReplicaWarehouseModal
 import ToastReject from './ui/ToastReject';
 import { getSGAColor } from './3d/Shared3DComponents';
 import ReplicaWarehouseModal from './ui/ReplicaWarehouseModal';
@@ -55,26 +55,13 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   const groupPreview = useGroupPreview();
   const { isStale } = useShelfStaleness(selectedShelf?.id, mapData);
 
-  // v2.0 — modales y feedback (declarados antes de useMovementMode para que su onCancel los pueda referenciar)
+  // Modales y feedback
   const [detailModalSample, setDetailModalSample] = useState(null);
-  const [movementModalOpen, setMovementModalOpen] = useState(false);
-  const [movementModalError, setMovementModalError] = useState(null);
-  const [movementExecuting, setMovementExecuting] = useState(false);
   const [toastReject, setToastReject] = useState(null);
   const [replicaModalOpen, setReplicaModalOpen] = useState(false);
-
-  // ── v2.0 — Estado simplificado del flujo de movimiento ─────────────
-  // movementMode es la nueva pieza clave: el usuario clickea "Mover"
-  // (de un tooltip o del floating bar), entra en mode PICKING, las
-  // celdas válidas se iluminan en verde, clickea una, modal confirma.
-  const movementMode = useMovementMode({
-    currentShelfId: selectedShelf?.id,
-    onCancel: () => {
-      setSelectedCell(null);
-      setMovementModalOpen(false);
-      setMovementModalError(null);
-    },
-  });
+  // replicaSamples: muestras que se van a mover en el ReplicaWarehouseModal
+  // Puede ser [sample] para mover 1 desde tooltip, o selection.selectedSamples para grupo
+  const [replicaSamples, setReplicaSamples] = useState([]);
 
   // v2.0 — Cuando el toast de rechazo expira o se descarta
   const dismissRejection = useCallback(() => {
@@ -88,94 +75,27 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   }, [selection.rejectionEvent]);
 
   const isGroupMode = selection.count >= 2;
-  const isMoving = movementMode.isActive;
+  // isMoving siempre false — sistema legacy reemplazado por ReplicaWarehouseModal
+  const isMoving = false;
 
-  // Estados para movimientos cross-shelf
+  // Anaqueles compatibles de la misma línea de mercado (se cargan al abrir el modal)
   const [compatibleShelves, setCompatibleShelves] = useState([]);
-  const [targetMapData, setTargetMapData] = useState(null);
 
-  // Cargar anaqueles compatibles de la misma línea de mercado
-  // Se carga tanto cuando el modo movimiento está activo como cuando se abre el ReplicaModal
   useEffect(() => {
-    if ((!isMoving && !replicaModalOpen) || !selectedShelf?.id) {
+    if (!replicaModalOpen || !selectedShelf?.id) {
       if (!replicaModalOpen) setCompatibleShelves([]);
       return;
     }
     warehouseAPI.getCompatibleShelves(selectedShelf.id)
-      .then(res => {
-        setCompatibleShelves(res.data.data || []);
-      })
-      .catch(() => {
-        setCompatibleShelves([]);
-      });
-  }, [isMoving, replicaModalOpen, selectedShelf?.id]);
-
-  // Cargar dinámicamente el mapa 3D del anaquel de destino
-  useEffect(() => {
-    if (!movementMode.target?.shelfId) {
-      setTargetMapData(null);
-      return;
-    }
-    if (movementMode.target.shelfId === selectedShelf?.id) {
-      setTargetMapData(mapData);
-      return;
-    }
-    let active = true;
-    warehouseAPI.getShelfMap(movementMode.target.shelfId)
-      .then(res => {
-        if (active) setTargetMapData(res.data.data);
-      })
-      .catch(() => {
-        if (active) setTargetMapData(null);
-      });
-    return () => { active = false; };
-  }, [movementMode.target?.shelfId, mapData, selectedShelf?.id]);
+      .then(res => setCompatibleShelves(res.data.data || []))
+      .catch(() => setCompatibleShelves([]));
+  }, [replicaModalOpen, selectedShelf?.id]);
 
   const groupDrag = useGroupDrag({
     groupSamples: selection.selectedSamples,
-    onChangeShelf: () => {
-      groupPreview.clearCache();
-    },
-    onDropValid: (cell) => {
-      const first = selection.selectedSamples[0];
-      const targetShelfId = first?.shelf_id || selectedShelf?.id;
-      const targetShelfName = selectedShelf?.name;
-      movementMode.startMove(selection.selectedSamples);
-      movementMode.selectTarget({
-        x: cell.x, y: cell.y, z: cell.z,
-        shelfId: targetShelfId,
-        shelfName: targetShelfName,
-      });
-      setMovementModalOpen(true);
-    },
+    onChangeShelf: () => { groupPreview.clearCache(); },
+    onDropValid: () => {},
   });
-
-  // Trigger preview cuando hovered cell cambia durante drag-en-grupo
-  useEffect(() => {
-    if (!groupDrag.dragState.isDragging) return;
-    if (!isGroupMode) return;
-    const cell = groupDrag.dragState.hoveredCell;
-    if (!cell) return;
-    const first = selection.selectedSamples[0];
-    const shelfId = first?.shelf_id || selectedShelf?.id;
-    groupPreview.loadPreview(shelfId, selection.selectedSamples.map(s => s.id), shelfId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupDrag.dragState.hoveredCell?.x, groupDrag.dragState.hoveredCell?.y, groupDrag.dragState.hoveredCell?.z]);
-
-  // v2.0 — Trigger preview al entrar en movement mode (click+click flow)
-  useEffect(() => {
-    if (!isMoving) return;
-    if (movementMode.movingSamples.length === 0) return;
-    const first = movementMode.movingSamples[0];
-    const sourceShelfId = first?.shelf_id || selectedShelf?.id;
-    const targetShelfId = movementMode.target?.shelfId || selectedShelf?.id;
-    groupPreview.loadPreview(
-      sourceShelfId,
-      movementMode.movingSamples.map(s => s.id),
-      targetShelfId
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMoving, movementMode.movingSamples[0]?.id, movementMode.target?.shelfId]);
 
   // Build validity map for LevelDetailMap
   const validityByKey = useMemo(() => {
@@ -282,9 +202,12 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
         </div>
 
         <div className="flex items-center gap-2">
-          {selection.count >= 1 && !isMoving && (
+          {selection.count >= 1 && (
             <button
-              onClick={() => setReplicaModalOpen(true)}
+              onClick={() => {
+                setReplicaSamples(selection.selectedSamples);
+                setReplicaModalOpen(true);
+              }}
               className="px-3 py-1.5 text-xs font-bold rounded-xl transition-all"
               style={{
                 background: 'linear-gradient(180deg, #10b981 0%, #059669 100%)',
@@ -294,7 +217,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
               }}
             >
-              → Mover fuera del anaquel
+              → Mover {selection.count === 1 ? 'muestra' : `${selection.count} muestras`}
             </button>
           )}
           {/* Defrag toggle */}
@@ -388,8 +311,9 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 }}
                 onTooltipMove={() => {
                   if (selectedCell) {
-                    movementMode.startMove([selectedCell]);
+                    setReplicaSamples([selectedCell]);
                     setSelectedCell(null);
+                    setReplicaModalOpen(true);
                   }
                 }}
                 onTooltipClose={() => setSelectedCell(null)}
@@ -430,17 +354,6 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                   }
                 }}
                 onEmptyCellClick={(pos) => {
-                  if (isMoving) {
-                    movementMode.selectTarget({
-                      x: pos.x,
-                      y: pos.y !== undefined ? pos.y : selectedLevel,
-                      z: pos.z,
-                      shelfId: selectedShelf?.id,
-                      shelfName: selectedShelf?.name,
-                    });
-                    setMovementModalOpen(true);
-                    return;
-                  }
                   if (isGroupMode && groupDrag.dragState.isDragging) {
                     groupDrag.setHoveredCell(pos, validityByKey[`${pos.x},${pos.y ?? selectedLevel},${pos.z}`] || 'unknown');
                   }
@@ -462,38 +375,8 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                     setSelectedCell(null);
                   }}
                   onMoveGroup={() => {
-                    if (isGroupMode) {
-                      const samples = selection.selectedSamples;
-                      movementMode.startMove(samples);
-                      // Calcular el anchor inicial ajustado para que el grupo quepa
-                      // (evitar offsets negativos que sacarían muestras del rango)
-                      const firstSample = samples[0];
-                      const baseX = firstSample.position_x ?? 0;
-                      const baseY = firstSample.position_y ?? 0;
-                      const baseZ = firstSample.position_z ?? 0;
-                      // Calcular offsets mínimos para determinar el rango seguro del anchor
-                      let minDx = 0, minDy = 0, minDz = 0;
-                      for (const s of samples) {
-                        const dx = (s.position_x ?? 0) - baseX;
-                        const dy = (s.position_y ?? 0) - baseY;
-                        const dz = (s.position_z ?? 0) - baseZ;
-                        if (dx < minDx) minDx = dx;
-                        if (dy < minDy) minDy = dy;
-                        if (dz < minDz) minDz = dz;
-                      }
-                      // Ajustar el anchor para que ninguna muestra tenga posición negativa
-                      const safeX = Math.max(baseX, -minDx);
-                      const safeY = Math.max(baseY, -minDy);
-                      const safeZ = Math.max(baseZ, -minDz);
-                      movementMode.selectTarget({
-                        x: safeX,
-                        y: safeY,
-                        z: safeZ,
-                        shelfId: firstSample.shelf_id || selectedShelf?.id,
-                        shelfName: selectedShelf?.name || '',
-                      });
-                      setMovementModalOpen(true);
-                    }
+                    setReplicaSamples(selection.selectedSamples);
+                    setReplicaModalOpen(true);
                   }}
                 />
               )}
@@ -514,87 +397,24 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                     const s = detailModalSample;
                     setDetailModalSample(null);
                     if (s) {
-                      movementMode.startMove([s]);
+                      setReplicaSamples([s]);
+                      setReplicaModalOpen(true);
                     }
                   }}
                 />
               )}
 
-              {/* Modal de confirmación de movimiento */}
-              {movementModalOpen && movementMode.target && (
-                <MovementModal
-                  samples={movementMode.movingSamples}
-                  target={movementMode.target}
-                  conflicts={movementMode.conflicts}
-                  mapData={targetMapData || mapData}
-                  previewCells={groupPreview.cache?.cells || null}
-                  isExecuting={movementExecuting}
-                  error={movementModalError}
-                  currentShelfId={selectedShelf?.id}
-                  compatibleShelves={compatibleShelves}
-                  onTargetChange={(newTarget) => {
-                    movementMode.selectTarget(newTarget);
-                    // Recargar preview si cambió el anaquel destino
-                    if (newTarget.shelfId && newTarget.shelfId !== movementMode.target?.shelfId) {
-                      const sourceShelfId = movementMode.movingSamples[0]?.shelf_id || selectedShelf?.id;
-                      groupPreview.loadPreview(
-                        sourceShelfId,
-                        movementMode.movingSamples.map(s => s.id),
-                        newTarget.shelfId,
-                      );
-                    }
-                  }}
-                  onCancel={() => {
-                    setMovementModalOpen(false);
-                    setMovementModalError(null);
-                    movementMode.cancel();
-                  }}
-                  onConfirm={async () => {
-                    if (!movementMode.target) return;
-                    setMovementExecuting(true);
-                    setMovementModalError(null);
-                    try {
-                      const samples = movementMode.movingSamples;
-                      const target = movementMode.target;
-                      const sourceShelfId = samples[0]?.shelf_id || selectedShelf.id;
-                      // Calcular posiciones finales por muestra usando offsets relativos
-                      // al anchor (primera muestra)
-                      const anchor = samples[0];
-                      const baseX = anchor.position_x ?? 0;
-                      const baseY = anchor.position_y ?? 0;
-                      const baseZ = anchor.position_z ?? 0;
-                      const moves = samples.map(s => ({
-                        sample_id: s.id,
-                        new_position_x: (s.position_x ?? 0) - baseX + target.x,
-                        new_position_y: (s.position_y ?? 0) - baseY + target.y,
-                        new_position_z: (s.position_z ?? 0) - baseZ + target.z,
-                      }));
-                      await warehouseAPI.moveGroup(sourceShelfId, {
-                        target_shelf_id: target.shelfId,
-                        moves,
-                      });
-                      setMovementModalOpen(false);
-                      movementMode.reset();
-                      selection.clearSelection();
-                      setSelectedCell(null);
-                      await fetchMapData();
-                    } catch (err) {
-                      setMovementModalError(err.response?.data?.message || err.message || 'Error al mover');
-                    } finally {
-                      setMovementExecuting(false);
-                    }
-                  }}
-                />
-              )}
+              {/* MovementModal legacy eliminado — movimientos ahora via ReplicaWarehouseModal */}
 
-              {replicaModalOpen && (
+              {replicaModalOpen && replicaSamples.length > 0 && (
                 <ReplicaWarehouseModal
-                  samples={selection.selectedSamples}
-                  currentShelfId={selectedShelf?.id}
+                  samples={replicaSamples}
+                  currentShelfId={replicaSamples[0]?.shelf_id || selectedShelf?.id}
                   compatibleShelves={compatibleShelves}
-                  onClose={() => setReplicaModalOpen(false)}
+                  onClose={() => { setReplicaModalOpen(false); setReplicaSamples([]); }}
                   onSuccess={() => {
                     setReplicaModalOpen(false);
+                    setReplicaSamples([]);
                     selection.clearSelection();
                     setSelectedCell(null);
                     groupPreview.clearCache();
@@ -616,34 +436,29 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 onDismiss={dismissRejection}
               />
 
-              {/* Indicador sutil de movement mode (bottom-center, pequeño) */}
-              {isMoving && (
+              {/* Indicador selección activa */}
+              {selection.count > 0 && (
                 <div
-                  data-testid="movement-mode-indicator"
                   style={{
                     position: 'absolute', bottom: 20, left: '50%',
                     transform: 'translateX(-50%)',
-                    padding: '8px 14px',
-                    background: 'rgba(56, 189, 248, 0.12)',
+                    padding: '6px 12px',
+                    background: 'rgba(16, 185, 129, 0.10)',
                     backdropFilter: 'blur(16px)',
-                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
                     borderRadius: 12,
-                    boxShadow: '0 4px 16px rgba(56, 189, 248, 0.3)',
+                    boxShadow: '0 4px 16px rgba(16, 185, 129, 0.2)',
                     zIndex: 25,
                     display: 'flex', alignItems: 'center', gap: 8,
                     fontFamily: 'system-ui, sans-serif',
                     color: '#f1f5f9',
-                    fontSize: 11, fontWeight: 700,
+                    fontSize: 10, fontWeight: 700,
                     letterSpacing: 0.3,
-                    animation: 'floatingBarIn 200ms ease-out',
+                    pointerEvents: 'none',
                   }}
                 >
-                  <span style={{
-                    width: 8, height: 8, borderRadius: 4, background: '#38bdf8',
-                    boxShadow: '0 0 8px #38bdf8',
-                    animation: 'pulse 1.2s ease-in-out infinite',
-                  }} />
-                  Modo mover activo · Click celda verde · Esc para cancelar
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }} />
+                  {selection.count} muestra(s) seleccionada(s) · Usa el botón verde del encabezado para mover
                 </div>
               )}
 
