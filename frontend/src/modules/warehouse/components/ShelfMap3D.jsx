@@ -18,6 +18,7 @@ import SampleDetailModal from './ui/SampleDetailModal';
 import MovementModal from './ui/MovementModal';
 import ToastReject from './ui/ToastReject';
 import { getSGAColor } from './3d/Shared3DComponents';
+import ReplicaWarehouseModal from './ui/ReplicaWarehouseModal';
 
 // ─── Stat Pill ─────────────────────────────────────────────────────────────────
 const StatPill = ({ label, value, color }) => (
@@ -60,6 +61,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   const [movementModalError, setMovementModalError] = useState(null);
   const [movementExecuting, setMovementExecuting] = useState(false);
   const [toastReject, setToastReject] = useState(null);
+  const [replicaModalOpen, setReplicaModalOpen] = useState(false);
 
   // ── v2.0 — Estado simplificado del flujo de movimiento ─────────────
   // movementMode es la nueva pieza clave: el usuario clickea "Mover"
@@ -93,9 +95,10 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   const [targetMapData, setTargetMapData] = useState(null);
 
   // Cargar anaqueles compatibles de la misma línea de mercado
+  // Se carga tanto cuando el modo movimiento está activo como cuando se abre el ReplicaModal
   useEffect(() => {
-    if (!isMoving || !selectedShelf?.id) {
-      setCompatibleShelves([]);
+    if ((!isMoving && !replicaModalOpen) || !selectedShelf?.id) {
+      if (!replicaModalOpen) setCompatibleShelves([]);
       return;
     }
     warehouseAPI.getCompatibleShelves(selectedShelf.id)
@@ -105,7 +108,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
       .catch(() => {
         setCompatibleShelves([]);
       });
-  }, [isMoving, selectedShelf?.id]);
+  }, [isMoving, replicaModalOpen, selectedShelf?.id]);
 
   // Cargar dinámicamente el mapa 3D del anaquel de destino
   useEffect(() => {
@@ -279,6 +282,21 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
         </div>
 
         <div className="flex items-center gap-2">
+          {selection.count >= 1 && !isMoving && (
+            <button
+              onClick={() => setReplicaModalOpen(true)}
+              className="px-3 py-1.5 text-xs font-bold rounded-xl transition-all"
+              style={{
+                background: 'linear-gradient(180deg, #10b981 0%, #059669 100%)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                color: '#fff',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+              }}
+            >
+              → Mover fuera del anaquel
+            </button>
+          )}
           {/* Defrag toggle */}
           <button
             onClick={() => setShowDefragTool(v => !v)}
@@ -559,13 +577,28 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                       movementMode.reset();
                       selection.clearSelection();
                       setSelectedCell(null);
-                      groupPreview.clearCache();
                       await fetchMapData();
                     } catch (err) {
                       setMovementModalError(err.response?.data?.message || err.message || 'Error al mover');
                     } finally {
                       setMovementExecuting(false);
                     }
+                  }}
+                />
+              )}
+
+              {replicaModalOpen && (
+                <ReplicaWarehouseModal
+                  samples={selection.selectedSamples}
+                  currentShelfId={selectedShelf?.id}
+                  compatibleShelves={compatibleShelves}
+                  onClose={() => setReplicaModalOpen(false)}
+                  onSuccess={() => {
+                    setReplicaModalOpen(false);
+                    selection.clearSelection();
+                    setSelectedCell(null);
+                    groupPreview.clearCache();
+                    fetchMapData();
                   }}
                 />
               )}
