@@ -59,6 +59,7 @@
       "public/logo.png",
       "public/icohandler.png",
       "public/admin_panel.html",
+      "public/admin_panel.js",
       "public/installer.nsh"
     ],
     "win": {

@@ -12,7 +12,7 @@ module.exports = {
     'create_tables.js'
   ],
   assets: [
-    'src/setup_page.html',
+    // setup_page.html eliminado: ahora la app React maneja el wizard
     '../database/scripts/**/*',
     '../database/insercion/**/*',
     '../recursos/**/*'

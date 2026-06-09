@@ -37,17 +37,8 @@ router.use(async (req, res, next) => {
   next();
 });
 
-// GET /setup — Servir la página web de configuración
-router.get('/', (req, res) => {
-  const setupPage = path.join(__dirname, '../../setup_page.html');
-  if (fs.existsSync(setupPage)) {
-    res.sendFile(setupPage);
-  } else {
-    res.send('<h1>Setup page not found</h1>');
-  }
-});
-
 // POST /api/setup — Procesar la configuración inicial
+// (GET /setup eliminado: ahora la app React maneja el wizard automáticamente)
 router.post('/', async (req, res) => {
   const { host, port, user, password, dbName, adminName, adminUsername, adminPassword } = req.body;
 

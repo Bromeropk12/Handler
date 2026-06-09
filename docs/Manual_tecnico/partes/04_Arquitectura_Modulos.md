@@ -217,7 +217,7 @@ Rutas de administración del servicio, accesibles solo desde localhost. Incluye 
 
 ## 4.13. Módulo de Setup Inicial (`/api/setup`)
 
-Asistente web de configuración inicial que se activa automáticamente en el primer arranque cuando no se encuentra un archivo `.env` configurado. Sirve el archivo `setup_page.html` y expone endpoints para:
+Asistente de configuración inicial que se activa automáticamente en el primer arranque cuando no se encuentra un archivo `.env` configurado. La app React detecta el estado vía `/health` y muestra el componente `SetupPage.jsx`, el cual expone el endpoint `POST /api/setup` para:
 
 1. Probar la conexión a PostgreSQL con los datos ingresados por el usuario.
 2. Crear la base de datos si no existe.

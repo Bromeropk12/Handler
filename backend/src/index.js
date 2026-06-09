@@ -133,11 +133,12 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       styleSrcElem: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-      // 'unsafe-eval' eliminado: previene ejecución de eval()/new Function() vía XSS.
+      // 'unsafe-eval' eliminado en prod: previene ejecución de eval()/new Function() vía XSS.
       // 'unsafe-inline' solo se permite en development (para HMR de webpack); en prod se omite.
+      // blob: necesario para algunos modulos del frontend React (descarga de archivos, etc.)
       scriptSrc: process.env.NODE_ENV === 'production'
-        ? ["'self'"]
-        : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        ? ["'self'", "blob:"]
+        : ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:"],
       scriptSrcAttr: ["'none'"],
       imgSrc: ["'self'", "data:", "blob:"],
       connectSrc: ["'self'", "ws:", "wss:"],
@@ -259,16 +260,20 @@ app.get('/health', async (req, res) => {
   });
 });
 
-// Setup Web Wizard — activo solo en primer arranque sin .env configurado
-app.use('/setup', setupRoutes);
+// Setup Routes — API endpoint (POST /api/setup) para el wizard React
 app.use('/api/setup', setupRoutes);
 
-// Si estamos en setup mode, redirigir todo lo demás a /setup
+// En setup mode: servir la app React (ella detecta setupMode vía /health)
+// y muestra el componente SetupPage.jsx automáticamente
 if (process.env.SETUP_MODE === 'true') {
-  app.use('*', (req, res) => {
-    if (!req.path.startsWith('/setup') && !req.path.startsWith('/api/setup') && !req.path.startsWith('/health')) {
-      res.redirect('/setup');
+  app.use('*', (req, res, next) => {
+    const p = req.path;
+    // Pasar directamente: API, health, y raíz (ahí se sirve la React app)
+    if (p === '/' || p.startsWith('/api/') || p.startsWith('/health') || p.startsWith('/static/')) {
+      return next();
     }
+    // Redirigir todo lo demás a la raíz
+    res.redirect('/');
   });
 }
 
