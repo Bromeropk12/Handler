@@ -9,7 +9,7 @@ import { warehouseAPI } from '../../../../services/api';
 import {
   BACKDROP, BLUR, RADIUS, BUTTON, ANIM, SURFACE,
 } from '../../constants';
-import { LEVEL_HEIGHT, getSGAColor, getColorByName, GridLines, CameraController } from '../3d/Shared3DComponents';
+import { LEVEL_HEIGHT, getSGAColor, getColorByName, GridLines } from '../3d/Shared3DComponents';
 
 // ─── LevelPlane: plano interactivo de nivel en la vista de estantería completa ─
 const LevelPlane = ({ yIndex, totalCols, totalDepth, isSelected, onClick }) => {
@@ -823,12 +823,11 @@ export const ReplicaWarehouseModal = ({
           <div style={{ flex: 1, position: 'relative', display: 'flex', minHeight: 0 }}>
             {step === 'aisle' ? (
               <div style={{ flex: 1, position: 'relative' }}>
-                <Canvas camera={{ position: [0, 9, 24], fov: 45 }} gl={{ alpha: true, antialias: true }}>
-                  <CameraController view="default" />
+                <Canvas camera={{ position: [0, 2.5, 20], fov: 48 }} gl={{ alpha: true, antialias: true }}>
                   <ambientLight intensity={0.5} />
                   <directionalLight position={[10, 20, 15]} intensity={1.8} castShadow />
                   <directionalLight position={[-15, 10, -10]} intensity={0.9} color="#3b82f6" />
-                  <pointLight position={[0, 12, 0]} intensity={0.6} color="#0ea5e9" />
+                  <pointLight position={[0, 8, 0]} intensity={0.6} color="#0ea5e9" />
 
                   <OrbitControls
                     makeDefault
@@ -836,6 +835,7 @@ export const ReplicaWarehouseModal = ({
                     enableZoom={true}
                     minDistance={3}
                     maxDistance={80}
+                    target={[0, 2, 0]}
                   />
 
                   <group>
@@ -908,15 +908,24 @@ export const ReplicaWarehouseModal = ({
                     </div>
 
                     <div style={{ flex: 1, position: 'relative' }}>
-                      <Canvas camera={{ fov: 45 }} gl={{ alpha: true, antialias: true }}>
-                        <CameraController view="default" targetPosOverride={new THREE.Vector3(gridWidth * 1.8, gridHeight * LEVEL_HEIGHT * 0.75, shelfDepth * 1.8 + 6)} />
-                        
+                      <Canvas
+                        key={`shelf-left-${selectedShelfId}`}
+                        camera={{
+                          fov: 50,
+                          position: [
+                            gridWidth * 1.5,
+                            gridHeight * LEVEL_HEIGHT * 0.45,
+                            gridWidth * 0.9 + shelfDepth + 8,
+                          ],
+                        }}
+                        gl={{ alpha: true, antialias: true }}
+                      >
                         <ambientLight intensity={0.45} />
                         <directionalLight position={[8, 16, 10]} intensity={1.8} color="#ffffff" castShadow />
                         <directionalLight position={[-6, 8, -6]} intensity={0.4} color="#38bdf8" />
                         <pointLight position={[0, gridHeight + 2, 0]} intensity={0.5} color="#0ea5e9" distance={gridHeight * 4} />
 
-                        <OrbitControls makeDefault enablePan enableZoom enableRotate minDistance={3} maxDistance={40} />
+                        <OrbitControls makeDefault enablePan enableZoom enableRotate minDistance={2} maxDistance={80} />
 
                         {/* Estructura metálica del estante */}
                         <ShelfStructure totalCols={gridWidth} totalDepth={shelfDepth} totalLevels={gridHeight} />
@@ -1055,9 +1064,18 @@ export const ReplicaWarehouseModal = ({
                       </div>
                     ) : (
                       <div style={{ flex: 1, position: 'relative' }}>
-                        <Canvas camera={{ fov: 42, position: [10, 7, 10] }} gl={{ alpha: true, antialias: true }}>
-                          <CameraController view="default" />
-                          
+                        <Canvas
+                          key={`shelf-right-${selectedShelfId}-${selectedLevelY}`}
+                          camera={{
+                            fov: 44,
+                            position: [
+                              gridWidth * 0.75,
+                              Math.max(gridWidth, shelfDepth) * 0.85,
+                              shelfDepth * 0.8 + 10,
+                            ],
+                          }}
+                          gl={{ alpha: true, antialias: true }}
+                        >
                           <ambientLight intensity={0.55} />
                           <directionalLight position={[8, 14, 8]} intensity={1.6} color="#ffffff" />
                           <directionalLight position={[-6, 6, -8]} intensity={0.45} color="#38bdf8" />
@@ -1066,7 +1084,7 @@ export const ReplicaWarehouseModal = ({
                           <OrbitControls
                             makeDefault
                             enablePan enableZoom enableRotate
-                            minDistance={2} maxDistance={30}
+                            minDistance={2} maxDistance={60}
                             minPolarAngle={Math.PI / 8}
                             maxPolarAngle={Math.PI / 2.1}
                           />

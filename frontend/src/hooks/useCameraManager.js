@@ -24,6 +24,12 @@ export function useCameraManager() {
             setIsLoading(true);
             setError(null);
 
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                setError('La cámara no está disponible en este navegador o entorno no seguro (requiere HTTPS o localhost)');
+                setCameras([]);
+                return;
+            }
+
             // Solicitar permisos
             await navigator.mediaDevices.getUserMedia({ video: true });
 
@@ -188,6 +194,7 @@ export function useCameraManager() {
 
     // Escuchar cambios en dispositivos
     useEffect(() => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.addEventListener) return;
         const handleDeviceChange = () => {
             // Reescaneo silencioso cuando cambian dispositivos
             scanCameras();
@@ -195,7 +202,9 @@ export function useCameraManager() {
 
         navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
         return () => {
-            navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+            if (navigator.mediaDevices && navigator.mediaDevices.removeEventListener) {
+                navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+            }
         };
     }, [scanCameras]);
 
