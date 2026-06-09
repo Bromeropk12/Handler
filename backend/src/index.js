@@ -241,13 +241,21 @@ app.use('/recursos', express.static(recursosPath));
 app.use(logger(loggerInstance));
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  let dbConnected = false;
+  if (process.env.SETUP_MODE !== 'true') {
+    try {
+      const database = require('./services/database');
+      dbConnected = await database.testConnectionQuick(3000);
+    } catch (_) { /* si database module falla, dbConnected=false */ }
+  }
   res.status(200).json({
     status: process.env.SETUP_MODE === 'true' ? 'SETUP_REQUIRED' : 'OK',
     timestamp: new Date().toISOString(),
     service: 'Handler TrackSamples Backend',
     version: '1.0.0',
-    setupMode: process.env.SETUP_MODE === 'true'
+    setupMode: process.env.SETUP_MODE === 'true',
+    dbConnected
   });
 });
 

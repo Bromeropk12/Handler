@@ -13,4 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notifyRestart:      (minutes) => ipcRenderer.invoke('notify-restart', minutes),
   notifyUpdate:       (version) => ipcRenderer.invoke('notify-update', version),
   getSseClientCount:  () => ipcRenderer.invoke('get-sse-client-count'),
+  // Setup / Configuración inicial
+  checkSetup:         () => ipcRenderer.invoke('check-setup'),
+  setupDatabase:      (formData) => ipcRenderer.invoke('setup-database', formData),
 });

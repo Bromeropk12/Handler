@@ -12,7 +12,6 @@ import { useSampleSelection } from '../hooks/useSampleSelection';
 import { useGroupDrag }     from '../hooks/useGroupDrag';
 import { useGroupPreview }  from '../hooks/useGroupPreview';
 import { useShelfStaleness } from '../hooks/useShelfStaleness';
-import { useMovementMode } from '../hooks/useMovementMode';
 import FloatingGroupBar from './ui/FloatingGroupBar';
 import SampleDetailModal from './ui/SampleDetailModal';
 // MovementModal removed — all movements now use ReplicaWarehouseModal

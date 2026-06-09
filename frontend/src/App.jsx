@@ -173,40 +173,58 @@ const App = () => {
   const [needsSetup, setNeedsSetup] = React.useState(false);
   const [checkingSetup, setCheckingSetup] = React.useState(true);
   const [setupError, setSetupError] = React.useState(null);
+  const [isReconfiguring, setIsReconfiguring] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
+    // Timeout de seguridad (30s, tiempo suficiente para que /health responda con BD caída)
     const timeout = setTimeout(() => {
       if (!cancelled) {
-        console.warn('[App] checkSetup timed out, assuming setup complete');
+        console.warn('[App] checkSetup timed out, asumiendo configurado');
         setCheckingSetup(false);
       }
-    }, 8000);
+    }, 30000);
 
-    try {
+    const checkSetup = async () => {
+      // Paso 1: indicación temprana via electronAPI (solo archivo)
       if (window.electronAPI && typeof window.electronAPI.checkSetup === 'function') {
-        window.electronAPI.checkSetup().then(needs => {
-          if (cancelled) return;
-          clearTimeout(timeout);
+        try {
+          const needs = await window.electronAPI.checkSetup();
+          if (!cancelled && needs) {
+            // Sin .env → necesita setup seguro
+            setNeedsSetup(true);
+            setCheckingSetup(false);
+            clearTimeout(timeout);
+            return;
+          }
+        } catch {}
+      }
+
+      // Paso 2: fuente de verdad → /health (setupMode + dbConnected)
+      try {
+        const res = await fetch('/health', { signal: AbortSignal.timeout(10000) });
+        const data = await res.json();
+        if (!cancelled) {
+          const needs = data.setupMode === true || data.dbConnected === false;
           setNeedsSetup(needs);
-          setCheckingSetup(false);
-        }).catch(err => {
-          if (cancelled) return;
-          clearTimeout(timeout);
-          console.error('[App] Error al verificar setup:', err);
-          setSetupError(err.message || 'Error de comunicación con el sistema');
-          setCheckingSetup(false);
-        });
-      } else {
+          setIsReconfiguring(data.setupMode === false && data.dbConnected === false);
+        }
+      } catch {
+        if (!cancelled) console.warn('[App] /health no responde, asumiendo configurado');
+      }
+
+      if (!cancelled) {
         clearTimeout(timeout);
         setCheckingSetup(false);
       }
-    } catch (err) {
+    };
+
+    checkSetup().catch(err => {
       clearTimeout(timeout);
-      console.error('[App] Error sincrónico en checkSetup:', err);
-      setSetupError(err.message || 'Error al iniciar la aplicación');
+      console.error('[App] Error en checkSetup:', err);
+      setSetupError(err?.message || 'Error al iniciar la aplicación');
       setCheckingSetup(false);
-    }
+    });
 
     return () => { cancelled = true; clearTimeout(timeout); };
   }, []);
@@ -245,7 +263,7 @@ const App = () => {
   }
 
   if (needsSetup) {
-    return <SetupPage onSetupComplete={() => setNeedsSetup(false)} />;
+    return <SetupPage isReconfiguring={isReconfiguring} onSetupComplete={() => setNeedsSetup(false)} />;
   }
 
   return (

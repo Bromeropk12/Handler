@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
-const SetupPage = ({ onSetupComplete }) => {
+const SetupPage = ({ onSetupComplete, isReconfiguring }) => {
   const [formData, setFormData] = useState({
     host: 'localhost',
     port: '5432',
     user: 'postgres',
     password: '',
-    dbName: 'handler_track_samples'
+    dbName: 'handler_track_samples',
+    adminUsername: 'admin',
+    adminPassword: '',
+    adminName: 'Administrador'
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -40,8 +43,9 @@ const SetupPage = ({ onSetupComplete }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-900 text-white p-4">
-      <div className="w-full max-w-md bg-surface-800 p-8 rounded-2xl border border-surface-700 shadow-xl">
+    <div className="h-screen overflow-y-auto bg-surface-900 text-white p-4">
+      <div className="min-h-full flex items-center justify-center">
+        <div className="w-full max-w-md bg-surface-800 p-6 rounded-2xl border border-surface-700 shadow-xl">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-blue-500/20 text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-500/30">
             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -53,6 +57,12 @@ const SetupPage = ({ onSetupComplete }) => {
             El sistema requiere conexión a PostgreSQL para funcionar. Por favor, ingresa las credenciales de tu servidor.
           </p>
         </div>
+
+        {isReconfiguring && (
+          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400 text-sm text-center">
+            ⚠ La base de datos configurada actualmente no responde. Verifica que PostgreSQL esté instalado y accesible, o actualiza las credenciales aquí.
+          </div>
+        )}
 
         {error && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm text-center">
@@ -123,6 +133,36 @@ const SetupPage = ({ onSetupComplete }) => {
             <p className="text-xs text-gray-500 mt-1">Si no existe, se creará automáticamente.</p>
           </div>
 
+          <div className="border-t border-surface-700 pt-4 mt-6">
+            <p className="text-sm font-medium text-gray-400 mb-4">Cuenta de Administrador</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Usuario Admin</label>
+                <input
+                  type="text"
+                  name="adminUsername"
+                  value={formData.adminUsername}
+                  onChange={handleChange}
+                  required
+                  className="w-full bg-surface-700 border border-surface-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Contraseña Admin</label>
+                <input
+                  type="password"
+                  name="adminPassword"
+                  value={formData.adminPassword}
+                  onChange={handleChange}
+                  required
+                  minLength={8}
+                  className="w-full bg-surface-700 border border-surface-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                />
+                <p className="text-xs text-gray-500 mt-1">Mínimo 8 caracteres.</p>
+              </div>
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
@@ -132,6 +172,7 @@ const SetupPage = ({ onSetupComplete }) => {
           </button>
         </form>
       </div>
+    </div>
     </div>
   );
 };

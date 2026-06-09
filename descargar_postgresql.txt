@@ -1,0 +1,65 @@
+# 1. Validar que la consola corra como Administrador
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "¡CRÍTICO: Este script requiere permisos de Administrador para instalar servicios y modificar el PATH!"
+    Break
+}
+
+Write-Host "==========================================================" -ForegroundColor Green
+Write-Host "  INICIANDO INSTALACIÓN AUTOMATIZADA: POSTGRESQL 18 + pgAdmin 4" -ForegroundColor Green
+Write-Host "==========================================================" -ForegroundColor Green
+
+# 2. Ejecutar la instalación desatendida corrigiendo el parámetro a --superpassword
+Write-Host "`n[Paso 1/4] Descargando e instalando el motor y herramientas..." -ForegroundColor Cyan
+Write-Host "Esto tomará un par de minutos, por favor espera que winget termine..." -ForegroundColor DarkGray
+
+# Se cambia el parámetro obsoleto por el oficial de PostgreSQL 18: --superpassword
+$overrideArgs = '--mode unattended --superpassword "!Handler2026"'
+
+winget install --id PostgreSQL.PostgreSQL.18 --source winget --override $overrideArgs --accept-package-agreements --accept-source-agreements --force
+
+# 3. Forzar actualización de las Variables de Entorno y buscar la ruta real de psql
+Write-Host "`n[Paso 2/4] Configurando variables del sistema (PATH)..." -ForegroundColor Cyan
+Start-Sleep -Seconds 15
+
+# Buscar dinámicamente la carpeta bin de PostgreSQL instalada
+$pgBinPath = (Get-ChildItem -Path "C:\Program Files\PostgreSQL" -Recurse -Filter "psql.exe" -ErrorAction SilentlyContinue).DirectoryName
+
+if ($pgBinPath) {
+    # Agregar al PATH de la sesión actual
+    $env:Path += ";$pgBinPath"
+    
+    # Agregar al PATH de la máquina permanentemente
+    $sysPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    if ($sysPath -notlike "*$pgBinPath*") {
+        [Environment]::SetEnvironmentVariable("Path", $sysPath + ";$pgBinPath", "Machine")
+        Write-Host "¡Ruta añadida al PATH de Windows con éxito!" -ForegroundColor Green
+    }
+} else {
+    Write-Warning "Si psql no funciona de inmediato en esta consola al terminar, solo abre otra nueva ventana."
+}
+
+# 4. Verificar el estado del servicio de fondo
+Write-Host "`n[Paso 3/4] Validando el servicio de base de datos..." -ForegroundColor Cyan
+Start-Sleep -Seconds 5
+
+$servicio = Get-Service -Name "postgresql-x64-18" -ErrorAction SilentlyContinue
+
+if ($servicio) {
+    if ($servicio.Status -ne 'Running') {
+        Start-Service -Name "postgresql-x64-18" -ErrorAction SilentlyContinue
+    }
+    Write-Host "¡SERVICIO DETECTADO! Nombre: $($servicio.Name) | Estado: $($servicio.Status)" -ForegroundColor Green
+} else {
+    Write-Warning "Si el servicio 'postgresql-x64-18' no responde al final del script, reinicia tu equipo para aplicar los cambios globales."
+}
+
+# 5. Resumen de datos de acceso
+Write-Host "`n==========================================================" -ForegroundColor Green
+Write-Host "  ¡PROCESO FINALIZADO! DATOS DE ACCESO CONFIGURADOS:      " -ForegroundColor Green
+Write-Host "==========================================================" -ForegroundColor Green
+Write-Host "• Servidor (Host):  localhost" -ForegroundColor White
+Write-Host "• Puerto:           5432" -ForegroundColor White
+Write-Host "• Superusuario:     postgres" -ForegroundColor Yellow
+Write-Host "• Contraseña:       !Handler2026" -ForegroundColor Yellow
+Write-Host "• Herramienta GUI:  pgAdmin 4" -ForegroundColor Cyan
+Write-Host "==========================================================" -ForegroundColor Green

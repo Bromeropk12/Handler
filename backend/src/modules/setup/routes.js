@@ -14,9 +14,21 @@ const bcrypt = require('bcryptjs');
 
 const programDataPath = path.join(process.env.ALLUSERSPROFILE || 'C:\\ProgramData', 'HandlerTrackSamples');
 
-// Middleware: bloquear si ya está configurado
-router.use((req, res, next) => {
+// Middleware: bloquear si ya está configurado (pero permitir reconfig desde localhost si DB caída)
+router.use(async (req, res, next) => {
   if (process.env.SETUP_MODE !== 'true') {
+    // Solo POST desde localhost: permitir reconfiguración si la BD no responde
+    if (req.method === 'POST') {
+      const clientIp = req.ip || req.connection.remoteAddress;
+      const isLocal = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
+      if (isLocal) {
+        try {
+          const database = require('../../services/database');
+          const connected = await database.testConnection();
+          if (!connected) return next();
+        } catch (_) { return next(); }
+      }
+    }
     return res.status(403).json({
       success: false,
       error: 'El sistema ya está configurado. Este endpoint está deshabilitado.'

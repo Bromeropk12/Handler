@@ -132,6 +132,23 @@ async function testConnection() {
 }
 
 /**
+ * Verifica conexión rápida con timeout (para health check)
+ * @param {number} timeoutMs - Timeout máximo en ms (default 3000)
+ * @returns {Promise<boolean>}
+ */
+async function testConnectionQuick(timeoutMs = 3000) {
+  try {
+    await Promise.race([
+      pool.query('SELECT 1'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Cierra todas las conexiones del pool
  */
 async function close() {
@@ -165,6 +182,7 @@ module.exports = {
   query,
   transaction,
   testConnection,
+  testConnectionQuick,
   close,
   getHealthStatus,
   pool, // Para casos especiales donde se necesite acceso directo

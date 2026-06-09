@@ -291,6 +291,40 @@ ipcMain.handle('get-sse-client-count', async () => {
   } catch (_) { return { count: 0 }; }
 });
 
+// ─── Setup / Configuración inicial ───────────────────────────────────────
+ipcMain.handle('check-setup', async () => {
+  const envPath = path.join(programDataPath, '.env');
+  if (!fs.existsSync(envPath)) return true;
+  const content = fs.readFileSync(envPath, 'utf8');
+  return !content.includes('DATABASE_URL');
+});
+
+ipcMain.handle('setup-database', async (_event, formData) => {
+  try {
+    const http = require('http');
+    const data = JSON.stringify(formData);
+    return new Promise((resolve) => {
+      const req = http.request({
+        hostname: '127.0.0.1', port: 3001,
+        path: '/api/setup', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+      }, (res) => {
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          try { resolve(JSON.parse(body)); }
+          catch (_) { resolve({ success: false, error: 'Respuesta inválida del servidor' }); }
+        });
+      });
+      req.on('error', e => resolve({ success: false, error: e.message }));
+      req.setTimeout(30000, () => { req.destroy(); resolve({ success: false, error: 'Tiempo de espera agotado' }); });
+      req.write(data);
+      req.end();
+    });
+  } catch (err) { return { success: false, error: err.message }; }
+});
+// ────────────────────────────────────────────────────────────────────────
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
