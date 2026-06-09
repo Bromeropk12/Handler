@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html, ContactShadows, Edges } from '@react-three/drei';
 import * as THREE from 'three';
 import {
@@ -9,60 +9,89 @@ import { warehouseAPI } from '../../../../services/api';
 import {
   BACKDROP, BLUR, RADIUS, BUTTON, ANIM, SURFACE,
 } from '../../constants';
-import { LEVEL_HEIGHT, getSGAColor, GridLines } from '../3d/Shared3DComponents';
+import { LEVEL_HEIGHT, getSGAColor, getColorByName, GridLines, CameraController } from '../3d/Shared3DComponents';
 
-// ─── CameraController: anima la cámara al seleccionar anaquel ─────────────────
-const CameraController = ({ step, gridWidth, gridHeight, shelfDepth, animTrigger, selectedLevelY }) => {
-  const { camera, controls } = useThree();
-  const animating = useRef(false);
-  const targetPos = useRef(new THREE.Vector3(0, 10, 25));
-  const targetLook = useRef(new THREE.Vector3(0, 0, 0));
+// ─── LevelPlane: plano interactivo de nivel en la vista de estantería completa ─
+const LevelPlane = ({ yIndex, totalCols, totalDepth, isSelected, onClick }) => {
+  const [hovered, setHovered] = useState(false);
+  const active = isSelected || hovered;
 
-  useEffect(() => {
-    if (step === 'aisle') {
-      targetPos.current.set(0, 9, 24);
-      targetLook.current.set(0, 1.5, 0);
-      animating.current = true;
-    } else if (step === 'shelf' && selectedLevelY !== null) {
-      // Vista superior 45° del nivel seleccionado
-      const totalW = (gridWidth || 10);
-      const totalD = (shelfDepth || 10);
-      const maxDim = Math.max(totalW, totalD);
-      const shelfOffY = -((gridHeight || 6) * LEVEL_HEIGHT) / 2 + 0.5;
-      const levelCenterY = shelfOffY + selectedLevelY * LEVEL_HEIGHT + LEVEL_HEIGHT / 2;
-      const viewDist = Math.max(maxDim * 0.45, 3);
-      targetPos.current.set(0, levelCenterY + viewDist, viewDist);
-      targetLook.current.set(0, levelCenterY, 0);
-      animating.current = true;
-    } else if (step === 'shelf' && animTrigger > 0) {
-      // Vista isométrica del anaquel completo — cámara libre después
-      const totalH = (gridHeight || 6) * LEVEL_HEIGHT;
-      const totalW = (gridWidth || 10);
-      const totalD = (shelfDepth || 10);
-      const maxDim = Math.max(totalW, totalH, totalD);
-      const dist = maxDim * 1.8 + 6;
-      targetPos.current.set(maxDim * 0.4, totalH * 0.55, dist);
-      targetLook.current.set(0, totalH / 2 - (totalH * LEVEL_HEIGHT) / 4, 0);
-      animating.current = true;
-    }
-  }, [step, animTrigger, selectedLevelY]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <group position={[0, yIndex * LEVEL_HEIGHT + 0.48, 0]}>
+      {/* El slab clicable */}
+      <mesh
+        onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
+        onPointerOut={()  => { setHovered(false);  document.body.style.cursor = 'default'; }}
+        onClick={(e) => { e.stopPropagation(); onClick(yIndex); }}
+      >
+        <boxGeometry args={[totalCols + 0.3, 0.07, totalDepth + 0.3]} />
+        <meshStandardMaterial
+          color={isSelected ? '#facc15' : '#60a5fa'}
+          transparent opacity={isSelected ? 0.18 : hovered ? 0.12 : 0.01}
+          emissive={isSelected ? '#facc15' : '#60a5fa'}
+          emissiveIntensity={isSelected ? 0.4 : hovered ? 0.3 : 0}
+          roughness={0.1} depthWrite={false}
+        />
+      </mesh>
 
-  useFrame(() => {
-    if (!animating.current || !controls) return;
-    const dist = camera.position.distanceTo(targetPos.current);
-    if (dist < 0.2) {
-      animating.current = false;
-      controls.target.copy(targetLook.current);
-      controls.update();
-      return;
-    }
-    camera.position.lerp(targetPos.current, 0.06);
-    controls.target.lerp(targetLook.current, 0.06);
-    controls.update();
-  });
-
-  return null;
+      {/* Línea LED frontal brillante */}
+      {active && (
+        <mesh position={[0, 0.04, -(totalDepth / 2 + 0.18)]}>
+          <boxGeometry args={[totalCols + 0.4, 0.025, 0.07]} />
+          <meshStandardMaterial
+            color={isSelected ? '#facc15' : '#60a5fa'}
+            emissive={isSelected ? '#facc15' : '#60a5fa'}
+            emissiveIntensity={2}
+            transparent opacity={0.9}
+          />
+        </mesh>
+      )}
+    </group>
+  );
 };
+
+// ─── FloorPanel: piso de soporte detallado para la vista de nivel ─────────────
+const FloorPanel = ({ totalCols, totalDepth }) => (
+  <group>
+    {/* Losa de base */}
+    <mesh position={[0, -0.12, 0]}>
+      <boxGeometry args={[totalCols + 0.4, 0.15, totalDepth + 0.4]} />
+      <meshStandardMaterial color="#080c16" metalness={0.7} roughness={0.3} />
+      <Edges color="#1e3a5f" transparent opacity={0.4} />
+    </mesh>
+
+    {/* Superficie superior */}
+    <mesh position={[0, -0.04, 0]}>
+      <boxGeometry args={[totalCols + 0.3, 0.02, totalDepth + 0.3]} />
+      <meshStandardMaterial color="#0d1829" metalness={0.9} roughness={0.1} />
+    </mesh>
+
+    {/* Líneas de cuadrícula */}
+    <GridLines cols={totalCols} depth={totalDepth} />
+
+    {/* Tira LED neón en el borde frontal */}
+    <mesh position={[0, -0.03, totalDepth / 2 + 0.18]}>
+      <boxGeometry args={[totalCols + 0.4, 0.03, 0.08]} />
+      <meshStandardMaterial color="#0ea5e9" emissive="#0ea5e9" emissiveIntensity={1.2} />
+    </mesh>
+
+    {/* Pared posterior */}
+    <mesh position={[0, 0.55, -totalDepth / 2 - 0.12]}>
+      <boxGeometry args={[totalCols + 0.4, 1.3, 0.1]} />
+      <meshStandardMaterial color="#030712" metalness={0.85} roughness={0.15} transparent opacity={0.95} />
+      <Edges color="#0ea5e9" transparent opacity={0.5} />
+    </mesh>
+
+    {/* Paredes laterales delgadas */}
+    {[-1, 1].map(side => (
+      <mesh key={side} position={[side * (totalCols / 2 + 0.2), 0.4, 0]}>
+        <boxGeometry args={[0.08, 1.1, totalDepth + 0.4]} />
+        <meshStandardMaterial color="#020712" metalness={0.9} roughness={0.1} transparent opacity={0.5} />
+        <Edges color="#0ea5e9" transparent opacity={0.4} />
+      </mesh>
+    ))}
+  </group>
+);
 
 // ─── AisleShelfMesh: bloque en la vista de pasillo ───────────────────────────
 const AisleShelfMesh = ({ shelf, position, index, isHovered, onHover, onClick }) => {
@@ -159,168 +188,7 @@ const ShelfStructure = ({ totalCols, totalDepth, totalLevels, dimmed = false }) 
   );
 };
 
-// ─── LevelFloor: piso del nivel vista detalle ─────────────────────────────────
-const LevelFloor = ({ totalCols, totalDepth }) => (
-  <mesh position={[0, -0.04, 0]}>
-    <boxGeometry args={[totalCols + 0.35, 0.06, totalDepth + 0.35]} />
-    <meshPhysicalMaterial color="#0a0e1a" metalness={0.5} roughness={0.4} />
-    <Edges color="#1e3a5f" transparent opacity={0.15} />
-  </mesh>
-);
 
-// ─── LevelAxisLabels: etiquetas de coordenadas limpias ────────────────────────
-const LevelAxisLabels = ({ cols, depth }) => (
-  <group>
-    <Html position={[cols / 2 + 1.0, 0.05, 0]} center>
-      <div style={{
-        color: '#475569', fontSize: 8, fontWeight: 800,
-        fontFamily: 'monospace', letterSpacing: 0.5, opacity: 0.5,
-      }}>X →</div>
-    </Html>
-    <Html position={[0, 0.05, depth / 2 + 1.0]} center>
-      <div style={{
-        color: '#475569', fontSize: 8, fontWeight: 800,
-        fontFamily: 'monospace', letterSpacing: 0.5, opacity: 0.5,
-      }}>Z ↓</div>
-    </Html>
-  </group>
-);
-
-// ─── LevelBand: banda interactiva de nivel visible en el anaquel ───────────────
-const LevelBand = ({ yIndex, totalCols, totalDepth, totalLevels, isSelected, isHovered, onHover, onClick, freeCount, assignedCount }) => {
-  const active = isSelected || isHovered;
-  const glowColor = isSelected ? '#10b981' : isHovered ? '#38bdf8' : '#1e40af';
-
-  return (
-    <group position={[0, yIndex * LEVEL_HEIGHT + 0.40, 0]}>
-      {/* Área clicable transparente — toda la superficie del nivel */}
-      <mesh
-        raycast={isSelected ? () => {} : undefined}
-        onPointerOver={(e) => { e.stopPropagation(); onHover(yIndex); document.body.style.cursor = 'pointer'; }}
-        onPointerOut={() => { onHover(null); document.body.style.cursor = 'default'; }}
-        onClick={(e) => { e.stopPropagation(); onClick(yIndex); }}
-      >
-        <boxGeometry args={[totalCols + 0.3, LEVEL_HEIGHT - 0.08, totalDepth + 0.3]} />
-        <meshStandardMaterial
-          color={isSelected ? '#10b981' : isHovered ? '#1e293b' : '#0f172a'}
-          transparent
-          opacity={active ? 0.18 : 0.04}
-          emissive={glowColor}
-          emissiveIntensity={isSelected ? 0.4 : isHovered ? 0.2 : 0.02}
-          depthWrite={false}
-        />
-      </mesh>
-
-      {/* Banda LED frontal del nivel — siempre visible */}
-      <mesh position={[0, 0, -(totalDepth / 2 + 0.18)]}>
-        <boxGeometry args={[totalCols + 0.4, 0.10, 0.06]} />
-        <meshStandardMaterial
-          color={isSelected ? '#10b981' : isHovered ? '#38bdf8' : '#1e3a5f'}
-          emissive={isSelected ? '#10b981' : isHovered ? '#38bdf8' : '#1e3a5f'}
-          emissiveIntensity={isSelected ? 3.0 : isHovered ? 1.8 : 0.3}
-          transparent
-          opacity={isSelected ? 1.0 : isHovered ? 0.9 : 0.5}
-        />
-      </mesh>
-    </group>
-  );
-};
-
-// ─── FreeCellsOnLevel: celdas disponibles superpuestas al nivel seleccionado ──
-const FreeCellsOnLevel = ({
-  selectedLevelY, availableCells, assignedCells, externalSamples,
-  gridWidth, shelfDepth, sampleW, sampleH, sampleD,
-  onCellClick, ghsColor, samples,
-}) => {
-  const baseY = selectedLevelY * LEVEL_HEIGHT + 0.42; // altura dentro del anaquel
-
-  return (
-    <group>
-      {/* Muestras ocupadas en ese nivel */}
-      {externalSamples.map(sample => {
-        if (sample.position_y !== selectedLevelY) return null;
-        const w = sample.width || 1;
-        const d = sample.depth || 1;
-        const px = -gridWidth / 2 + sample.position_x + w / 2;
-        const pz = -shelfDepth / 2 + (sample.position_z || 0) + d / 2;
-        const sampleColor = getSGAColor(sample.ghs_danger_class || 'Sin Riesgo');
-
-        return (
-          <group key={`occ-${sample.id}`} position={[px, baseY, pz]}>
-            <mesh castShadow>
-              <boxGeometry args={[w - 0.08, LEVEL_HEIGHT - 0.2, d - 0.08]} />
-              <meshPhysicalMaterial
-                color="#1e293b" metalness={0.6} roughness={0.4}
-                emissive="#0f172a" emissiveIntensity={0.3}
-              />
-            </mesh>
-            <mesh position={[0, (LEVEL_HEIGHT - 0.2) / 2 + 0.01, 0]}>
-              <boxGeometry args={[w - 0.06, 0.06, d - 0.06]} />
-              <meshStandardMaterial color={sampleColor} emissive={sampleColor} emissiveIntensity={0.9} />
-            </mesh>
-            <Edges color="#334155" transparent opacity={0.6} />
-          </group>
-        );
-      })}
-
-      {/* Celdas disponibles en ese nivel */}
-      {availableCells
-        .filter(c => c.y === selectedLevelY)
-        .map(c => {
-          const { x, z } = c;
-          const isAssigned = assignedCells.some(a => a.x === x && a.y === selectedLevelY && a.z === z);
-          const assignIdx = assignedCells.findIndex(a => a.x === x && a.y === selectedLevelY && a.z === z);
-          const canSelect = !isAssigned && assignedCells.length < samples.length;
-          const px = -gridWidth / 2 + x + sampleW / 2;
-          const pz = -shelfDepth / 2 + z + sampleD / 2;
-          const cellH = LEVEL_HEIGHT - 0.18;
-
-          return (
-            <group key={`cell-${x}-${z}`} position={[px, baseY, pz]}>
-              {/* Cubo de celda libre / asignada */}
-              <mesh
-                onClick={(e) => { e.stopPropagation(); onCellClick({ x, y: selectedLevelY, z }); }}
-                onPointerOver={(e) => { e.stopPropagation(); if (canSelect || isAssigned) document.body.style.cursor = 'pointer'; }}
-                onPointerOut={() => { document.body.style.cursor = 'default'; }}
-              >
-                <boxGeometry args={[sampleW - 0.1, cellH, sampleD - 0.1]} />
-                <meshPhysicalMaterial
-                  color={isAssigned ? ghsColor : '#22c55e'}
-                  transparent
-                  opacity={isAssigned ? 0.85 : 0.32}
-                  emissive={isAssigned ? ghsColor : '#22c55e'}
-                  emissiveIntensity={isAssigned ? 0.6 : 0.35}
-                  roughness={0.2}
-                  metalness={0.5}
-                  depthWrite={false}
-                />
-              </mesh>
-
-              {/* Borde de celda */}
-              <mesh>
-                <boxGeometry args={[sampleW - 0.1, cellH, sampleD - 0.1]} />
-                <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-                <Edges color={isAssigned ? '#ffffff' : '#22c55e'} transparent opacity={isAssigned ? 0.7 : 0.5} />
-              </mesh>
-
-              {/* Etiqueta de número de orden */}
-              {isAssigned && (
-                <Html position={[0, cellH / 2 + 0.12, 0]} center style={{ pointerEvents: 'none' }}>
-                  <div style={{
-                    background: '#ffffff', color: '#0f172a',
-                    width: 16, height: 16, borderRadius: '50%',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 8, fontWeight: 900,
-                    border: '1.5px solid rgba(0,0,0,0.12)',
-                  }}>{assignIdx + 1}</div>
-                </Html>
-              )}
-            </group>
-          );
-        })}
-    </group>
-  );
-};
 
 // ─── Panel HTML de niveles (fuera del Canvas) ─────────────────────────────────
 const LevelSidePanel = ({ gridHeight, selectedLevelY, onSelectLevel, freeByLevel, assignedByLevel }) => {
@@ -466,7 +334,6 @@ export const ReplicaWarehouseModal = ({
   const [step, setStep] = useState('aisle');
   const [selectedShelfId, setSelectedShelfId] = useState(null);
   const [selectedLevelY, setSelectedLevelY] = useState(null);
-  const [animTrigger, setAnimTrigger] = useState(0);
 
   const [targetMapData, setTargetMapData] = useState(null);
   const [loadingShelfData, setLoadingShelfData] = useState(false);
@@ -475,10 +342,36 @@ export const ReplicaWarehouseModal = ({
   const [assignedCells, setAssignedCells] = useState([]);
 
   const [hoveredShelfId, setHoveredShelfId] = useState(null);
-  const [hoveredLevelY, setHoveredLevelY] = useState(null);
 
   const [isExecuting, setIsExecuting] = useState(false);
   const [error, setError] = useState(null);
+  const [groupPreviewData, setGroupPreviewData] = useState(null);
+
+  // Cargar preview de compatibilidad SGA al cambiar el anaquel destino
+  useEffect(() => {
+    if (!selectedShelfId || samples.length === 0) {
+      setGroupPreviewData(null);
+      return;
+    }
+    warehouseAPI.previewGroupMove(currentShelfId, {
+      target_shelf_id: selectedShelfId,
+      sample_ids: samples.map(s => s.id),
+    })
+      .then(res => setGroupPreviewData(res.data.data))
+      .catch(err => {
+        console.error('Error loading group preview compatibility:', err);
+      });
+  }, [selectedShelfId, currentShelfId, samples]);
+
+  const previewCompatibilityMap = useMemo(() => {
+    const map = new Map();
+    if (groupPreviewData?.cells) {
+      groupPreviewData.cells.forEach(c => {
+        map.set(`${c.x},${c.y},${c.z}`, c.compatible);
+      });
+    }
+    return map;
+  }, [groupPreviewData]);
 
   // Dimensiones de muestra
   const sampleW = samples[0]?.width || 1;
@@ -601,18 +494,6 @@ export const ReplicaWarehouseModal = ({
     }));
 
     try {
-      // Preview SGA antes de confirmar
-      const previewRes = await warehouseAPI.previewGroupMove(currentShelfId, {
-        target_shelf_id: selectedShelfId,
-        moves: sampleMoves,
-      });
-      if (previewRes.data?.conflicts?.length > 0) {
-        const reasons = [...new Set(previewRes.data.conflicts.map(c => c.reason))];
-        setError(`⚠ Incompatibilidad SGA: ${reasons.join('; ')}. Desasigna y elige otras celdas.`);
-        setIsExecuting(false);
-        return;
-      }
-
       await warehouseAPI.moveGroup(currentShelfId, {
         target_shelf_id: selectedShelfId,
         moves: sampleMoves,
@@ -625,8 +506,6 @@ export const ReplicaWarehouseModal = ({
       setIsExecuting(false);
     }
   };
-
-  const shelfOffsetY = -(gridHeight * LEVEL_HEIGHT) / 2 + 0.5;
 
   return (
     <div
@@ -940,39 +819,25 @@ export const ReplicaWarehouseModal = ({
             </div>
           )}
 
-          {/* Canvas 3D — ocupa todo menos el panel lateral de niveles */}
-          <div style={{ flex: 1, height: '100%', position: 'relative', display: 'flex' }}>
-            <div style={{ flex: 1, position: 'relative' }}>
-              <Canvas camera={{ position: [0, 9, 24], fov: 45 }} gl={{ antialias: true }}>
-                <color attach="background" args={['#050508']} />
-                <fog attach="fog" args={['#050508', 20, 60]} />
+          {/* Canvas 3D (Vista Pasillo) o Paneles Side-by-Side (Vista Anaquel) */}
+          <div style={{ flex: 1, position: 'relative', display: 'flex', minHeight: 0 }}>
+            {step === 'aisle' ? (
+              <div style={{ flex: 1, position: 'relative' }}>
+                <Canvas camera={{ position: [0, 9, 24], fov: 45 }} gl={{ alpha: true, antialias: true }}>
+                  <CameraController view="default" />
+                  <ambientLight intensity={0.5} />
+                  <directionalLight position={[10, 20, 15]} intensity={1.8} castShadow />
+                  <directionalLight position={[-15, 10, -10]} intensity={0.9} color="#3b82f6" />
+                  <pointLight position={[0, 12, 0]} intensity={0.6} color="#0ea5e9" />
 
-                <ambientLight intensity={0.5} />
-                <directionalLight position={[10, 20, 15]} intensity={1.8} castShadow />
-                <directionalLight position={[-15, 10, -10]} intensity={0.9} color="#3b82f6" />
-                <pointLight position={[0, 12, 0]} intensity={0.6} color="#0ea5e9" />
+                  <OrbitControls
+                    makeDefault
+                    enablePan={true}
+                    enableZoom={true}
+                    minDistance={3}
+                    maxDistance={80}
+                  />
 
-                {/* OrbitControls SIN restricciones de ángulo — libre rotación */}
-                <OrbitControls
-                  makeDefault
-                  enablePan={true}
-                  enableZoom={true}
-                  minDistance={3}
-                  maxDistance={80}
-                  // Sin minPolarAngle / maxPolarAngle = rotación libre 360°
-                />
-
-                <CameraController
-                  step={step}
-                  gridWidth={gridWidth}
-                  gridHeight={gridHeight}
-                  shelfDepth={shelfDepth}
-                  animTrigger={animTrigger}
-                  selectedLevelY={selectedLevelY}
-                />
-
-                {/* ── VISTA PASILLO ── */}
-                {step === 'aisle' && (
                   <group>
                     {compatibleShelves.map((shelf, index) => {
                       const spacingX = 5.2;
@@ -989,144 +854,348 @@ export const ReplicaWarehouseModal = ({
                           onClick={(id) => {
                             setSelectedShelfId(id);
                             setStep('shelf');
-                            setAnimTrigger(t => t + 1);
                           }}
                         />
                       );
                     })}
                     <ContactShadows position={[0, -0.01, 0]} opacity={0.6} scale={28} blur={2.0} far={6} />
                   </group>
-                )}
+                </Canvas>
 
-                {/* ── VISTA ANAQUEL COMPLETO (paso shelf) ── */}
-                {step === 'shelf' && targetMapData && (
-                  <group>
-                    {/* Estructura del anaquel */}
-                    <ShelfStructure totalCols={gridWidth} totalDepth={shelfDepth} totalLevels={gridHeight} dimmed={selectedLevelY !== null} />
-
-                    {/* Bandas de nivel — ocultas en vista nivel */}
-                    <group position={[0, shelfOffsetY, 0]}>
-                      {Array.from({ length: gridHeight }).map((_, i) => {
-                        if (selectedLevelY !== null) return null;
-                        return (
-                          <LevelBand
-                            key={`lb-${i}`}
-                            yIndex={i}
-                            totalCols={gridWidth}
-                            totalDepth={shelfDepth}
-                            totalLevels={gridHeight}
-                            isSelected={false}
-                            isHovered={hoveredLevelY === i}
-                            onHover={setHoveredLevelY}
-                            onClick={(y) => setSelectedLevelY(y)}
-                            freeCount={freeByLevel[i] || 0}
-                            assignedCount={assignedByLevel[i] || 0}
-                          />
-                        );
-                      })}
-                    </group>
-
-                    {/* Vista detalle del nivel seleccionado — piso + cuadrícula + celdas */}
-                    {selectedLevelY !== null && (
-                      <group position={[0, shelfOffsetY, 0]}>
-                        {/* Piso del nivel */}
-                        <group position={[0, selectedLevelY * LEVEL_HEIGHT + 0.36, 0]}>
-                          <LevelFloor totalCols={gridWidth} totalDepth={shelfDepth} />
-                        </group>
-                        {/* Cuadrícula y ejes */}
-                        <group position={[0, selectedLevelY * LEVEL_HEIGHT + 0.40, 0]}>
-                          <GridLines cols={gridWidth} depth={shelfDepth} />
-                          <LevelAxisLabels cols={gridWidth} depth={shelfDepth} />
-                        </group>
-                        <FreeCellsOnLevel
-                          selectedLevelY={selectedLevelY}
-                          availableCells={availableCells}
-                          assignedCells={assignedCells}
-                          externalSamples={externalSamples}
-                          gridWidth={gridWidth}
-                          shelfDepth={shelfDepth}
-                          sampleW={sampleW}
-                          sampleH={sampleH}
-                          sampleD={sampleD}
-                          onCellClick={handleCellClick}
-                          ghsColor={ghsColor}
-                          samples={samples}
-                        />
-                      </group>
-                    )}
-
-                    <ContactShadows position={[0, shelfOffsetY - 0.1, 0]} opacity={0.4} scale={30} blur={2.5} far={8} />
-                  </group>
-                )}
-              </Canvas>
-
-              {/* HUD superior izquierdo */}
-              <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 30, pointerEvents: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {step === 'aisle' && (
+                {/* HUD superior izquierdo para Vista Pasillo */}
+                <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 30, pointerEvents: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: SURFACE.BAR, backdropFilter: BLUR.SM, padding: '4px 10px', borderRadius: RADIUS.PILL, border: '1px solid rgba(255,255,255,0.06)' }}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', boxShadow: '0 0 8px #3b82f6' }} />
                     <span style={{ fontSize: 8, color: '#e2e8f0', fontWeight: 800, letterSpacing: 0.4 }}>
                       VISTA PASILLO · {compatibleShelves.length} ANAQUELES COMPATIBLES
                     </span>
                   </div>
-                )}
-                {step === 'shelf' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: SURFACE.BAR, backdropFilter: BLUR.SM, padding: '4px 10px', borderRadius: RADIUS.PILL, border: '1px solid rgba(255,255,255,0.06)' }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: selectedLevelY !== null ? '#22c55e' : '#eab308', boxShadow: selectedLevelY !== null ? '0 0 8px #22c55e' : '0 0 8px #eab308' }} />
-                      <span style={{ fontSize: 8, color: '#e2e8f0', fontWeight: 800, letterSpacing: 0.4 }}>
-                        {selectedLevelY !== null
-                          ? `NIVEL ${selectedLevelY + 1} · ${availableCells.filter(c => c.y === selectedLevelY).length} LIBRES · ${gridWidth}×${shelfDepth}`
-                          : `${targetShelfName.toUpperCase()} · ${gridHeight} NIVELES`}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {selectedLevelY === null && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.04)', marginTop: 2 }}>
                     <span style={{ fontSize: 7, color: '#475569', fontWeight: 600 }}>
                       🖱 Arrastrar: rotar · Scroll: zoom · Clic der: desplazar
                     </span>
                   </div>
-                )}
+                </div>
               </div>
+            ) : (
+              // Vista de Anaquel Seleccionado: Paneles Side-by-Side
+              <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+                <div style={{ flex: 1, display: 'flex', gap: 16, padding: '16px 8px 16px 16px', boxSizing: 'border-box', minWidth: 0 }}>
+                  
+                  {/* ── PANEL IZQUIERDO: Estantería Completa ── */}
+                  <div style={{
+                    width: '40%',
+                    borderRadius: 16,
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    background: 'radial-gradient(ellipse at 60% 20%, #0d1929 0%, #000000 100%)',
+                    boxShadow: '0 4px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03)',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}>
+                    {/* HUD superior izquierdo */}
+                    <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 30, pointerEvents: 'none', display: 'flex', alignItems: 'start', gap: 6 }}>
+                      <div style={{ width: 3, minHeight: 32, borderRadius: 99, background: 'linear-gradient(to bottom, #3b82f6, #38bdf8)', boxShadow: '0 0 8px rgba(56,189,248,0.5)', flexShrink: 0 }} />
+                      <div>
+                        <span style={{ fontSize: 7, fontWeight: 900, color: '#38bdf8', letterSpacing: 1, textTransform: 'uppercase' }}>
+                          Navegador Global
+                        </span>
+                        <h4 style={{ fontSize: 11, fontWeight: 900, color: '#fff', margin: '2px 0 0', textTransform: 'uppercase' }}>
+                          Estantería Completa
+                        </h4>
+                      </div>
+                    </div>
 
-              {/* Leyenda inferior */}
-              {step === 'shelf' && selectedLevelY !== null && (
-                <div style={{
-                  position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
-                  background: SURFACE.BAR, backdropFilter: BLUR.MD,
-                  border: '1px solid rgba(255,255,255,0.06)', borderRadius: RADIUS.PILL,
-                  padding: '5px 14px', display: 'flex', gap: 14, zIndex: 30,
-                  fontSize: 8, fontWeight: 700, color: '#94a3b8', whiteSpace: 'nowrap',
-                  pointerEvents: 'none',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.3)', border: '1px solid #22c55e' }} />
-                    <span>Disponible</span>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                      <Canvas camera={{ fov: 45 }} gl={{ alpha: true, antialias: true }}>
+                        <CameraController view="default" targetPosOverride={new THREE.Vector3(gridWidth * 1.8, gridHeight * LEVEL_HEIGHT * 0.75, shelfDepth * 1.8 + 6)} />
+                        
+                        <ambientLight intensity={0.45} />
+                        <directionalLight position={[8, 16, 10]} intensity={1.8} color="#ffffff" castShadow />
+                        <directionalLight position={[-6, 8, -6]} intensity={0.4} color="#38bdf8" />
+                        <pointLight position={[0, gridHeight + 2, 0]} intensity={0.5} color="#0ea5e9" distance={gridHeight * 4} />
+
+                        <OrbitControls makeDefault enablePan enableZoom enableRotate minDistance={3} maxDistance={40} />
+
+                        {/* Estructura metálica del estante */}
+                        <ShelfStructure totalCols={gridWidth} totalDepth={shelfDepth} totalLevels={gridHeight} />
+
+                        <group position={[0, -(gridHeight * LEVEL_HEIGHT) / 2 + 0.5, 0]}>
+                          {/* Planos de nivel interactivos */}
+                          {Array.from({ length: gridHeight }).map((_, i) => (
+                            <LevelPlane
+                              key={`lp-${i}`}
+                              yIndex={i}
+                              totalCols={gridWidth}
+                              totalDepth={shelfDepth}
+                              isSelected={selectedLevelY === i}
+                              onClick={(y) => setSelectedLevelY(y)}
+                            />
+                          ))}
+
+                          {/* Cubos de muestras atenuados/coloreados */}
+                          {externalSamples.map(sample => {
+                            const w = sample.width || 1;
+                            const d = sample.depth || 1;
+                            const px = -gridWidth / 2 + sample.position_x + w / 2;
+                            const py = sample.position_y * LEVEL_HEIGHT + 0.4;
+                            const pz = -shelfDepth / 2 + (sample.position_z || 0) + d / 2;
+                            const isLevelSelected = selectedLevelY !== null;
+                            const isCurrentLevel = selectedLevelY === sample.position_y;
+
+                            const col = getColorByName(sample.global_sample_name || sample.name);
+                            let cubeColor = col;
+                            let cubeEmissive = col;
+                            let cubeEmissiveIntensity = 0.05;
+                            let cubeOpacity = 0.55;
+
+                            if (isLevelSelected) {
+                              if (isCurrentLevel) {
+                                cubeOpacity = 0.95;
+                                cubeEmissiveIntensity = 0.25;
+                              } else {
+                                cubeColor = '#0f172a';
+                                cubeEmissive = '#000000';
+                                cubeEmissiveIntensity = 0;
+                                cubeOpacity = 0.12;
+                              }
+                            }
+
+                            return (
+                              <group key={sample.id} position={[px, py, pz]}>
+                                <mesh onClick={(e) => { e.stopPropagation(); setSelectedLevelY(sample.position_y); }}>
+                                  <boxGeometry args={[w - 0.15, 0.65, d - 0.15]} />
+                                  <meshStandardMaterial
+                                    color={cubeColor}
+                                    emissive={cubeEmissive}
+                                    emissiveIntensity={cubeEmissiveIntensity}
+                                    roughness={0.35}
+                                    metalness={0.45}
+                                    transparent
+                                    opacity={cubeOpacity}
+                                  />
+                                </mesh>
+                              </group>
+                            );
+                          })}
+                        </group>
+                      </Canvas>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 2, background: ghsColor, border: `1px solid ${ghsColor}` }} />
-                    <span>Asignado</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 2, background: '#1e293b', border: '1px solid #334155' }} />
-                    <span>Ocupado</span>
+
+                  {/* ── PANEL DERECHO: Vista de Nivel ── */}
+                  <div style={{
+                    flex: 1,
+                    borderRadius: 16,
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    background: 'radial-gradient(ellipse at 30% 80%, #090d1c 0%, #000000 100%)',
+                    boxShadow: '0 4px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03)',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}>
+                    
+                    {/* HUD superior izquierdo */}
+                    {selectedLevelY !== null && (
+                      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 30, pointerEvents: 'none', display: 'flex', alignItems: 'start', gap: 6 }}>
+                        <div style={{ width: 3, minHeight: 32, borderRadius: 99, background: 'linear-gradient(to bottom, #10b981, #34d399)', boxShadow: '0 0 8px rgba(52,211,153,0.5)', flexShrink: 0 }} />
+                        <div>
+                          <span style={{ fontSize: 7, fontWeight: 900, color: '#34d399', letterSpacing: 1, textTransform: 'uppercase' }}>
+                            Vista de Nivel
+                          </span>
+                          <h4 style={{ fontSize: 11, fontWeight: 900, color: '#fff', margin: '2px 0 0', textTransform: 'uppercase' }}>
+                            Nivel {selectedLevelY + 1}
+                          </h4>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Leyenda inferior */}
+                    {selectedLevelY !== null && (
+                      <div style={{
+                        position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
+                        background: 'rgba(9, 13, 22, 0.65)', backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 20,
+                        padding: '5px 14px', display: 'flex', gap: 12, zIndex: 30,
+                        fontSize: 8, fontWeight: 700, color: '#94a3b8', whiteSpace: 'nowrap',
+                        pointerEvents: 'none',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(16,185,129,0.3)', border: '1px solid #10b981' }} />
+                          <span>Disponible</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 2, background: ghsColor, boxShadow: `0 0 6px ${ghsColor}` }} />
+                          <span>Asignado</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 2, background: '#ef4444', border: '1px solid #ef4444' }} />
+                          <span>Ocupado / No Disponible</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedLevelY === null ? (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(9, 13, 22, 0.4)',
+                        backdropFilter: 'blur(10px)',
+                        zIndex: 25,
+                      }}>
+                        <div style={{ fontSize: 32, marginBottom: 12 }}>🎯</div>
+                        <p style={{ color: '#94a3b8', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.5, margin: 0 }}>
+                          Seleccionar Nivel Destino
+                        </p>
+                        <p style={{ color: '#475569', fontSize: 8, fontWeight: 500, letterSpacing: 0.5, marginTop: 4 }}>
+                          Elige un nivel en el panel derecho o haz clic en la estantería 3D
+                        </p>
+                      </div>
+                    ) : (
+                      <div style={{ flex: 1, position: 'relative' }}>
+                        <Canvas camera={{ fov: 42, position: [10, 7, 10] }} gl={{ alpha: true, antialias: true }}>
+                          <CameraController view="default" />
+                          
+                          <ambientLight intensity={0.55} />
+                          <directionalLight position={[8, 14, 8]} intensity={1.6} color="#ffffff" />
+                          <directionalLight position={[-6, 6, -8]} intensity={0.45} color="#38bdf8" />
+                          <pointLight position={[0, 6, 0]} intensity={0.35} color="#0ea5e9" distance={30} />
+
+                          <OrbitControls
+                            makeDefault
+                            enablePan enableZoom enableRotate
+                            minDistance={2} maxDistance={30}
+                            minPolarAngle={Math.PI / 8}
+                            maxPolarAngle={Math.PI / 2.1}
+                          />
+
+                          <group position={[0, -0.5, 0]}>
+                            {/* Piso detallado del nivel */}
+                            <FloorPanel totalCols={gridWidth} totalDepth={shelfDepth} />
+
+                            {/* Muestras existentes en el nivel (rojo sólido) */}
+                            {externalSamples.filter(s => s.position_y === selectedLevelY).map(sample => {
+                              const w = sample.width || 1;
+                              const d = sample.depth || 1;
+                              const px = -gridWidth / 2 + sample.position_x + w / 2;
+                              const pz = -shelfDepth / 2 + (sample.position_z || 0) + d / 2;
+
+                              return (
+                                <group key={`occ-${sample.id}`} position={[px, 0.4, pz]}>
+                                  <mesh castShadow>
+                                    <boxGeometry args={[w - 0.08, LEVEL_HEIGHT - 0.2, d - 0.08]} />
+                                    <meshStandardMaterial
+                                      color="#ef4444"
+                                      metalness={0.4}
+                                      roughness={0.3}
+                                      emissive="#ef4444"
+                                      emissiveIntensity={0.25}
+                                    />
+                                  </mesh>
+                                  <Edges color="#b91c1c" transparent opacity={0.6} />
+                                </group>
+                              );
+                            })}
+
+                            {/* Celdas libres y asignadas */}
+                            {availableCells
+                              .filter(c => c.y === selectedLevelY)
+                              .map(c => {
+                                const { x, z } = c;
+                                const isAssigned = assignedCells.some(a => a.x === x && a.y === selectedLevelY && a.z === z);
+                                const assignIdx = assignedCells.findIndex(a => a.x === x && a.y === selectedLevelY && a.z === z);
+                                const isCompatible = previewCompatibilityMap.size === 0 || previewCompatibilityMap.get(`${x},${selectedLevelY},${z}`) !== false;
+
+                                const px = -gridWidth / 2 + x + sampleW / 2;
+                                const pz = -shelfDepth / 2 + z + sampleD / 2;
+                                const cellH = LEVEL_HEIGHT - 0.18;
+                                const canSelect = !isAssigned && isCompatible && assignedCells.length < samples.length;
+
+                                const cellColor = isAssigned
+                                  ? '#0ea5e9'
+                                  : isCompatible
+                                    ? '#10b981'
+                                    : '#ef4444';
+
+                                return (
+                                  <group key={`cell-${x}-${z}`} position={[px, 0.4, pz]}>
+                                    <mesh
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (isCompatible) {
+                                          handleCellClick({ x, y: selectedLevelY, z });
+                                        }
+                                      }}
+                                      onPointerOver={(e) => {
+                                        e.stopPropagation();
+                                        if (canSelect || isAssigned) {
+                                          document.body.style.cursor = 'pointer';
+                                        } else if (!isCompatible) {
+                                          document.body.style.cursor = 'not-allowed';
+                                        }
+                                      }}
+                                      onPointerOut={() => {
+                                        document.body.style.cursor = 'default';
+                                      }}
+                                    >
+                                      <boxGeometry args={[sampleW - 0.1, cellH, sampleD - 0.1]} />
+                                      <meshPhysicalMaterial
+                                        color={cellColor}
+                                        transparent
+                                        opacity={isAssigned ? 0.85 : isCompatible ? 0.28 : 0.4}
+                                        emissive={cellColor}
+                                        emissiveIntensity={isAssigned ? 0.7 : isCompatible ? 0.25 : 0.8}
+                                        roughness={0.1}
+                                        metalness={0.6}
+                                        clearcoat={isAssigned ? 1.0 : 0}
+                                        depthWrite={false}
+                                      />
+                                    </mesh>
+
+                                    <mesh>
+                                      <boxGeometry args={[sampleW - 0.1, cellH, sampleD - 0.1]} />
+                                      <Edges
+                                        color={isAssigned ? '#ffffff' : isCompatible ? '#10b981' : '#ef4444'}
+                                        transparent
+                                        opacity={isAssigned ? 0.7 : isCompatible ? 0.5 : 0.8}
+                                      />
+                                    </mesh>
+
+                                    {isAssigned && (
+                                      <Html position={[0, cellH / 2 + 0.12, 0]} center style={{ pointerEvents: 'none' }}>
+                                        <div style={{
+                                          background: '#0ea5e9', color: '#fff',
+                                          width: 18, height: 18, borderRadius: '50%',
+                                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                          fontSize: 9, fontWeight: 900,
+                                          boxShadow: '0 0 10px rgba(14,165,233,0.9)',
+                                          border: '1.5px solid #fff',
+                                        }}>#{assignIdx + 1}</div>
+                                      </Html>
+                                    )}
+                                  </group>
+                                );
+                              })}
+                          </group>
+                        </Canvas>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* ── Panel lateral de niveles (HTML, fuera del Canvas) ── */}
-            {step === 'shelf' && targetMapData && (
-              <LevelSidePanel
-                gridHeight={gridHeight}
-                selectedLevelY={selectedLevelY}
-                onSelectLevel={(y) => setSelectedLevelY(y)}
-                freeByLevel={freeByLevel}
-                assignedByLevel={assignedByLevel}
-              />
+                {/* ── Panel lateral de niveles (HTML, fuera del Canvas) ── */}
+                {step === 'shelf' && targetMapData && (
+                  <LevelSidePanel
+                    gridHeight={gridHeight}
+                    selectedLevelY={selectedLevelY}
+                    onSelectLevel={(y) => setSelectedLevelY(y)}
+                    freeByLevel={freeByLevel}
+                    assignedByLevel={assignedByLevel}
+                  />
+                )}
+              </div>
             )}
           </div>
         </div>
