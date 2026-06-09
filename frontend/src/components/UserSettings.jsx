@@ -56,7 +56,7 @@ const PasswordInput = ({ label, name, value, onChange, error, placeholder }) => 
 };
 
 const UserSettings = ({ isOpen, onClose }) => {
-    const { user } = useAuth();
+    const { user, updateUser } = useAuth();
     const [activeTab, setActiveTab] = useState('password');
     const [passwordFormData, setPasswordFormData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
     const [usernameFormData, setUsernameFormData] = useState({ newUsername: '', currentPassword: '' });
@@ -112,7 +112,7 @@ const UserSettings = ({ isOpen, onClose }) => {
             setPasswordFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
             setTimeout(onClose, 2200);
         } catch (error) {
-            setMessage({ type: 'error', text: error.response?.data?.message || 'Error al cambiar contraseña' });
+            setMessage({ type: 'error', text: error.message || 'Error al cambiar contraseña' });
         } finally {
             setLoading(false);
         }
@@ -136,15 +136,19 @@ const UserSettings = ({ isOpen, onClose }) => {
         }
 
         try {
-            await authAPI.changeUsername({
+            const response = await authAPI.changeUsername({
                 newUsername: usernameFormData.newUsername,
                 currentPassword: usernameFormData.currentPassword,
             });
             setMessage({ type: 'success', text: 'Nombre de usuario actualizado correctamente' });
             setUsernameFormData({ newUsername: '', currentPassword: '' });
+            // Actualizar el contexto de auth para que sidebar refleje el nuevo nombre
+            if (response.data?.data?.user) {
+                updateUser(response.data.data.user);
+            }
             setTimeout(onClose, 2200);
         } catch (error) {
-            setMessage({ type: 'error', text: error.response?.data?.message || 'Error al cambiar nombre de usuario' });
+            setMessage({ type: 'error', text: error.message || 'Error al cambiar nombre de usuario' });
         } finally {
             setLoading(false);
         }

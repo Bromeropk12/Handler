@@ -6,7 +6,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { query } = require('../../services/database');
+const { query, transaction } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { DEFAULT_PERMISSIONS, PERMISSION_MODULES, ALL_PERMISSIONS } = require('../../config/permissions');
 
@@ -51,6 +51,22 @@ const validatePasswordStrength = (password) => {
 const getBcryptRounds = () => {
   const n = parseInt(process.env.BCRYPT_ROUNDS, 10);
   return (Number.isFinite(n) && n >= 4 && n <= 15) ? n : 12;
+};
+
+/**
+ * Sanitizar username: solo alfanumérico, guión bajo, punto y guión.
+ * Longitud 3-50 caracteres.
+ */
+const sanitizeUsername = (username) => {
+  if (typeof username !== 'string') return { valid: false, message: 'El nombre de usuario debe ser un texto' };
+  const cleaned = username.trim();
+  if (cleaned.length < 3 || cleaned.length > 50) {
+    return { valid: false, message: 'El nombre de usuario debe tener entre 3 y 50 caracteres' };
+  }
+  if (!/^[a-zA-Z0-9_.-]+$/.test(cleaned)) {
+    return { valid: false, message: 'El nombre de usuario solo puede contener letras, números, guiones y puntos' };
+  }
+  return { valid: true, value: cleaned };
 };
 
 // Generar JWT token
@@ -176,17 +192,17 @@ const resetPassword = async (req, res, next) => {
     // Hash de la nueva contraseña
     const hashedPassword = await bcrypt.hash(newPassword, getBcryptRounds());
 
-    // Actualizar contraseña
-    await query(
-      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [hashedPassword, user.id]
-    );
-
-    // Log de cambio de contraseña
-    await query(
-      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
-      [null, 'password_reset', user.id, JSON.stringify({ ip: req.ip, timestamp: new Date().toISOString() })]
-    );
+    // Actualizar contraseña y log en transacción atómica
+    await transaction([
+      {
+        query: 'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        params: [hashedPassword, user.id]
+      },
+      {
+        query: 'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+        params: [null, 'password_reset', user.id, JSON.stringify({ ip: req.ip, timestamp: new Date().toISOString() })]
+      }
+    ]);
 
     res.json({
       success: true,
@@ -240,8 +256,8 @@ const verifyToken = async (req, res, next) => {
  * Verificar rol de administrador
  */
 const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
-    throw new AppError('Acceso denegado. Se requiere rol de administrador', 403);
+  if (!req.user || req.user.role !== 'admin') {
+    return next(new AppError('Acceso denegado. Se requiere rol de administrador', 403));
   }
   next();
 };
@@ -295,10 +311,17 @@ const createUser = async (req, res, next) => {
       }
     }
 
+    // Sanitizar username
+    const sanitized = sanitizeUsername(username);
+    if (!sanitized.valid) {
+      throw new AppError(sanitized.message, 400);
+    }
+    const cleanUsername = sanitized.value;
+
     // Verificar que el username no existe
     const existingUser = await query(
       'SELECT id FROM users WHERE username = $1',
-      [username]
+      [cleanUsername]
     );
 
     if (existingUser.rows.length > 0) {
@@ -314,7 +337,7 @@ const createUser = async (req, res, next) => {
     // Crear usuario
     const newUser = await query(
       'INSERT INTO users (username, password_hash, secret_password_hash, role, permissions) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, role, permissions, created_at',
-      [username, hashedPassword, hashedSecretPassword, role, JSON.stringify(DEFAULT_PERMISSIONS(role))]
+      [cleanUsername, hashedPassword, hashedSecretPassword, role, JSON.stringify(DEFAULT_PERMISSIONS(role))]
     );
 
     // Log de creación de usuario (no crítico)
@@ -323,7 +346,7 @@ const createUser = async (req, res, next) => {
         'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
         [null, 'user_created', req.user.id, JSON.stringify({
           new_user_id: newUser.rows[0].id,
-          new_username: username,
+          new_username: cleanUsername,
           new_role: role,
           weak_password_bypass: !!forceWeakPassword,
           ip: req.ip,
@@ -382,25 +405,23 @@ const changeUserPassword = async (req, res, next) => {
     // Hash de la nueva contraseña
     const hashedNewPassword = await bcrypt.hash(newPassword, getBcryptRounds());
 
-    // Actualizar contraseña
-    await query(
-      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [hashedNewPassword, userId]
-    );
-
-    // Log de cambio de contraseña por admin (no crítico)
-    try {
-      await query(
-        'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
-        [null, 'admin_password_change', req.user.id, JSON.stringify({
+    // Actualizar contraseña y log en transacción atómica
+    await transaction([
+      {
+        query: 'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        params: [hashedNewPassword, userId]
+      },
+      {
+        query: 'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+        params: [null, 'admin_password_change', req.user.id, JSON.stringify({
           target_user_id: userId,
           target_username: userExists.rows[0].username,
           weak_password_bypass: !!forceWeakPassword,
           ip: req.ip,
           timestamp: new Date().toISOString()
         })]
-      );
-    } catch (_) { /* log no crítico */ }
+      }
+    ]);
 
     res.json({
       success: true,
@@ -458,17 +479,17 @@ const changePassword = async (req, res, next) => {
     // Hash de la nueva contraseña
     const hashedNewPassword = await bcrypt.hash(newPassword, getBcryptRounds());
 
-    // Actualizar contraseña
-    await query(
-      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [hashedNewPassword, userId]
-    );
-
-    // Log de cambio de contraseña
-    await query(
-      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
-      [null, 'password_change', userId, JSON.stringify({ ip: req.ip, timestamp: new Date().toISOString() })]
-    );
+    // Actualizar contraseña y log en transacción atómica
+    await transaction([
+      {
+        query: 'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        params: [hashedNewPassword, userId]
+      },
+      {
+        query: 'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+        params: [null, 'password_change', userId, JSON.stringify({ ip: req.ip, timestamp: new Date().toISOString() })]
+      }
+    ]);
 
     res.json({
       success: true,
@@ -498,14 +519,17 @@ const changeUsername = async (req, res, next) => {
       throw new AppError('Nombre de usuario y contraseña actual son requeridos', 400);
     }
 
-    if (newUsername.length < 3) {
-      throw new AppError('El nombre de usuario debe tener al menos 3 caracteres', 400);
+    // Sanitizar username
+    const sanitized = sanitizeUsername(newUsername);
+    if (!sanitized.valid) {
+      throw new AppError(sanitized.message, 400);
     }
+    const cleanUsername = sanitized.value;
 
     // Verificar que el nuevo username no existe
     const existingUser = await query(
       'SELECT id FROM users WHERE username = $1 AND id != $2',
-      [newUsername, userId]
+      [cleanUsername, userId]
     );
 
     if (existingUser.rows.length > 0) {
@@ -528,22 +552,31 @@ const changeUsername = async (req, res, next) => {
       throw new AppError('La contraseña actual es incorrecta', 401);
     }
 
-    // Actualizar nombre de usuario
-    await query(
-      'UPDATE users SET username = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [newUsername, userId]
-    );
+    // Actualizar nombre de usuario y log en transacción atómica
+    await transaction([
+      {
+        query: 'UPDATE users SET username = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        params: [cleanUsername, userId]
+      },
+      {
+        query: 'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
+        params: [null, 'username_change', userId, JSON.stringify({
+          old_username: req.user.username,
+          new_username: cleanUsername,
+          ip: req.ip,
+          timestamp: new Date().toISOString()
+        })]
+      }
+    ]);
 
-    // Log de cambio de nombre de usuario
-    await query(
-      'INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)',
-      [null, 'username_change', userId, JSON.stringify({
-        old_username: req.user.username,
-        new_username: newUsername,
-        ip: req.ip,
-        timestamp: new Date().toISOString()
-      })]
-    );
+    // Rotar JWT con el nuevo username
+    const newToken = generateToken({ id: userId, username: cleanUsername, role: req.user.role });
+    res.cookie('auth_token', newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 8 * 60 * 60 * 1000,
+      sameSite: 'lax'
+    });
 
     res.json({
       success: true,
@@ -551,9 +584,10 @@ const changeUsername = async (req, res, next) => {
       data: {
         user: {
           id: userId,
-          username: newUsername,
+          username: cleanUsername,
           role: req.user.role
-        }
+        },
+        token: newToken
       }
     });
 
@@ -708,7 +742,7 @@ const deleteUser = async (req, res, next) => {
   try {
     const { userId } = req.params;
 
-    if (parseInt(userId) === req.user.id) {
+    if (String(userId) === String(req.user.id)) {
       throw new AppError('No puedes eliminar tu propio usuario administrador', 400);
     }
 

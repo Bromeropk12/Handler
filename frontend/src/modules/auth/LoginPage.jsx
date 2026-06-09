@@ -49,7 +49,16 @@ const LoginPage = () => {
       };
     }
 
-    // 5. Rate Limiting / Too many requests
+    // 5. Circuit breaker abierto (servicio temporalmente no disponible)
+    if (message.includes('temporalmente no disponible')) {
+      return {
+        title: 'Servicio Temporalmente No Disponible',
+        description: 'El servicio de autenticación ha detectado múltiples fallos recientes. Por favor, espere unos segundos y vuelva a intentarlo.',
+        type: 'security'
+      };
+    }
+
+    // 6. Rate Limiting / Too many requests
     if (message.includes('Demasiadas solicitudes') || message.includes('rate') || message.includes('limiter')) {
       return {
         title: 'Demasiados Intentos',

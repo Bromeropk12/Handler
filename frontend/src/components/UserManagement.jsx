@@ -138,7 +138,7 @@ const UserManagement = ({ isOpen, onClose }) => {
             setShowCreateForm(false);
             loadUsers();
         } catch (error) {
-            setMessage({ type: 'error', text: error.response?.data?.message || error.message || 'Error al crear usuario' });
+            setMessage({ type: 'error', text: error.message || 'Error al crear usuario' });
         } finally {
             setLoading(false);
         }
@@ -154,7 +154,7 @@ const UserManagement = ({ isOpen, onClose }) => {
             setUserToDelete(null);
             loadUsers();
         } catch (error) {
-            setMessage({ type: 'error', text: error.response?.data?.message || 'Error al eliminar usuario' });
+            setMessage({ type: 'error', text: error.message || 'Error al eliminar usuario' });
         } finally {
             setLoading(false);
         }
@@ -195,7 +195,7 @@ const UserManagement = ({ isOpen, onClose }) => {
             setShowPasswordForm(null);
             loadUsers();
         } catch (error) {
-            setMessage({ type: 'error', text: error.response?.data?.message || 'Error al cambiar contraseña' });
+            setMessage({ type: 'error', text: error.message || 'Error al cambiar contraseña' });
         } finally {
             setLoading(false);
         }
