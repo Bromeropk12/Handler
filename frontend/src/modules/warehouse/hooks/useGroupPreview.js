@@ -57,7 +57,7 @@ export const useGroupPreview = () => {
       );
 
       if (myRequestId === requestIdRef.current) {
-        setCache(res?.data?.data || null);
+        setCache(res?.data || null);
       }
     } catch (err) {
       if (err.name === 'AbortError' || err.name === 'CanceledError') {

@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../auth/controller');
 const { requirePermission } = require('../../middleware/permissions');
+const { asyncErrorHandler } = require('../../middleware/errorHandler');
 const {
   getShelfSuppliers,
   addShelfSupplier,
@@ -35,7 +36,7 @@ router.use(verifyToken);
  *       200:
  *         description: Proveedores del anaquel
  */
-router.get('/shelf/:shelfId', requirePermission('warehouse.view'), getShelfSuppliers);
+router.get('/shelf/:shelfId', requirePermission('warehouse.view'), asyncErrorHandler(getShelfSuppliers));
 
 /**
  * @openapi
@@ -62,7 +63,7 @@ router.get('/shelf/:shelfId', requirePermission('warehouse.view'), getShelfSuppl
  *       201:
  *         description: Proveedor vinculado
  */
-router.post('/', requirePermission('warehouse.edit_shelf'), addShelfSupplier);
+router.post('/', requirePermission('warehouse.edit_shelf'), asyncErrorHandler(addShelfSupplier));
 
 /**
  * @openapi
@@ -91,7 +92,7 @@ router.post('/', requirePermission('warehouse.edit_shelf'), addShelfSupplier);
  *       200:
  *         description: Relación actualizada
  */
-router.put('/:id', requirePermission('warehouse.edit_shelf'), updateShelfSupplier);
+router.put('/:id', requirePermission('warehouse.edit_shelf'), asyncErrorHandler(updateShelfSupplier));
 
 /**
  * @openapi
@@ -111,6 +112,6 @@ router.put('/:id', requirePermission('warehouse.edit_shelf'), updateShelfSupplie
  *       200:
  *         description: Proveedor desvinculado
  */
-router.delete('/:id', requirePermission('warehouse.edit_shelf'), removeShelfSupplier);
+router.delete('/:id', requirePermission('warehouse.edit_shelf'), asyncErrorHandler(removeShelfSupplier));
 
 module.exports = router;

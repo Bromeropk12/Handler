@@ -24,7 +24,7 @@ async function runMigrationsSilent() {
   // 3. Leer archivos de migración
   const scriptsDir = path.join(__dirname, '../../../database/scripts');
   if (!fs.existsSync(scriptsDir)) {
-    console.log('ℹ️ [MIGRACIONES] Directorio de scripts no encontrado, omitiendo.');
+    console.warn('⚠️ [MIGRACIONES] Directorio de scripts no encontrado, omitiendo.');
     return;
   }
 

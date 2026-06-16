@@ -3,7 +3,7 @@
  * Operaciones CRUD para gestión de anaqueles con soporte de proveedores múltiples
  */
 
-const { query, transaction } = require('../../services/database');
+const { query, transaction, pool } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { validateShelfData } = require('./validations');
 
@@ -39,49 +39,45 @@ const createShelf = async (req, res, next) => {
       }
     }
 
-    const txQueries = [];
+    const client = await pool.connect();
+    let shelf;
 
-    // Crear anaquel 3D
-    txQueries.push({
-      query: `
+    try {
+      await client.query('BEGIN');
+
+      // Crear anaquel 3D
+      const shelfResult = await client.query(`
         INSERT INTO shelves (
           market_line_id, name, grid_width, grid_height, shelf_depth, shelf_type
         )
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
-      `,
-      params: [
+      `, [
         data.market_line_id,
         data.name,
         data.grid_width || 10,
         data.grid_height || 10,
         data.shelf_depth || 10,
         data.shelf_type || 'storage'
-      ]
-    });
+      ]);
+      shelf = shelfResult.rows[0];
 
-    // Vincular proveedores
-    if (supplierIds.length > 0) {
-      const shelfIdIndex = txQueries.length; // Se resolverá después
-      supplierIds.forEach((supplierId, index) => {
-        txQueries.push({
-          query: `
+      // Vincular proveedores
+      if (supplierIds.length > 0) {
+        for (let i = 0; i < supplierIds.length; i++) {
+          await client.query(`
             INSERT INTO shelf_suppliers (shelf_id, supplier_id, is_primary)
-            VALUES ((SELECT id FROM shelves WHERE name = $1 AND market_line_id = $2), $3, $4)
-          `,
-          params: [data.name, data.market_line_id, supplierId, index === 0]
-        });
-      });
-    }
+            VALUES ($1, $2, $3)
+          `, [shelf.id, supplierIds[i], i === 0]);
+        }
+      }
 
-    // Log del movimiento
-    txQueries.push({
-      query: `
+      // Log del movimiento con el shelf.id real
+      await client.query(`
         INSERT INTO movements (sample_id, action_type, user_id, details)
         VALUES ($1, $2, $3, $4)
-      `,
-      params: [
-        null, // Se actualizará después
+      `, [
+        shelf.id,
         'created',
         req.user.id,
         JSON.stringify({
@@ -90,24 +86,15 @@ const createShelf = async (req, res, next) => {
           grid_size: `${data.grid_width || 10}x${data.grid_height || 10}x${data.shelf_depth || 10}`,
           supplier_count: supplierIds.length
         })
-      ]
-    });
+      ]);
 
-    // Ejecutar transacción
-    const results = await transaction(txQueries);
-    const shelf = results[0].rows[0];
-
-    // Actualizar el movement con el shelf_id (subquery compatible con PostgreSQL)
-    await query(
-      `UPDATE movements SET sample_id = $1
-       WHERE id = (
-         SELECT id FROM movements
-         WHERE sample_id IS NULL AND action_type = $2 AND user_id = $3
-         ORDER BY timestamp DESC
-         LIMIT 1
-       )`,
-      [shelf.id, 'created', req.user.id]
-    );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
     // Obtener proveedores vinculados
     const suppliersResult = await query(`

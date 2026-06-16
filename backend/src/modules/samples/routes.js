@@ -10,62 +10,14 @@ const {
   deleteBulkSample,
   getMarketLines,
   getSuppliers,
+  downloadCoA,
 } = require('./controller');
-const { verifyToken, requireAdmin } = require('../auth/controller');
+const { verifyToken } = require('../auth/controller');
 const { requirePermission } = require('../../middleware/permissions');
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    try {
-      const uploadDir = path.join(process.cwd(), 'uploads', 'temp');
-      await fs.mkdir(uploadDir, { recursive: true });
-      cb(null, uploadDir);
-    } catch (error) {
-      cb(error);
-    }
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024,
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Solo se permiten archivos PDF'));
-    }
-  }
-});
-
-// Validación adicional por magic number: el mimetype viene del cliente y es
-// falsificable. Verificamos los primeros 5 bytes (%PDF-) para asegurar que
-// realmente es un PDF. Se aplica como middleware entre multer y el handler.
-const validatePdfMagicNumber = (req, res, next) => {
-  if (!req.file) return next();
-  // En multer.diskStorage el archivo ya está en disco; leemos solo los primeros bytes.
-  const fd = require('fs').openSync(req.file.path, 'r');
-  const buffer = Buffer.alloc(5);
-  try {
-    require('fs').readSync(fd, buffer, 0, 5, 0);
-  } finally {
-    require('fs').closeSync(fd);
-  }
-  if (buffer.toString('utf8') !== '%PDF-') {
-    // Eliminar el archivo subido y rechazar
-    require('fs').unlink(req.file.path, () => {});
-    return res.status(400).json({ success: false, error: 'El archivo no es un PDF válido (magic number mismatch)' });
-  }
-  next();
-};
+// Multer and magic number validation removed as we no longer upload CoA files internally
 
 /**
  * @openapi
@@ -154,6 +106,26 @@ router.get('/:id', verifyToken, requirePermission('samples.view'), getBulkSample
 
 /**
  * @openapi
+ * /api/samples/{id}/coa:
+ *   get:
+ *     summary: Descargar/Ver certificado CoA asociado a la muestra
+ *     tags: [Samples]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: Archivo PDF
+ *       404:
+ *         description: Archivo no encontrado
+ */
+router.get('/:id/coa', verifyToken, downloadCoA);
+
+/**
+ * @openapi
  * /api/samples:
  *   post:
  *     summary: Crear nueva muestra global con CoA opcional
@@ -180,7 +152,7 @@ router.get('/:id', verifyToken, requirePermission('samples.view'), getBulkSample
  *       201:
  *         description: Muestra creada
  */
-router.post('/', verifyToken, requirePermission('samples.create'), upload.single('coa_file'), validatePdfMagicNumber, createBulkSample);
+router.post('/', verifyToken, requirePermission('samples.create'), createBulkSample);
 
 /**
  * @openapi
@@ -216,7 +188,7 @@ router.post('/', verifyToken, requirePermission('samples.create'), upload.single
  *       200:
  *         description: Muestra actualizada
  */
-router.put('/:id', verifyToken, requirePermission('samples.edit'), upload.single('coa_file'), validatePdfMagicNumber, updateBulkSample);
+router.put('/:id', verifyToken, requirePermission('samples.edit'), updateBulkSample);
 
 /**
  * @openapi

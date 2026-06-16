@@ -1,4 +1,5 @@
 import React from 'react';
+import PropTypes from 'prop-types';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Edges } from '@react-three/drei';
 import { GridLines, CameraController, SampleCube, EmptyCellTarget, getCellStatus } from './Shared3DComponents';
@@ -283,4 +284,38 @@ export const LevelDetailMap = ({
       )}
     </div>
   );
+};
+
+LevelDetailMap.propTypes = {
+  mapData: PropTypes.object.isRequired,
+  selectedLevel: PropTypes.number.isRequired,
+  selectedCell: PropTypes.object,
+  setSelectedCell: PropTypes.func.isRequired,
+  hoveredCell: PropTypes.object,
+  setHoveredCell: PropTypes.func.isRequired,
+  cameraView: PropTypes.string,
+  showExpired: PropTypes.bool,
+  showWarnings: PropTypes.bool,
+  isSelectionMode: PropTypes.bool,
+  isMovementMode: PropTypes.bool,
+  isGroupDragMode: PropTypes.bool,
+  isGroupDragging: PropTypes.bool,
+  validityByKey: PropTypes.object,
+  selectedSampleIds: PropTypes.oneOfType([
+    PropTypes.instanceOf(Set),
+    PropTypes.instanceOf(Map),
+    PropTypes.array,
+  ]),
+  assignedTargets: PropTypes.array,
+  onSampleClick: PropTypes.func,
+  onEmptyCellClick: PropTypes.func,
+  onSampleDragStart: PropTypes.func,
+  movementMode: PropTypes.bool,
+  showTooltipFor: PropTypes.number,
+  showGroupChipFor: PropTypes.instanceOf(Set),
+  groupChipColor: PropTypes.string,
+  onTooltipViewDetail: PropTypes.func,
+  onTooltipAddToGroup: PropTypes.func,
+  onTooltipMove: PropTypes.func,
+  onTooltipClose: PropTypes.func,
 };

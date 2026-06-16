@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
 
 const AuthContext = createContext();
 
@@ -18,25 +19,22 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('auth_token');
+      const token = useAuthStore.getState().token;
       if (!token) {
-        // No hay token, mostrar login
         setLoading(false);
         return;
       }
       try {
         // El backend responde: { success, data: { user } }
         const response = await authAPI.getCurrentUser();
-        const userData = response.data?.data?.user || response.data?.user;
+        const userData = response.data?.user || response.data;
         if (!userData || !userData.id) {
-          // La respuesta no contiene un usuario válido
           throw new Error('Respuesta de usuario inválida');
         }
         setUser(userData);
         setIsAuthenticated(true);
       } catch (_error) {
-        // Token inválido, expirado o usuario eliminado → limpiar y pedir login
-        localStorage.removeItem('auth_token');
+        useAuthStore.getState().setToken(null);
         setUser(null);
         setIsAuthenticated(false);
       } finally {
@@ -47,23 +45,22 @@ export const AuthProvider = ({ children }) => {
 
     // Polling en segundo plano para refrescar los permisos automáticamente cada 30 segundos
     const intervalId = setInterval(() => {
-      const token = localStorage.getItem('auth_token');
+      const token = useAuthStore.getState().token;
       if (token) {
         authAPI.getCurrentUser()
           .then(response => {
-            const userData = response.data?.data?.user || response.data?.user;
+            const userData = response.data?.user || response.data;
             if (userData && userData.id) {
               setUser(userData);
             }
           })
           .catch(() => {
-            // Si el token falló o el usuario fue eliminado, forzar logout
-            localStorage.removeItem('auth_token');
+            useAuthStore.getState().setToken(null);
             setUser(null);
             setIsAuthenticated(false);
           });
       }
-    }, 30000); // 30 segundos
+    }, 30000);
 
     return () => clearInterval(intervalId);
   }, []);
@@ -75,7 +72,7 @@ export const AuthProvider = ({ children }) => {
   const refreshUser = async () => {
     try {
       const response = await authAPI.getCurrentUser();
-      const userData = response.data?.data?.user || response.data?.user;
+      const userData = response.data?.user || response.data;
       if (!userData || !userData.id) throw new Error('Respuesta inválida');
       setUser(userData);
       return { success: true, user: userData };
@@ -88,8 +85,8 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       const response = await authAPI.login(credentials);
-      const { user: userData, token } = response.data.data;
-      localStorage.setItem('auth_token', token);
+      const { user: userData, token } = response.data;
+      useAuthStore.getState().setToken(token);
       setUser(userData);
       setIsAuthenticated(true);
       return { success: true };
@@ -104,7 +101,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('auth_token');
+    useAuthStore.getState().setToken(null);
     setUser(null);
     setIsAuthenticated(false);
   };

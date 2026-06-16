@@ -5,7 +5,7 @@
  * Grid 3D: X = Columna (horizontal), Y = Nivel (vertical), Z = Profundidad
  */
 
-const { query } = require('../../services/database');
+const { query, pool } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const { validatePlacement, parseDimensions, findAutoPlacement } = require('./validations');
 
@@ -137,18 +137,13 @@ const placeSample = async (req, res, next) => {
     // Si la muestra ya está en OTRO anaquel, rechazamos con 409 para forzar al
     // cliente a usar el endpoint explícito /move-sample, que registra la
     // trazabilidad de movimientos cross-shelf y valida misma línea de mercado.
-    if (sampleData.shelf_id !== null && sampleData.shelf_id !== undefined) {
-      if (String(sampleData.shelf_id) === String(id)) {
-        // Ya está en ESTE anaquel: refrescar posición (caso válido de re-colocación).
-        // No es cross-shelf, continúa flujo normal.
-      } else {
-        throw new AppError(
-          `La muestra ya está ubicada en el anaquel #${sampleData.shelf_id}. ` +
-          `Para moverla a otro anaquel use el endpoint PUT /api/warehouse/${sampleData.shelf_id}/move-sample ` +
-          `con { sample_id, target_shelf_id: ${id}, new_position_x, new_position_y, new_position_z }.`,
-          409
-        );
-      }
+    if (sampleData.shelf_id !== null && sampleData.shelf_id !== undefined && String(sampleData.shelf_id) !== String(id)) {
+      throw new AppError(
+        `La muestra ya está ubicada en el anaquel #${sampleData.shelf_id}. ` +
+        `Para moverla a otro anaquel use el endpoint PUT /api/warehouse/${sampleData.shelf_id}/move-sample ` +
+        `con { sample_id, target_shelf_id: ${id}, new_position_x, new_position_y, new_position_z }.`,
+        409
+      );
     }
 
     if (position_x === undefined || position_y === undefined || position_z === undefined) {
@@ -160,27 +155,39 @@ const placeSample = async (req, res, next) => {
 
     await validatePlacement(shelf.rows[0], sampleData, position_x, position_y, position_z);
 
-    await query(`
-      UPDATE dispensed_samples
-      SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4,
-          width = $5, height = $6, depth = $7, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $8
-    `, [id, position_x, position_y, position_z, sampleData.width, sampleData.height, sampleData.depth, sample_id]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    await query(`
-      INSERT INTO movements (sample_id, action_type, user_id, details)
-      VALUES ($1, $2, $3, $4)
-    `, [
-      sample_id,
-      'stored',
-      req.user.id,
-      JSON.stringify({
-        type: 'sample_placement',
-        shelf_id: id,
-        position: { x: position_x, y: position_y, z: position_z },
-        dimensions: `${sampleData.width}x${sampleData.height}x${sampleData.depth}`
-      })
-    ]);
+      await client.query(`
+        UPDATE dispensed_samples
+        SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4,
+            width = $5, height = $6, depth = $7, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $8
+      `, [id, position_x, position_y, position_z, sampleData.width, sampleData.height, sampleData.depth, sample_id]);
+
+      await client.query(`
+        INSERT INTO movements (sample_id, action_type, user_id, details)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        sample_id,
+        'stored',
+        req.user.id,
+        JSON.stringify({
+          type: 'sample_placement',
+          shelf_id: id,
+          position: { x: position_x, y: position_y, z: position_z },
+          dimensions: `${sampleData.width}x${sampleData.height}x${sampleData.depth}`
+        })
+      ]);
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
     res.json({
       success: true,
@@ -241,27 +248,39 @@ const moveSample = async (req, res, next) => {
     const finalZ = new_position_z !== undefined ? new_position_z : (sampleData.position_z || 0);
     await validatePlacement(shelf.rows[0], sampleData, new_position_x, new_position_y, finalZ);
 
-    await query(`
-      UPDATE dispensed_samples
-      SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $5
-    `, [final_shelf_id, new_position_x, new_position_y, finalZ, sample_id]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    await query(`
-      INSERT INTO movements (sample_id, action_type, user_id, details)
-      VALUES ($1, $2, $3, $4)
-    `, [
-      sample_id,
-      'moved',
-      req.user.id,
-      JSON.stringify({
-        type: 'sample_movement',
-        from_shelf_id: current_shelf_id,
-        to_shelf_id: final_shelf_id,
-        from_position: { x: sampleData.position_x, y: sampleData.position_y, z: sampleData.position_z },
-        to_position: { x: new_position_x, y: new_position_y, z: finalZ }
-      })
-    ]);
+      await client.query(`
+        UPDATE dispensed_samples
+        SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $5
+      `, [final_shelf_id, new_position_x, new_position_y, finalZ, sample_id]);
+
+      await client.query(`
+        INSERT INTO movements (sample_id, action_type, user_id, details)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        sample_id,
+        'moved',
+        req.user.id,
+        JSON.stringify({
+          type: 'sample_movement',
+          from_shelf_id: current_shelf_id,
+          to_shelf_id: final_shelf_id,
+          from_position: { x: sampleData.position_x, y: sampleData.position_y, z: sampleData.position_z },
+          to_position: { x: new_position_x, y: new_position_y, z: finalZ }
+        })
+      ]);
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
     res.json({
       success: true,
@@ -302,26 +321,38 @@ const removeSample = async (req, res, next) => {
       z: sample.rows[0].position_z
     };
 
-    await query(`
-      UPDATE dispensed_samples
-      SET shelf_id = NULL, position_x = NULL, position_y = NULL, position_z = NULL,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1
-    `, [sample_id]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    await query(`
-      INSERT INTO movements (sample_id, action_type, user_id, details)
-      VALUES ($1, $2, $3, $4)
-    `, [
-      sample_id,
-      'moved',
-      req.user.id,
-      JSON.stringify({
-        type: 'sample_removal',
-        shelf_id: id,
-        from_position: oldPosition
-      })
-    ]);
+      await client.query(`
+        UPDATE dispensed_samples
+        SET shelf_id = NULL, position_x = NULL, position_y = NULL, position_z = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `, [sample_id]);
+
+      await client.query(`
+        INSERT INTO movements (sample_id, action_type, user_id, details)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        sample_id,
+        'moved',
+        req.user.id,
+        JSON.stringify({
+          type: 'sample_removal',
+          shelf_id: id,
+          from_position: oldPosition
+        })
+      ]);
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
     res.json({
       success: true,
@@ -355,68 +386,80 @@ const autoPlaceSamples = async (req, res, next) => {
     }
 
     const placements = [];
+    const client = await pool.connect();
 
-    for (const sampleId of sample_ids) {
-      const sample = await query(`
-        SELECT ds.*, gs.ghs_danger_class, gs.dimensions
-        FROM dispensed_samples ds
-        JOIN global_samples gs ON ds.global_sample_id = gs.id
-        WHERE ds.id = $1 AND ds.status = 'stored' AND ds.shelf_id IS NULL
-      `, [sampleId]);
+    try {
+      await client.query('BEGIN');
 
-      if (sample.rows.length === 0) {
-        placements.push({
-          sample_id: sampleId,
-          success: false,
-          error: 'Muestra no encontrada o ya colocada'
-        });
-        continue;
-      }
+      for (const sampleId of sample_ids) {
+        const sample = await query(`
+          SELECT ds.*, gs.ghs_danger_class, gs.dimensions
+          FROM dispensed_samples ds
+          JOIN global_samples gs ON ds.global_sample_id = gs.id
+          WHERE ds.id = $1 AND ds.status = 'stored' AND (ds.shelf_id IS NULL OR ds.shelf_id = '')
+        `, [sampleId]);
 
-      const sampleData = sample.rows[0];
-      const dimensions = parseDimensions(sampleData.dimensions);
-      sampleData.width = dimensions.width;
-      sampleData.height = dimensions.height;
-      sampleData.depth = dimensions.depth;
+        if (sample.rows.length === 0) {
+          placements.push({
+            sample_id: sampleId,
+            success: false,
+            error: 'Muestra no encontrada o ya colocada'
+          });
+          continue;
+        }
 
-      try {
-        const autoPos = await findAutoPlacement(shelf.rows[0], sampleData);
+        const sampleData = sample.rows[0];
+        const dimensions = parseDimensions(sampleData.dimensions);
+        sampleData.width = dimensions.width;
+        sampleData.height = dimensions.height;
+        sampleData.depth = dimensions.depth;
 
-        await query(`
-          UPDATE dispensed_samples
-          SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4,
-              width = $5, height = $6, depth = $7, updated_at = CURRENT_TIMESTAMP
-          WHERE id = $8
-        `, [id, autoPos.x, autoPos.y, autoPos.z, sampleData.width, sampleData.height, sampleData.depth, sampleId]);
+        try {
+          const autoPos = await findAutoPlacement(shelf.rows[0], sampleData);
 
-        await query(`
-          INSERT INTO movements (sample_id, action_type, user_id, details)
-          VALUES ($1, $2, $3, $4)
-        `, [
-          sampleId,
-          'stored',
-          req.user.id,
-          JSON.stringify({
-            type: 'auto_sample_placement',
-            shelf_id: id,
+          await client.query(`
+            UPDATE dispensed_samples
+            SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4,
+                width = $5, height = $6, depth = $7, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $8
+          `, [id, autoPos.x, autoPos.y, autoPos.z, sampleData.width, sampleData.height, sampleData.depth, sampleId]);
+
+          await client.query(`
+            INSERT INTO movements (sample_id, action_type, user_id, details)
+            VALUES ($1, $2, $3, $4)
+          `, [
+            sampleId,
+            'stored',
+            req.user.id,
+            JSON.stringify({
+              type: 'auto_sample_placement',
+              shelf_id: id,
+              position: { x: autoPos.x, y: autoPos.y, z: autoPos.z },
+              dimensions: `${sampleData.width}x${sampleData.height}x${sampleData.depth}`
+            })
+          ]);
+
+          placements.push({
+            sample_id: sampleId,
+            success: true,
             position: { x: autoPos.x, y: autoPos.y, z: autoPos.z },
             dimensions: `${sampleData.width}x${sampleData.height}x${sampleData.depth}`
-          })
-        ]);
-
-        placements.push({
-          sample_id: sampleId,
-          success: true,
-          position: { x: autoPos.x, y: autoPos.y, z: autoPos.z },
-          dimensions: `${sampleData.width}x${sampleData.height}x${sampleData.depth}`
-        });
-      } catch (e) {
-        placements.push({
-          sample_id: sampleId,
-          success: false,
-          error: e.message
-        });
+          });
+        } catch (e) {
+          placements.push({
+            sample_id: sampleId,
+            success: false,
+            error: e.message
+          });
+        }
       }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
 
     res.json({

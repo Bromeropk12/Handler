@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PropTypes from 'prop-types';
 import { warehouseAPI } from '../../../services/api';
 import {
   ArrowsRightLeftIcon,
@@ -28,7 +29,7 @@ const DefragmentationTool = ({ shelfId, onMovementConfirmed, onFinished }) => {
         target_depth: depth || 1
       });
       
-      setPlan(response.data.data);
+      setPlan(response.data);
       setCurrentStepIndex(0);
     } catch (err) {
       setError(err.message || 'Error al calcular desfragmentación');
@@ -216,6 +217,12 @@ const DefragmentationTool = ({ shelfId, onMovementConfirmed, onFinished }) => {
       </div>
     </div>
   );
+};
+
+DefragmentationTool.propTypes = {
+  shelfId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  onMovementConfirmed: PropTypes.func,
+  onFinished: PropTypes.func,
 };
 
 export default DefragmentationTool;

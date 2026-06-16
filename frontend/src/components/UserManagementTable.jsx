@@ -155,7 +155,7 @@ const PermissionsPanel = ({ user, onSaved }) => {
 };
 
 // ─── Tabla principal ──────────────────────────────────────────────────────────
-const UserManagementTable = ({ users, currentUser, onChangePassword, onDeleteUser, onPermissionsSaved }) => {
+const UserManagementTable = ({ users, currentUser, onChangePassword, onDeleteUser, onPermissionsSaved, onRetry }) => {
     const [expandedPerms, setExpandedPerms] = useState(null);
 
     if (users.length === 0) return (
@@ -164,7 +164,12 @@ const UserManagementTable = ({ users, currentUser, onChangePassword, onDeleteUse
                 <UsersIcon className="w-8 h-8 text-gray-600" />
             </div>
             <h3 className="text-base font-semibold text-gray-400 mb-1">Sin resultados</h3>
-            <p className="text-sm text-gray-600">Ajusta los filtros de búsqueda para encontrar usuarios</p>
+            <p className="text-sm text-gray-600 mb-4">Ajusta los filtros de búsqueda para encontrar usuarios</p>
+            {onRetry && (
+                <button onClick={onRetry} className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-700 hover:bg-surface-600 border border-white/8 rounded-lg text-gray-300 text-xs font-semibold transition-all">
+                    <ArrowPathIcon className="w-3.5 h-3.5" /> Reintentar
+                </button>
+            )}
         </div>
     );
 

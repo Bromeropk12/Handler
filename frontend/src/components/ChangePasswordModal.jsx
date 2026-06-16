@@ -73,6 +73,13 @@ const ChangePasswordModal = ({ isOpen, onClose, user, formData, setFormData, err
 
             <form onSubmit={onSubmit} className="px-6 py-5 space-y-4">
                 <PasswordField
+                    label="Contraseña actual"
+                    value={formData.currentPassword}
+                    onChange={e => setFormData(p => ({ ...p, currentPassword: e.target.value }))}
+                    error={errors.currentPassword}
+                    placeholder="••••••••"
+                />
+                <PasswordField
                     label="Nueva contraseña"
                     value={formData.newPassword}
                     onChange={e => setFormData(p => ({ ...p, newPassword: e.target.value }))}

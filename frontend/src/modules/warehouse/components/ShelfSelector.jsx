@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
 import { warehouseAPI } from '../../../services/api';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { Canvas, useFrame } from '@react-three/fiber';
@@ -8,6 +9,7 @@ import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
 
 const ShelfMesh = ({ position, shelf, index, onSelect }) => {
   const meshRef = useRef();
+  const scaleVec = useRef(new THREE.Vector3());
   const [hovered, setHovered] = useState(false);
 
   // Status computation for colors
@@ -23,7 +25,8 @@ const ShelfMesh = ({ position, shelf, index, onSelect }) => {
   useFrame((state) => {
     if (!meshRef.current) return;
     const targetScale = hovered ? 1.05 : 1;
-    meshRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+    scaleVec.current.set(targetScale, targetScale, targetScale);
+    meshRef.current.scale.lerp(scaleVec.current, 0.1);
     
     // Suave flotación
     const time = state.clock.getElapsedTime();
@@ -132,19 +135,23 @@ const ShelfSelector = ({ selectedMarketLine, onSelectShelf, onBack }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchShelves = async () => {
       if (!selectedMarketLine) return;
       try {
         setLoading(true);
-        const response = await warehouseAPI.getShelves({ market_line_id: selectedMarketLine.id });
-        setShelves(response.data.data.shelves);
-      } catch (_err) {
+        const response = await warehouseAPI.getShelves({ market_line_id: selectedMarketLine.id }, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setShelves(response.data.shelves);
+      } catch (err) {
+        if (err.name === 'AbortError' || err.name === 'CanceledError') return;
         setError('Error al cargar los armarios');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
     fetchShelves();
+    return () => controller.abort();
   }, [selectedMarketLine]);
 
   if (loading) {
@@ -251,11 +258,20 @@ const ShelfSelector = ({ selectedMarketLine, onSelectShelf, onBack }) => {
       
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 pointer-events-none z-10">
         <span className="text-[10px] font-black tracking-[0.2em] text-gray-300 bg-black/80 backdrop-blur-md px-6 py-2.5 rounded-full border border-gray-600/50 shadow-[0_0_30px_rgba(0,0,0,0.8)] uppercase">
-          Mueca para Explorar el Entorno
+            Desplázate para Explorar el Entorno
         </span>
       </div>
     </div>
   );
+};
+
+ShelfSelector.propTypes = {
+  selectedMarketLine: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    name: PropTypes.string,
+  }),
+  onSelectShelf: PropTypes.func.isRequired,
+  onBack: PropTypes.func.isRequired,
 };
 
 export default ShelfSelector;

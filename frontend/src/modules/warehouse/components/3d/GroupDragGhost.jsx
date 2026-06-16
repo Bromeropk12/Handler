@@ -19,6 +19,7 @@
  *   - reducedMotion: boolean
  */
 import React, { useRef } from 'react';
+import PropTypes from 'prop-types';
 import { useFrame } from '@react-three/fiber';
 import { LEVEL_HEIGHT } from './Shared3DComponents';
 
@@ -113,6 +114,16 @@ const GroupDragGhost = ({
       )}
     </group>
   );
+};
+
+GroupDragGhost.propTypes = {
+  dragState: PropTypes.object,
+  groupSamples: PropTypes.array,
+  shelfDims: PropTypes.shape({
+    cols: PropTypes.number,
+    depth: PropTypes.number,
+  }),
+  reducedMotion: PropTypes.bool,
 };
 
 export default GroupDragGhost;

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ErrorBoundary as ReactErrorBoundary } from 'react-error-boundary';
+import { useRouteError } from 'react-router-dom';
 import { ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 const ErrorFallback = ({ error, resetErrorBoundary }) => {
@@ -75,4 +76,10 @@ const ErrorBoundary = ({ children, fallback: Fallback, onError }) => {
   );
 };
 
+const RouteErrorBoundary = () => {
+  const error = useRouteError();
+  return <ErrorFallback error={error} resetErrorBoundary={() => window.location.reload()} />;
+};
+
+export { RouteErrorBoundary };
 export default ErrorBoundary;

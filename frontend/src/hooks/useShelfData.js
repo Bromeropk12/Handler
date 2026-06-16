@@ -19,7 +19,7 @@ export const useShelfData = () => {
       setError(null);
 
       const response = await warehouseAPI.getShelves(filters);
-      setShelves(response.data.data.shelves);
+      setShelves(response.data.shelves);
     } catch (err) {
       setError(err.message || 'Error al cargar anaqueles');
     } finally {
@@ -34,8 +34,8 @@ export const useShelfData = () => {
       setError(null);
 
       const response = await warehouseAPI.getShelf(shelfId);
-      setCurrentShelf(response.data.data.shelf);
-      return response.data.data.shelf;
+      setCurrentShelf(response.data.shelf);
+      return response.data.shelf;
     } catch (err) {
       setError(err.message || 'Error al cargar anaquel');
       throw err;
@@ -51,8 +51,8 @@ export const useShelfData = () => {
       setError(null);
 
       const response = await warehouseAPI.getShelfMap(shelfId);
-      setCurrentMap(response.data.data);
-      return response.data.data;
+      setCurrentMap(response.data);
+      return response.data;
     } catch (err) {
       setError(err.message || 'Error al cargar mapa del anaquel');
       throw err;
@@ -131,7 +131,7 @@ export const useShelfData = () => {
       setError(null);
 
       const response = await warehouseAPI.createShelf(shelfData);
-      const newShelf = response.data.data.shelf;
+      const newShelf = response.data.shelf;
 
       // Agregar el nuevo anaquel a la lista
       setShelves(prev => [...prev, newShelf]);
@@ -153,7 +153,7 @@ export const useShelfData = () => {
         setError(null);
 
         const response = await warehouseAPI.updateShelf(shelfId, updateData);
-        const updatedShelf = response.data.data.shelf;
+        const updatedShelf = response.data.shelf;
 
         // Actualizar el anaquel en la lista
         setShelves(prev => prev.map(shelf => (shelf.id === shelfId ? updatedShelf : shelf)));

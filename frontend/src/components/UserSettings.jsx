@@ -63,6 +63,13 @@ const UserSettings = ({ isOpen, onClose }) => {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState(null);
     const [errors, setErrors] = useState({});
+    const closeTimerRef = React.useRef(null);
+
+    React.useEffect(() => {
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
+    }, []);
 
     const handlePasswordInputChange = (e) => {
         const { name, value } = e.target;
@@ -110,7 +117,7 @@ const UserSettings = ({ isOpen, onClose }) => {
             });
             setMessage({ type: 'success', text: 'Contraseña actualizada correctamente' });
             setPasswordFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-            setTimeout(onClose, 2200);
+            closeTimerRef.current = setTimeout(onClose, 2200);
         } catch (error) {
             setMessage({ type: 'error', text: error.message || 'Error al cambiar contraseña' });
         } finally {
@@ -143,8 +150,8 @@ const UserSettings = ({ isOpen, onClose }) => {
             setMessage({ type: 'success', text: 'Nombre de usuario actualizado correctamente' });
             setUsernameFormData({ newUsername: '', currentPassword: '' });
             // Actualizar el contexto de auth para que sidebar refleje el nuevo nombre
-            if (response.data?.data?.user) {
-                updateUser(response.data.data.user);
+            if (response.data?.user) {
+                updateUser(response.data.user);
             }
             setTimeout(onClose, 2200);
         } catch (error) {

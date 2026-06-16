@@ -68,8 +68,12 @@ const shouldRunBackup = async () => {
   try {
     const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
     if (configRes.rows.length > 0) {
-      intervalDays = Number(configRes.rows[0].value.interval_days) || 20;
-      backupHour   = Number(configRes.rows[0].value.hour) ?? 12;
+      let config = configRes.rows[0].value;
+      if (typeof config === 'string') {
+        try { config = JSON.parse(config); } catch (_) { config = {}; }
+      }
+      intervalDays = Number(config.interval_days) || 20;
+      backupHour   = Number(config.hour) ?? 12;
     }
   } catch (_) {}
 

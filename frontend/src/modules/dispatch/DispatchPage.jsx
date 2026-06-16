@@ -84,7 +84,7 @@ const DispatchPage = () => {
         try {
             setLoadingHistory(true);
             const resp = await dispatchAPI.getHistory({ limit: 10 });
-            setHistory(resp.data.data.history || []);
+            setHistory(resp.data.history || []);
         } catch (err) {
             console.error('Error cargando historial:', err);
         } finally {
@@ -99,7 +99,7 @@ const DispatchPage = () => {
         setLoading(true);
         try {
             const resp = await dispatchAPI.getFefoRecommendation({ product_name: searchTerm });
-            const recs = resp.data.data.recommendations || [];
+            const recs = resp.data.recommendations || [];
             setRecommendations(recs);
 
             if (recs.length > 0) {
@@ -250,16 +250,17 @@ const DispatchPage = () => {
             setDispatchMessage(resp.data.message);
 
             setLabelData({
-                product_name: resp.data.data.product_name,
-                lot: resp.data.data.lot,
-                expiration_date: new Date(resp.data.data.expiration_date).toISOString().split('T')[0],
+                id: resp.data.id,
+                product_name: resp.data.product_name,
+                lot: resp.data.lot,
+                expiration_date: new Date(resp.data.expiration_date).toISOString().split('T')[0],
                 manufacture_date: recUsed?.manufacture_date ? new Date(recUsed.manufacture_date).toISOString().split('T')[0] : '',
                 weight_grams: recUsed?.weight_grams || recUsed?.weight_per_unit_grams || '',
-                coa_file_path: resp.data.data.coa_file_path || recUsed?.coa_file_path,
-                shelf_name: resp.data.data.shelf_name,
-                dispatched_by: resp.data.data.dispatched_by,
-                dispatched_at: resp.data.data.dispatched_at,
-                qr_code: resp.data.data.qr_code
+                coa_file_path: resp.data.coa_file_path || recUsed?.coa_file_path,
+                shelf_name: resp.data.shelf_name,
+                dispatched_by: resp.data.dispatched_by,
+                dispatched_at: resp.data.dispatched_at,
+                qr_code: resp.data.qr_code
             });
 
             setScanCode('');
@@ -661,15 +662,23 @@ const DispatchPage = () => {
                                 <div className="flex flex-col items-center gap-2">
                                     <CheckCircle2 size={32} className="text-green-500" />
                                     <p className="text-sm text-green-400 font-medium">CoA Adjunto</p>
-                                    <a
-                                        href={`${API_BASE}/${labelData.coa_file_path}`}
-                                        target="_blank"
-                                        rel="noreferrer"
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            if (window.electronAPI && window.electronAPI.openLocalFile) {
+                                                const success = await window.electronAPI.openLocalFile(labelData.coa_file_path);
+                                                if (!success) alert('No se pudo abrir el archivo PDF.');
+                                            } else {
+                                                // Fallback genérico si no hay electron, usando labelData.id que podría no servir sin arreglar backend
+                                                // pero el objetivo principal es usar openLocalFile
+                                                window.open(`${API_BASE}/api/samples/${labelData.id}/coa`, '_blank');
+                                            }
+                                        }}
                                         className="mt-2 py-2 px-4 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-700 flex items-center gap-2 transition-colors"
                                     >
                                         <Eye size={16} />
                                         Visualizar
-                                    </a>
+                                    </button>
                                 </div>
                             ) : (
                                 <div className="flex flex-col items-center gap-2 py-4">

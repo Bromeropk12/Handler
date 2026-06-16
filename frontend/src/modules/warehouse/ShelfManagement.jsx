@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { warehouseAPI, suppliersAPI, shelfSuppliersAPI, marketLinesAPI } from '../../services/api';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, CheckIcon, CubeIcon } from '@heroicons/react/24/outline';
 import Modal from '../../components/Modal';
@@ -23,6 +23,7 @@ const ShelfManagement = () => {
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const timersRef = useRef([]);
 
   // Mapa de colores por línea de mercado (igual que MarketLineSelector)
   const colorMap = {
@@ -51,20 +52,26 @@ const ShelfManagement = () => {
     : groupedShelves;
 
   useEffect(() => {
-    fetchData();
+    const controller = new AbortController();
+    fetchData(controller);
+    return () => {
+      controller.abort();
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
+    };
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = async (controller) => {
     try {
       setLoading(true);
       const [shelvesResp, mlResp, suppResp] = await Promise.all([
-        warehouseAPI.getShelves({ limit: 200 }),
-        marketLinesAPI.getAll(),
-        suppliersAPI.getSuppliers()
+        warehouseAPI.getShelves({ limit: 200 }, { signal: controller?.signal }),
+        marketLinesAPI.getAll({ signal: controller?.signal }),
+        suppliersAPI.getSuppliers({ signal: controller?.signal })
       ]);
-      setShelves(shelvesResp.data.data.shelves || []);
-      setMarketLines(mlResp.data.data.marketLines || mlResp.data.data || []);
-      setSuppliers(suppResp.data.data.suppliers || []);
+      setShelves(shelvesResp.data.shelves || []);
+      setMarketLines(mlResp.data.marketLines || mlResp.data || []);
+      setSuppliers(suppResp.data.suppliers || []);
     } catch (err) {
       setError('Error al cargar los datos');
     } finally {
@@ -77,7 +84,7 @@ const ShelfManagement = () => {
       setEditingShelf(shelf);
       try {
         const suppResp = await shelfSuppliersAPI.getByShelf(shelf.id);
-        const supplierIds = (suppResp.data.data.suppliers || []).map(s => s.supplier_id);
+        const supplierIds = (suppResp.data.suppliers || []).map(s => s.supplier_id);
         setFormData({
           name: shelf.name,
           market_line_id: shelf.market_line_id,
@@ -143,7 +150,8 @@ const ShelfManagement = () => {
       }
       handleCloseModal();
       fetchData();
-      setTimeout(() => setSuccess(''), 3000);
+      const t1 = setTimeout(() => setSuccess(''), 3000);
+      timersRef.current.push(t1);
     } catch (err) {
       setError(err.response?.data?.message || 'Error al guardar');
     }
@@ -155,7 +163,8 @@ const ShelfManagement = () => {
       await warehouseAPI.deleteShelf(shelf.id);
       setSuccess('Anaquel eliminado exitosamente');
       fetchData();
-      setTimeout(() => setSuccess(''), 3000);
+      const t2 = setTimeout(() => setSuccess(''), 3000);
+      timersRef.current.push(t2);
     } catch (err) {
       setError(err.response?.data?.message || 'Error al eliminar');
     }
@@ -370,7 +379,13 @@ const ShelfManagement = () => {
                               >
                                 {ss.logo_path ? (
                                   <img
-                                    src={`/${ss.logo_path}`}
+                                    src={(() => {
+                                      const raw = String(ss.logo_path);
+                                      if (/^[a-zA-Z0-9_\-./]+$/.test(raw) && !raw.includes('..') && !raw.startsWith('/')) {
+                                        return `/${raw}`;
+                                      }
+                                      return '';
+                                    })()}
                                     alt=""
                                     className="w-3 h-3 rounded-full object-cover border border-gray-600/50"
                                     onError={(e) => {

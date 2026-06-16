@@ -13,6 +13,7 @@ import NetworkInfoWidget from './components/NetworkInfoWidget';
 
 const DashboardPage = () => {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [chartReady, setChartReady] = useState(false);
   const [stats, setStats] = useState({
     // Muestras Bulk
@@ -48,11 +49,12 @@ const DashboardPage = () => {
       try {
         setLoading(true);
         const { data } = await analyticsAPI.getDashboard();
-        if (data.success && data.data) {
-          setStats(data.data);
+        if (data) {
+          setStats(data);
         }
-      } catch (_err) {
-        console.error("Error cargando dashboard:", _err);
+      } catch (err) {
+        console.error("Error cargando dashboard:", err);
+        setError(err.message || 'Error al cargar los datos del dashboard');
       } finally {
         setLoading(false);
         // Pequeño delay para asegurar que el DOM y el contenedor del chart estén listos
@@ -67,6 +69,25 @@ const DashboardPage = () => {
     return (
       <div className="flex items-center justify-center h-full min-h-[60vh]">
         <LoadingSpinner size="large" text="Cargando métricas del dashboard..." />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3">
+          <div className="shrink-0 w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-red-400">Error al cargar el dashboard</p>
+            <p className="text-xs text-red-300/80 mt-1">{error}</p>
+            <button onClick={() => window.location.reload()} className="mt-2 text-xs font-medium text-red-300 hover:text-red-200 underline">
+              Reintentar
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

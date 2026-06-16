@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import PropTypes from 'prop-types';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -107,6 +108,7 @@ export const CameraController = ({ view, targetPosOverride = null }) => {
   const { camera, controls } = useThree();
   const animRef = useRef(false);
   const targetRef = useRef(new THREE.Vector3(10, 8, 12));
+  const zeroVec = useRef(new THREE.Vector3(0, 0, 0));
 
   useEffect(() => {
     const t = new THREE.Vector3();
@@ -127,7 +129,7 @@ export const CameraController = ({ view, targetPosOverride = null }) => {
     const dist = camera.position.distanceTo(targetRef.current);
     if (dist < 0.15) { animRef.current = false; controls.update(); return; }
     camera.position.lerp(targetRef.current, 0.06);
-    controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.06);
+    controls.target.lerp(zeroVec.current, 0.06);
     controls.update();
   });
 
@@ -441,6 +443,62 @@ export const SampleCube = ({
       )}
     </group>
   );
+};
+
+GridLines.propTypes = {
+  cols: PropTypes.number.isRequired,
+  depth: PropTypes.number.isRequired,
+};
+
+AxisLabels.propTypes = {
+  cols: PropTypes.number.isRequired,
+  depth: PropTypes.number.isRequired,
+};
+
+CameraController.propTypes = {
+  view: PropTypes.string,
+  targetPosOverride: PropTypes.instanceOf(THREE.Vector3),
+};
+
+EmptyCellTarget.propTypes = {
+  x: PropTypes.number.isRequired,
+  y: PropTypes.number,
+  z: PropTypes.number.isRequired,
+  offsetX: PropTypes.number.isRequired,
+  offsetY: PropTypes.number,
+  offsetZ: PropTypes.number.isRequired,
+  width: PropTypes.number,
+  depth: PropTypes.number,
+  onDrop: PropTypes.func,
+  validityState: PropTypes.string,
+};
+
+SampleCube.propTypes = {
+  cell: PropTypes.object.isRequired,
+  x: PropTypes.number.isRequired,
+  y: PropTypes.number,
+  z: PropTypes.number.isRequired,
+  offsetX: PropTypes.number.isRequired,
+  offsetY: PropTypes.number,
+  offsetZ: PropTypes.number.isRequired,
+  isSelected: PropTypes.bool,
+  isDimmed: PropTypes.bool,
+  onHover: PropTypes.func,
+  onClick: PropTypes.func,
+  status: PropTypes.string,
+  isMultiSelected: PropTypes.bool,
+  isSourceOfMove: PropTypes.bool,
+  isInGroupDrag: PropTypes.bool,
+  onDragStart: PropTypes.func,
+  ghsDangerClass: PropTypes.string,
+  showTooltip: PropTypes.bool,
+  showGroupChip: PropTypes.bool,
+  movementMode: PropTypes.bool,
+  onTooltipViewDetail: PropTypes.func,
+  onTooltipAddToGroup: PropTypes.func,
+  onTooltipMove: PropTypes.func,
+  onTooltipClose: PropTypes.func,
+  groupChipColor: PropTypes.string,
 };
 
 const GroupChipInline = GroupChip;

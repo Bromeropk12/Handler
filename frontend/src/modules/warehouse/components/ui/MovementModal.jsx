@@ -19,6 +19,7 @@
  *  - onTargetChange: (newTarget) => void
  */
 import React, { useMemo, useState } from 'react';
+import PropTypes from 'prop-types';
 import { formatSampleId } from '../../utils/formatSampleId';
 import ShelfMiniMap3D from '../minimap/ShelfMiniMap3D';
 import {
@@ -723,6 +724,36 @@ const MovementModal = ({
       </div>
     </div>
   );
+};
+
+MovementModal.propTypes = {
+  samples: PropTypes.array,
+  target: PropTypes.object,
+  conflicts: PropTypes.array,
+  mapData: PropTypes.object,
+  previewCells: PropTypes.array,
+  isExecuting: PropTypes.bool,
+  error: PropTypes.string,
+  currentShelfId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  onCancel: PropTypes.func,
+  onConfirm: PropTypes.func,
+  compatibleShelves: PropTypes.array,
+  onTargetChange: PropTypes.func,
+};
+
+FieldSelect.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  options: PropTypes.node,
+  onChange: PropTypes.func.isRequired,
+  hasError: PropTypes.bool,
+  disabled: PropTypes.bool,
+};
+
+MetaRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.node]),
+  mono: PropTypes.bool,
 };
 
 export default MovementModal;

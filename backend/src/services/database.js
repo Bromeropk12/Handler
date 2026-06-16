@@ -27,11 +27,11 @@ if (process.env.DATABASE_URL) {
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 5432,
     database: process.env.DB_NAME || 'handler_track_samples',
-    user: process.env.DB_USER || 'handler_user',
-    password: process.env.DB_PASSWORD || 'handler_password',
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 10000,
   };
 }
 
@@ -57,8 +57,7 @@ pool.on('connect', (client) => {
 });
 
 pool.on('error', (err, client) => {
-  dbLogger.error('Error inesperado en el pool de conexiones:', err);
-  process.exit(-1);
+  dbLogger.error('Error inesperado en el pool de conexiones:', err.message);
 });
 
 pool.on('remove', (client) => {
@@ -85,14 +84,65 @@ async function query(query, params = []) {
 }
 
 /**
- * Ejecuta múltiples consultas en una transacción
- * @param {Array} queries - Array de objetos {query, params}
- * @returns {Promise<Array>} Resultados de las consultas
+ * Ejecuta múltiples consultas en una transacción.
+ * Dos modos de uso:
+ *   Pattern 1 (array): transaction([{ query, params }, ...]) → ejecuta array, retorna resultados.
+ *   Pattern 2 (wrapper): const tx = await transaction({ timeout }); tx.query(...); await tx.commit();
+ *
+ * @param {Array|Object} [queriesOrOptions] - Array de consultas u objeto con opciones (ej: { timeout: 5000 })
+ * @returns {Promise<Array|Object>} Resultados de las consultas o wrapper de transacción
  */
-async function transaction(queries) {
+async function transaction(queriesOrOptions) {
   const client = await pool.connect();
-  const start = Date.now();
 
+  // --- Pattern 2: retorna wrapper con .query() / .commit() / .rollback() ---
+  if (!queriesOrOptions || !Array.isArray(queriesOrOptions)) {
+    const timeout = (queriesOrOptions && typeof queriesOrOptions === 'object' && queriesOrOptions.timeout) || undefined;
+    try {
+      await client.query('BEGIN');
+    } catch (error) {
+      client.release();
+      throw error;
+    }
+
+    let finalized = false;
+    const execQuery = async (text, params = []) => {
+      const q = client.query(text, params);
+      if (timeout) {
+        return Promise.race([
+          q,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Transaction query timeout')), timeout)),
+        ]);
+      }
+      return q;
+    };
+
+    return {
+      query: execQuery,
+      commit: async () => {
+        if (finalized) return;
+        finalized = true;
+        try {
+          await client.query('COMMIT');
+        } finally {
+          client.release();
+        }
+      },
+      rollback: async () => {
+        if (finalized) return;
+        finalized = true;
+        try {
+          await client.query('ROLLBACK');
+        } finally {
+          client.release();
+        }
+      },
+    };
+  }
+
+  // --- Pattern 1: ejecuta array de consultas ---
+  const queries = queriesOrOptions;
+  const start = Date.now();
   try {
     await client.query('BEGIN');
     const results = [];

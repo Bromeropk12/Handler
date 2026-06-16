@@ -3,7 +3,7 @@
  * CRUD completo para líneas de negocio/mercado
  */
 
-const { query } = require('../../services/database');
+const { query, transaction } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 
 /**
@@ -121,30 +121,38 @@ const updateMarketLine = async (req, res, next) => {
       throw new AppError('El nombre es requerido', 400);
     }
 
-    // Verificar que existe
-    const existing = await query('SELECT id FROM market_lines WHERE id = $1', [id]);
-    if (existing.rows.length === 0) {
-      throw new AppError('Línea de mercado no encontrada', 404);
-    }
-
-    // Verificar que el nuevo nombre no exista en otra línea
-    const duplicate = await query('SELECT id FROM market_lines WHERE name = $1 AND id != $2', [name.trim(), id]);
-    if (duplicate.rows.length > 0) {
-      throw new AppError('Ya existe una línea de mercado con este nombre', 409);
-    }
-
-    const result = await query(
-      'UPDATE market_lines SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-      [name.trim(), id]
-    );
-
-    res.json({
-      success: true,
-      message: 'Línea de mercado actualizada exitosamente',
-      data: {
-        marketLine: result.rows[0]
+    const tx = await transaction();
+    try {
+      const existing = await tx.query('SELECT id FROM market_lines WHERE id = $1', [id]);
+      if (existing.rows.length === 0) {
+        await tx.rollback();
+        return next(new AppError('Línea de mercado no encontrada', 404));
       }
-    });
+
+      const duplicate = await tx.query('SELECT id FROM market_lines WHERE name = $1 AND id != $2', [name.trim(), id]);
+      if (duplicate.rows.length > 0) {
+        await tx.rollback();
+        return next(new AppError('Ya existe una línea de mercado con este nombre', 409));
+      }
+
+      const result = await tx.query(
+        'UPDATE market_lines SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+        [name.trim(), id]
+      );
+
+      await tx.commit();
+
+      res.json({
+        success: true,
+        message: 'Línea de mercado actualizada exitosamente',
+        data: {
+          marketLine: result.rows[0]
+        }
+      });
+    } catch (txError) {
+      await tx.rollback();
+      return next(txError);
+    }
   } catch (error) {
     next(error);
   }
@@ -158,30 +166,37 @@ const deleteMarketLine = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // Verificar que existe
-    const existing = await query('SELECT id FROM market_lines WHERE id = $1', [id]);
-    if (existing.rows.length === 0) {
-      throw new AppError('Línea de mercado no encontrada', 404);
+    const tx = await transaction();
+    try {
+      const existing = await tx.query('SELECT id FROM market_lines WHERE id = $1', [id]);
+      if (existing.rows.length === 0) {
+        await tx.rollback();
+        return next(new AppError('Línea de mercado no encontrada', 404));
+      }
+
+      const shelves = await tx.query('SELECT COUNT(*) as count FROM shelves WHERE market_line_id = $1', [id]);
+      if (parseInt(shelves.rows[0].count) > 0) {
+        await tx.rollback();
+        return next(new AppError('No se puede eliminar porque tiene anaqueles asociados', 400));
+      }
+
+      const bulks = await tx.query('SELECT COUNT(*) as count FROM global_samples WHERE market_line_id = $1', [id]);
+      if (parseInt(bulks.rows[0].count) > 0) {
+        await tx.rollback();
+        return next(new AppError('No se puede eliminar porque tiene muestras bulk asociadas', 400));
+      }
+
+      await tx.query('DELETE FROM market_lines WHERE id = $1', [id]);
+      await tx.commit();
+
+      res.json({
+        success: true,
+        message: 'Línea de mercado eliminada exitosamente'
+      });
+    } catch (txError) {
+      await tx.rollback();
+      return next(txError);
     }
-
-    // Verificar que no tiene anaqueles
-    const shelves = await query('SELECT COUNT(*) as count FROM shelves WHERE market_line_id = $1', [id]);
-    if (parseInt(shelves.rows[0].count) > 0) {
-      throw new AppError('No se puede eliminar porque tiene anaqueles asociados', 400);
-    }
-
-    // Verificar que no tiene muestras bulk
-    const bulks = await query('SELECT COUNT(*) as count FROM global_samples WHERE market_line_id = $1', [id]);
-    if (parseInt(bulks.rows[0].count) > 0) {
-      throw new AppError('No se puede eliminar porque tiene muestras bulk asociadas', 400);
-    }
-
-    await query('DELETE FROM market_lines WHERE id = $1', [id]);
-
-    res.json({
-      success: true,
-      message: 'Línea de mercado eliminada exitosamente'
-    });
   } catch (error) {
     next(error);
   }

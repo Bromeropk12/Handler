@@ -26,6 +26,7 @@ const getMovements = async (req, res, next) => {
         const pageNum = parseInt(page) || 1;
         const limitNum = parseInt(limit) || 50;
         const offset = (pageNum - 1) * limitNum;
+        if (offset < 0) offset = 0;
         let whereConditions = [];
         let params = [];
         let paramIndex = 1;
@@ -89,7 +90,7 @@ const getMovements = async (req, res, next) => {
 
         // Si es exportación CSV, obtener todos los datos
         if (export_csv === 'true') {
-            if (req.user.role !== 'admin' && (!req.user.permissions || !req.user.permissions['movements.export'])) {
+            if (req.user?.role !== 'admin' && (!req.user?.permissions || !req.user.permissions['movements.export'])) {
                 throw new AppError('Acceso denegado. Se requiere permiso: "movements.export"', 403);
             }
 

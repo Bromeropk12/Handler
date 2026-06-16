@@ -1,4 +1,4 @@
-const { query, transaction } = require('../../services/database');
+const { query, pool } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 
 /**
@@ -60,6 +60,7 @@ const getFefoRecommendation = async (req, res, next) => {
  * y registra el movimiento con trazabilidad completa.
  */
 const executeDispatch = async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const { qr_code, expected_product_name } = req.body;
     if (!qr_code) throw new AppError('El código QR es requerido', 400);
@@ -103,43 +104,53 @@ const executeDispatch = async (req, res, next) => {
       throw new AppError('La muestra ya fue despachada o no está disponible', 400);
     }
 
-    if (sample.available_units <= 0) {
+    // Transacción atómica con FOR UPDATE (TOCTOU fix + DISPATCH-02)
+    await client.query('BEGIN');
+
+    // Lock the global_samples row inside the transaction
+    const lockResult = await client.query(
+      'SELECT available_units FROM global_samples WHERE id = $1 FOR UPDATE',
+      [sample.global_sample_id]
+    );
+    if (!lockResult.rows[0] || lockResult.rows[0].available_units <= 0) {
       throw new AppError('No hay unidades disponibles en el stock global', 400);
     }
 
-    // Transacción atómica del despacho
-    const txOps = [
-      // 1. Marcar la muestra dispensada como despachada
-      {
-        query: `UPDATE dispensed_samples SET status = 'dispatched', dispatched_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-        params: [sample.id]
-      },
-      // 2. Reducir contador de unidades disponibles del lote global
-      {
-        query: `UPDATE global_samples SET available_units = available_units - 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-        params: [sample.global_sample_id]
-      },
-      // 3. Registrar movimiento con trazabilidad completa
-      {
-        query: `INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)`,
-        params: [
-          sample.global_sample_id,
-          'dispatched',
-          req.user.id,
-          JSON.stringify({
-            type: 'dispatch',
-            dispensed_sample_id: sample.id,
-            qr_code: sample.qr_code,
-            shelf_name: sample.shelf_name,
-            lot: sample.lot,
-            expiration_date: sample.expiration_date,
-            dispatched_by: req.user.username
-          })
-        ]
-      }
-    ];
+    // 1. Marcar la muestra dispensada como despachada
+    await client.query(
+      `UPDATE dispensed_samples SET status = 'dispatched', dispatched_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+      [sample.id]
+    );
 
-    await transaction(txOps);
+    // 2. Reducir contador con WHERE available_units > 0 (DISPATCH-02)
+    const updateResult = await client.query(
+      `UPDATE global_samples SET available_units = available_units - 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND available_units > 0`,
+      [sample.global_sample_id]
+    );
+    if (updateResult.rowCount === 0) {
+      throw new AppError('No hay unidades disponibles en el stock global', 400);
+    }
+
+    // 3. Registrar movimiento con trazabilidad completa
+    await client.query(
+      `INSERT INTO movements (sample_id, action_type, user_id, details) VALUES ($1, $2, $3, $4)`,
+      [
+        sample.global_sample_id,
+        'dispatched',
+        req.user.id,
+        JSON.stringify({
+          type: 'dispatch',
+          dispensed_sample_id: sample.id,
+          qr_code: sample.qr_code,
+          shelf_name: sample.shelf_name,
+          lot: sample.lot,
+          expiration_date: sample.expiration_date,
+          dispatched_by: req.user.username
+        })
+      ]
+    );
+
+    await client.query('COMMIT');
 
     res.json({
       success: true,
@@ -157,7 +168,10 @@ const executeDispatch = async (req, res, next) => {
     });
 
   } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (e) { console.error('[DISPATCH] Error en rollback:', e.message); }
     next(error);
+  } finally {
+    client.release();
   }
 };
 

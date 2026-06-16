@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { apiCircuitBreaker } from './circuitBreaker';
+import { useAuthStore } from '../stores/authStore';
 
 // Siempre usa la ruta relativa '/api'.
 // En dev: el proxy CRA ("proxy": "http://localhost:3001" en package.json) redirige a :3001.
@@ -15,17 +16,24 @@ const api = axios.create({
 
 // Api config done
 
-// Interceptor para agregar token JWT a las peticiones.
-// La cookie httpOnly (seteada por el backend) viaja automáticamente vía withCredentials.
-// Este Authorization header es un fallback opcional para clientes que aún lo usen.
+// Interceptor de respuesta: normaliza response.data unwrapeando { success, data }
+// para que todos los callers reciban la misma forma (response.data = contenido real).
+api.interceptors.response.use(
+  response => {
+    if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+      response.data = response.data.data;
+    }
+    return response;
+  },
+  error => Promise.reject(error)
+);
+
+// Interceptor para agregar token JWT a las peticiones desde authStore.
 api.interceptors.request.use(
   config => {
-    // Solo para compatibilidad: si quedó algún token en localStorage de versiones
-    // antiguas, lo seguimos enviando. NO escribir tokens nuevos aquí — el backend
-    // emite cookie httpOnly que es el método seguro.
-    const legacyToken = localStorage.getItem('auth_token');
-    if (legacyToken) {
-      config.headers.Authorization = `Bearer ${legacyToken}`;
+    const token = useAuthStore.getState().token;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
@@ -41,10 +49,7 @@ api.interceptors.response.use(
   },
   error => {
     if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
-      // Token expirado o inválido. Limpiar cualquier token legacy en localStorage
-      // (la cookie httpOnly la limpia el backend al caducar).
-      localStorage.removeItem('auth_token');
-      window.location.href = '/login';
+      window.location.pathname = '/login';
     }
 
     // Extraer mensaje de error desde diferentes posibles estructuras del backend

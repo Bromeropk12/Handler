@@ -66,7 +66,7 @@ const DataTable = ({
               >
                 {columns.map(col => (
                   <td key={col.key} className={col.className || ''}>
-                    {col.render ? col.render(row[col.key], row) : row[col.key]}
+                    {col.render ? col.render(row[col.key], row) : (typeof row[col.key] === 'object' && row[col.key] !== null ? JSON.stringify(row[col.key]) : row[col.key])}
                   </td>
                 ))}
               </tr>

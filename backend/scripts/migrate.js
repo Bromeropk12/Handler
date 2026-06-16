@@ -23,6 +23,10 @@ async function migrate() {
 
     // 3. Leer archivos de migración
     const scriptsDir = path.join(__dirname, '../../database/scripts');
+    if (!fs.existsSync(scriptsDir)) {
+      console.warn('⚠️ [MIGRACIONES] Directorio de scripts no encontrado, omitiendo.');
+      return;
+    }
     const files = fs.readdirSync(scriptsDir);
 
     // Filtrar solo los que empiecen por "migration-" y terminen en ".sql", y ordenar
@@ -81,10 +85,10 @@ async function migrate() {
 
   } catch (err) {
     console.error('❌ Proceso de migración fallido (FATAL):', err);
+    try { await pool.end(); } catch (_) {}
     process.exit(1);
   } finally {
-    await pool.end();
-    process.exit(0);
+    try { await pool.end(); } catch (_) {}
   }
 }
 

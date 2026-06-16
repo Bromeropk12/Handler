@@ -9,6 +9,7 @@
  *  - sgaColor: hex color
  */
 import React from 'react';
+import PropTypes from 'prop-types';
 import { formatSampleId } from '../../utils/formatSampleId';
 import { SURFACE, BLUR, RADIUS, PADDING, FONT } from '../../constants';
 
@@ -44,6 +45,11 @@ const GroupChip = ({ sample, sgaColor = '#38bdf8' }) => {
       {formatSampleId(sample.id)}
     </div>
   );
+};
+
+GroupChip.propTypes = {
+  sample: PropTypes.object,
+  sgaColor: PropTypes.string,
 };
 
 export default GroupChip;

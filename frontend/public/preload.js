@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Setup / Configuración inicial
   checkSetup:         () => ipcRenderer.invoke('check-setup'),
   setupDatabase:      (formData) => ipcRenderer.invoke('setup-database', formData),
+  // Sistema de Archivos
+  selectFile:         () => ipcRenderer.invoke('select-file'),
+  openLocalFile:      (filePath) => ipcRenderer.invoke('open-local-file', filePath),
 });

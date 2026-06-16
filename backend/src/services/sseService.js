@@ -4,14 +4,39 @@
  * como reinicios por mantenimiento, actualizaciones, etc.
  */
 
+const jwt = require('jsonwebtoken');
+const { query } = require('./database');
 const clients = new Set();
 
 /**
  * Suscribe una respuesta SSE al canal de eventos del servidor.
+ * Valida JWT antes de establecer la conexión.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
 function subscribe(req, res) {
+  // Validar autenticación
+  let token = null;
+  if (req.query && req.query.token) {
+    token = req.query.token;
+  } else if (req.cookies && req.cookies.auth_token) {
+    token = req.cookies.auth_token;
+  } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.substring(7);
+  }
+
+  if (!token) {
+    res.status(401).json({ message: 'Token de autenticación requerido' });
+    return;
+  }
+
+  try {
+    jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+  } catch (_) {
+    res.status(401).json({ message: 'Token inválido o expirado' });
+    return;
+  }
+
   // Cabeceras SSE estándar
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -83,10 +108,11 @@ function notifyUpdate(version) {
  */
 function startHeartbeat(intervalMs = 25000) {
   setInterval(() => {
-    const payload = ': heartbeat\n\n';
+    const payload = 'data: {"type": "heartbeat"}\n\n';
     clients.forEach(res => {
       try {
         res.write(payload);
+        if (typeof res.flush === 'function') res.flush();
       } catch (_) {
         clients.delete(res);
       }

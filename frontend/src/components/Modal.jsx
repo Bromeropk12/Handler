@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
 const Modal = ({ isOpen, onClose, title, children, size = 'md', footer, maxWidth, noPadding = false }) => {
@@ -12,13 +12,29 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md', footer, maxWidth
     };
   }, [isOpen]);
 
+  // Cerrar con Escape
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Escape' && onClose) {
+      onClose();
+    }
+  }, [onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, handleKeyDown]);
+
   if (!isOpen) return null;
 
   const sizeClasses = {
-    sm: 'max-w-md',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl',
+    sm: 'max-w-sm',
+    md: 'max-w-md',
+    lg: 'max-w-lg',
+    xl: 'max-w-xl',
     '2xl': 'max-w-2xl',
     '3xl': 'max-w-3xl',
     '4xl': 'max-w-4xl',
@@ -36,6 +52,15 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md', footer, maxWidth
         className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
       />
+      {/* Close button when no title */}
+      {!title && onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/8 transition-all"
+        >
+          <XMarkIcon className="w-5 h-5" />
+        </button>
+      )}
 
       {/* Modal — altura máxima al 90% del viewport */}
       <div
@@ -46,12 +71,14 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md', footer, maxWidth
         {title && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50 shrink-0">
             <h2 className="text-lg font-semibold text-white">{title}</h2>
-            <button
-              onClick={onClose}
-              className="btn-icon p-1.5"
-            >
-              <XMarkIcon className="w-5 h-5" />
-            </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="btn-icon p-1.5"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            )}
           </div>
         )}
 

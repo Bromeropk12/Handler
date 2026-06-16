@@ -66,26 +66,34 @@ const addShelfSupplier = async (req, res, next) => {
     }
 
     // Si es primary, desmarcar otros primary del mismo anaquel
-    if (is_primary) {
-      await query('UPDATE shelf_suppliers SET is_primary = false WHERE shelf_id = $1', [shelf_id]);
-    }
-
-    const result = await query(
-      'INSERT INTO shelf_suppliers (shelf_id, supplier_id, is_primary) VALUES ($1, $2, $3) RETURNING *',
-      [shelf_id, supplier_id, is_primary]
-    );
-
-    res.status(201).json({
-      success: true,
-      message: 'Proveedor vinculado al anaquel exitosamente',
-      data: {
-        shelfSupplier: result.rows[0]
+    const tx = await transaction();
+    try {
+      if (is_primary) {
+        await tx.query('UPDATE shelf_suppliers SET is_primary = false WHERE shelf_id = $1', [shelf_id]);
       }
-    });
-  } catch (error) {
-    if (error.code === '23505') {
-      throw new AppError('Este proveedor ya está vinculado a este anaquel', 409);
+
+      const result = await tx.query(
+        'INSERT INTO shelf_suppliers (shelf_id, supplier_id, is_primary) VALUES ($1, $2, $3) RETURNING *',
+        [shelf_id, supplier_id, is_primary]
+      );
+
+      await tx.commit();
+
+      res.status(201).json({
+        success: true,
+        message: 'Proveedor vinculado al anaquel exitosamente',
+        data: {
+          shelfSupplier: result.rows[0]
+        }
+      });
+    } catch (txError) {
+      await tx.rollback();
+      if (txError.code === '23505') {
+        return next(new AppError('Este proveedor ya está vinculado a este anaquel', 409));
+      }
+      return next(txError);
     }
+  } catch (error) {
     next(error);
   }
 };
@@ -99,27 +107,36 @@ const updateShelfSupplier = async (req, res, next) => {
     const { id } = req.params;
     const { is_primary } = req.body;
 
-    const existing = await query('SELECT shelf_id FROM shelf_suppliers WHERE id = $1', [id]);
-    if (existing.rows.length === 0) {
-      throw new AppError('Relación no encontrada', 404);
-    }
-
-    if (is_primary) {
-      await query('UPDATE shelf_suppliers SET is_primary = false WHERE shelf_id = $1', [existing.rows[0].shelf_id]);
-    }
-
-    const result = await query(
-      'UPDATE shelf_suppliers SET is_primary = $1 WHERE id = $2 RETURNING *',
-      [is_primary, id]
-    );
-
-    res.json({
-      success: true,
-      message: 'Proveedor actualizado exitosamente',
-      data: {
-        shelfSupplier: result.rows[0]
+    const tx = await transaction();
+    try {
+      const existing = await tx.query('SELECT shelf_id FROM shelf_suppliers WHERE id = $1', [id]);
+      if (existing.rows.length === 0) {
+        await tx.rollback();
+        return next(new AppError('Relación no encontrada', 404));
       }
-    });
+
+      if (is_primary) {
+        await tx.query('UPDATE shelf_suppliers SET is_primary = false WHERE shelf_id = $1', [existing.rows[0].shelf_id]);
+      }
+
+      const result = await tx.query(
+        'UPDATE shelf_suppliers SET is_primary = $1 WHERE id = $2 RETURNING *',
+        [is_primary, id]
+      );
+
+      await tx.commit();
+
+      res.json({
+        success: true,
+        message: 'Proveedor actualizado exitosamente',
+        data: {
+          shelfSupplier: result.rows[0]
+        }
+      });
+    } catch (txError) {
+      await tx.rollback();
+      return next(txError);
+    }
   } catch (error) {
     next(error);
   }

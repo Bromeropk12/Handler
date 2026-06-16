@@ -14,6 +14,7 @@
  *  - onMoveGroup: () => void
  */
 import React from 'react';
+import PropTypes from 'prop-types';
 import { getSGAColor } from '../3d/Shared3DComponents';
 import {
   SURFACE, BLUR, RADIUS, PADDING, ANIM, SHADOW,
@@ -168,6 +169,15 @@ const FloatingGroupBar = ({
       )}
     </div>
   );
+};
+
+FloatingGroupBar.propTypes = {
+  count: PropTypes.number,
+  selectionType: PropTypes.object,
+  isStale: PropTypes.bool,
+  disabled: PropTypes.bool,
+  onClear: PropTypes.func,
+  onMoveGroup: PropTypes.func,
 };
 
 export default FloatingGroupBar;

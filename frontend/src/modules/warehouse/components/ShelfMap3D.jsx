@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import PropTypes from 'prop-types';
 import { warehouseAPI } from '../../../services/api';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import {
@@ -61,6 +62,17 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   // replicaSamples: muestras que se van a mover en el ReplicaWarehouseModal
   // Puede ser [sample] para mover 1 desde tooltip, o selection.selectedSamples para grupo
   const [replicaSamples, setReplicaSamples] = useState([]);
+  const dragOffsetRef = useRef({ dx: 0, dy: 0, dz: 0 });
+  const dragListenersRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (dragListenersRef.current) {
+        window.removeEventListener('mousemove', dragListenersRef.current.moveHandler);
+        window.removeEventListener('mouseup', dragListenersRef.current.upHandler);
+      }
+    };
+  }, []);
 
   // v2.0 — Cuando el toast de rechazo expira o se descarta
   const dismissRejection = useCallback(() => {
@@ -74,8 +86,6 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
   }, [selection.rejectionEvent]);
 
   const isGroupMode = selection.count >= 2;
-  // isMoving siempre false — sistema legacy reemplazado por ReplicaWarehouseModal
-  const isMoving = false;
 
   // Anaqueles compatibles de la misma línea de mercado (se cargan al abrir el modal)
   const [compatibleShelves, setCompatibleShelves] = useState([]);
@@ -85,9 +95,11 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
       if (!replicaModalOpen) setCompatibleShelves([]);
       return;
     }
-    warehouseAPI.getCompatibleShelves(selectedShelf.id)
-      .then(res => setCompatibleShelves(res.data.data || []))
+    const controller = new AbortController();
+    warehouseAPI.getCompatibleShelves(selectedShelf.id, { signal: controller.signal })
+      .then(res => setCompatibleShelves(res.data || []))
       .catch(() => setCompatibleShelves([]));
+    return () => controller.abort();
   }, [replicaModalOpen, selectedShelf?.id]);
 
   const groupDrag = useGroupDrag({
@@ -107,21 +119,26 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
     return out;
   }, [groupPreview.cache]);
 
-  const fetchMapData = useCallback(async () => {
+  const fetchMapData = useCallback(async (signal) => {
     if (!selectedShelf) return;
     try {
       setLoading(true);
-      const res = await warehouseAPI.getShelfMap(selectedShelf.id);
-      setMapData(res.data.data);
+      const res = await warehouseAPI.getShelfMap(selectedShelf.id, { signal });
+      setMapData(res.data);
       setError(null);
-    } catch {
+    } catch (err) {
+      if (err.name === 'AbortError' || err.name === 'CanceledError') return;
       setError('Error al cargar el mapa del anaquel');
     } finally {
       setLoading(false);
     }
   }, [selectedShelf]);
 
-  useEffect(() => { fetchMapData(); }, [fetchMapData]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchMapData(controller.signal);
+    return () => controller.abort();
+  }, [fetchMapData]);
 
   // Clear selected cell when level changes
   useEffect(() => { setSelectedCell(null); setHoveredCell(null); }, [selectedLevel]);
@@ -254,7 +271,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
             mapData={mapData}
             selectedLevel={selectedLevel}
             onSelectLevel={setSelectedLevel}
-            isTargetPickerMode={isMoving}
+            isTargetPickerMode={false}
           />
         </div>
 
@@ -280,17 +297,16 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 cameraView="default"
                 showExpired={showExpired}
                 showWarnings={showWarnings}
-                isSelectionMode={selection.count > 0 || isMoving}
-                isMovementMode={isMoving}
+                isSelectionMode={selection.count > 0}
+                isMovementMode={false}
                 isGroupDragMode={isGroupMode}
                 isGroupDragging={groupDrag.dragState.isDragging}
                 validityByKey={validityByKey}
                 selectedSampleIds={selection.selectedSamples}
                 assignedTargets={[]}
-                // v2.0 — UI flotante
-                movementMode={isMoving}
-                showTooltipFor={isMoving ? null : (selectedCell?.id ?? null)}
-                showGroupChipFor={isMoving ? new Set() : new Set(selection.selectedSamples.map(s => s.id))}
+                movementMode={false}
+                showTooltipFor={selectedCell?.id ?? null}
+                showGroupChipFor={new Set(selection.selectedSamples.map(s => s.id))}
                 groupChipColor={
                   selection.selectionType?.dangerClass
                     ? getSGAColor(selection.selectionType.dangerClass)
@@ -317,9 +333,6 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 }}
                 onTooltipClose={() => setSelectedCell(null)}
                 onSampleClick={(sample) => {
-                  if (isMoving) {
-                    return;
-                  }
                   if (selection.count > 0) {
                     // Ya hay selección (1 o N): toggle en el grupo
                     selection.toggleSample(sample);
@@ -332,20 +345,22 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
                 onSampleDragStart={(sample, evt) => {
                   if (!isGroupMode) return;
                   groupDrag.startDrag(sample);
+                  dragOffsetRef.current = { dx: 0, dy: 0, dz: 0 };
                   const moveHandler = (e) => {
                     const dx = Math.round(e.movementX || 0);
                     const dy = Math.round(e.movementY || 0);
-                    groupDrag.updateDrag({
-                      dx: (groupDrag.dragState.currentOffset.dx || 0) + dx,
-                      dy: (groupDrag.dragState.currentOffset.dy || 0) + dy,
-                      dz: (groupDrag.dragState.currentOffset.dz || 0) + 0,
-                    });
+                    const ref = dragOffsetRef.current;
+                    ref.dx += dx;
+                    ref.dy += dy;
+                    groupDrag.updateDrag({ dx: ref.dx, dy: ref.dy, dz: ref.dz });
                   };
                   const upHandler = () => {
                     window.removeEventListener('mousemove', moveHandler);
                     window.removeEventListener('mouseup', upHandler);
+                    dragListenersRef.current = null;
                     groupDrag.endDrag();
                   };
+                  dragListenersRef.current = { moveHandler, upHandler };
                   window.addEventListener('mousemove', moveHandler);
                   window.addEventListener('mouseup', upHandler);
                   if (evt?.target?.setPointerCapture && evt.pointerId !== undefined) {
@@ -362,7 +377,7 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
               {/* ── v2.0 — UI flotante (no es un panel persistente) ── */}
 
               {/* FloatingGroupBar: aparece cuando hay 2+ muestras seleccionadas */}
-              {isGroupMode && !isMoving && (
+              {isGroupMode && (
                 <FloatingGroupBar
                   count={selection.count}
                   selectionType={selection.selectionType}
@@ -706,6 +721,21 @@ const ShelfMap3D = ({ selectedShelf, onBack }) => {
       )}
     </div>
   );
+};
+
+ShelfMap3D.propTypes = {
+  selectedShelf: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    name: PropTypes.string,
+    provider: PropTypes.string,
+  }),
+  onBack: PropTypes.func.isRequired,
+};
+
+StatPill.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  color: PropTypes.string.isRequired,
 };
 
 export default ShelfMap3D;

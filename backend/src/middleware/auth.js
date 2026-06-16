@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { query } = require('../services/database');
 
 // Función para autenticar JWT
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   try {
     let token = null;
 
@@ -21,7 +21,12 @@ const authenticate = (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
-    req.user = decoded;
+    const users = await query('SELECT id, username, role, permissions FROM users WHERE id = $1', [decoded.id]);
+    if (users.rows.length === 0) {
+      return res.status(401).json({ message: 'Usuario no encontrado o desactivado' });
+    }
+
+    req.user = users.rows[0];
     next();
   } catch (error) {
     return res.status(401).json({ message: 'Token inválido' });

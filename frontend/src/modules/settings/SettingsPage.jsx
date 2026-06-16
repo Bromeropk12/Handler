@@ -53,7 +53,7 @@ const SettingsPage = () => {
     setLoading(true);
     try {
       const res = await settingsAPI.list();
-      const data = res.data.data || {};
+      const data = res.data || {};
       setSettings(data);
       if (data.coa_base_dir) {
         setCoaBaseDir(data.coa_base_dir);

@@ -69,7 +69,7 @@ const CameraSelector = ({
             {process.env.NODE_ENV === 'development' && cameras.length > 0 && (
                 <div className="text-xs text-gray-500 mt-2">
                     Cámaras detectadas: {cameras.length} |
-                    Seleccionada: {cameras.find(c => c.deviceId === selectedCameraId)?.fingerprint || 'Ninguna'}
+                    Seleccionada: {cameras.find(c => c.deviceId === selectedCameraId)?.label || 'Ninguna'}
                 </div>
             )}
         </div>

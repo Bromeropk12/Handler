@@ -14,7 +14,7 @@ const router = express.Router();
 // 10 intentos cada 15 minutos por IP. 5 reset-password/hora.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,             // 15 minutos
-  max: 10,                                // 10 intentos por IP
+  max: 5,                                // 5 intentos por IP
   standardHeaders: true,
   legacyHeaders: false,
   message: {

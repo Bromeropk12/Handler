@@ -72,7 +72,11 @@ function parseDimensions(dimensionsEnum) {
     '2x2': { width: 2, height: 2, depth: 1 }
   };
 
-  return mapping3D[dimensionsEnum] || mapping2D[dimensionsEnum] || { width: 1, height: 1, depth: 1 };
+  const result = mapping3D[dimensionsEnum] || mapping2D[dimensionsEnum];
+  if (!result) {
+    throw new AppError(`Dimensiones inválidas: "${dimensionsEnum}". Use formato 3D (ej: 1x1x1) o 2D (ej: 1x1)`, 400);
+  }
+  return result;
 }
 
 /**
@@ -110,7 +114,7 @@ async function getNeighbors(shelfId, x, y, z, width, height, depth) {
   // Construimos el AABB del target y delegamos el filtrado final a
   // getNeighborsByAABB (mismo radio=algoritmo).
   return _getNeighborsByAABB(
-    { x, y, z, w: width, h: height, d: height },
+    { x, y, z, w: width, h: height, d: depth },
     adjacentSamples.rows
   );
 }

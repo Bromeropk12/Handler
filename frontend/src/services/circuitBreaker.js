@@ -9,7 +9,15 @@ class ApiCircuitBreaker {
       resetTimeout: 30000,
       rollingCountTimeout: 10000,
       rollingCountBuckets: 10,
-      name: 'api-breaker'
+      name: 'api-breaker',
+      errorFilter: (error) => {
+        // Los errores HTTP 400-499 (errores de cliente, validación, auth) 
+        // no deben disparar el circuit breaker
+        if (error && error.status >= 400 && error.status < 500) {
+          return true; // true = ignorar este error para las estadísticas del breaker
+        }
+        return false;
+      }
     };
   }
 

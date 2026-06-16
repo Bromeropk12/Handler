@@ -96,7 +96,7 @@ const rotateFiles = (dir) => {
 
     if (files.length > MAX_BACKUPS) {
       files.slice(MAX_BACKUPS).forEach(f => {
-        try { fs.unlinkSync(path.join(dir, f.name)); } catch (_) {}
+        try { fs.unlinkSync(path.join(dir, f.name)); } catch (err) { console.error('[BACKUP] Error eliminando archivo antiguo:', err.message); }
         console.log(`[BACKUP] Archivo antiguo eliminado: ${f.name}`);
       });
     }
@@ -131,15 +131,16 @@ const exportDatabaseToJSON = async () => {
     },
   };
 
-// Tablas que NO tienen columna created_at
-const NO_CREATED_AT = new Set(['shelf_suppliers', 'movements']);
+const ALLOWED_TABLES = new Set(tables);
 
 for (const table of tables) {
     try {
-      const orderBy = NO_CREATED_AT.has(table) ? '' : 'ORDER BY created_at NULLS LAST';
+      if (!ALLOWED_TABLES.has(table)) continue;
+      const orderBy = table !== 'shelf_suppliers' && table !== 'movements' ? 'ORDER BY created_at NULLS LAST' : '';
       const result = await query(`SELECT * FROM ${table} ${orderBy}`);
       data.tables[table] = result.rows;
     } catch (err) {
+      console.error(`[BACKUP] Error exportando tabla ${table}:`, err.message);
       data.tables[table] = [];
     }
   }
@@ -280,7 +281,7 @@ const listBackups = async (req, res, next) => {
         intervalDays = configRes.rows[0].value.interval_days || 20;
         hour = configRes.rows[0].value.hour || 12;
       }
-    } catch (_) {}
+    } catch (err) { console.error('[BACKUP] Error leyendo config:', err.message); }
 
     let nextBackup = null;
     if (backups.length > 0) {
@@ -335,7 +336,7 @@ const createBackup = async (req, res, next) => {
           timestamp: new Date().toISOString(),
         })]
       );
-    } catch (_) {}
+    } catch (err) { console.error('[BACKUP] Error registrando movimiento:', err.message); }
 
     res.json({
       success: true,
@@ -480,6 +481,7 @@ const restoreBackup = async (req, res, next) => {
       );
       if (!tableExists.rows[0].exists) { stats.skipped.push(`${table} (no existe en BD)`); continue; }
 
+      if (!ALLOWED_TABLES.has(table)) { stats.skipped.push(`${table} (no permitida)`); continue; }
       await client.query(`TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE`);
 
       let insertedCount = 0;
@@ -494,9 +496,18 @@ const restoreBackup = async (req, res, next) => {
         const vals = Object.values(row);
         const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
 
+        const tableColumns = await client.query(
+          `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+          [table]
+        );
+        const validColumns = new Set(tableColumns.rows.map(r => r.column_name));
+        const safeCols = cols.filter(c => validColumns.has(c));
+        if (safeCols.length === 0) { stats.skipped.push(`${table} (sin columnas válidas)`); continue; }
+        const safeVals = safeCols.map(c => row[c]);
+        const safePlaceholders = safeCols.map((_, i) => `$${i + 1}`).join(', ');
         await client.query(
-          `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
-          vals
+          `INSERT INTO ${table} (${safeCols.join(', ')}) VALUES (${safePlaceholders}) ON CONFLICT DO NOTHING`,
+          safeVals
         );
         insertedCount++;
       }
@@ -514,7 +525,7 @@ const restoreBackup = async (req, res, next) => {
           stats, ip: req.ip, timestamp: new Date().toISOString(),
         })]
       );
-    } catch (_) {}
+    } catch (err) { console.error('[BACKUP] Error registrando movimiento:', err.message); }
 
     res.json({
       success: true,
@@ -522,7 +533,7 @@ const restoreBackup = async (req, res, next) => {
       data: { stats, backupDate: backupData.generatedAt },
     });
   } catch (error) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    try { await client.query('ROLLBACK'); } catch (err) { console.error('[BACKUP] Error en rollback:', err.message); }
     next(error);
   } finally {
     client.release();
@@ -548,11 +559,11 @@ const deleteBackup = async (req, res, next) => {
       if (local_path && fs.existsSync(local_path)) {
         const normalized = path.resolve(local_path);
         if (normalized.startsWith(path.resolve(LOCAL_BACKUP_DIR))) {
-          try { fs.unlinkSync(local_path); } catch (_) {}
+          try { fs.unlinkSync(local_path); } catch (err) { console.error('[BACKUP] Error eliminando archivo local:', err.message); }
         }
       }
       if (onedrive_path && fs.existsSync(onedrive_path)) {
-        try { fs.unlinkSync(onedrive_path); } catch (_) {}
+        try { fs.unlinkSync(onedrive_path); } catch (err) { console.error('[BACKUP] Error eliminando archivo onedrive:', err.message); }
       }
     } else {
       // Puede ser que solo exista el archivo sin registro en BD
@@ -658,7 +669,7 @@ const importBackup = async (req, res, next) => {
           timestamp: new Date().toISOString(),
         })]
       );
-    } catch (_) {}
+    } catch (err) { console.error('[BACKUP] Error registrando movimiento:', err.message); }
 
     res.json({
       success: true,
@@ -734,7 +745,7 @@ const getBackupStatus = async (req, res, next) => {
         intervalDays = configRes.rows[0].value.interval_days || 20;
         hour = configRes.rows[0].value.hour || 12;
       }
-    } catch (_) {}
+    } catch (err) { console.error('[BACKUP] Error leyendo config:', err.message); }
 
     let daysSinceLast = null;
     let isDue = true;
@@ -838,7 +849,7 @@ const syncToOneDrive = async (req, res, next) => {
             'UPDATE backups SET onedrive_path = $1 WHERE filename = $2 AND onedrive_path IS NULL',
             [target, filename]
           );
-        } catch (_) {}
+        } catch (err) { console.error('[BACKUP] Error actualizando onedrive_path:', err.message); }
       }
     }
 
@@ -914,7 +925,7 @@ const runCronJob = async (req, res, next) => {
     try {
       const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
       if (configRes.rows.length > 0) intervalDays = configRes.rows[0].value.interval_days || 20;
-    } catch (_) {}
+    } catch (err) { console.error('[BACKUP] Error leyendo config:', err.message); }
 
     const result = await query('SELECT created_at FROM backups ORDER BY created_at DESC LIMIT 1');
     if (result.rows.length > 0) {

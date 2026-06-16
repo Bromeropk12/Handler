@@ -31,15 +31,19 @@ function buildOccupancyMap3D(gridWidth, gridHeight, shelfDepth, samples) {
   }
 
   for (const sample of samples) {
+    const posX = sample.position_x;
+    const posY = sample.position_y;
+    const posZ = sample.position_z || 0;
+    if (posX < 0 || posY < 0 || posZ < 0) continue;
     const w = sample.width || 1;
     const h = sample.height || 1;
     const d = sample.depth || 1;
     for (let dy = 0; dy < h; dy++) {
       for (let dz = 0; dz < d; dz++) {
         for (let dx = 0; dx < w; dx++) {
-          const cy = sample.position_y + dy;
-          const cz = (sample.position_z || 0) + dz;
-          const cx = sample.position_x + dx;
+          const cy = posY + dy;
+          const cz = posZ + dz;
+          const cx = posX + dx;
           if (cy < gridHeight && cz < shelfDepth && cx < gridWidth) {
             matrix[cy][cz][cx] = {
               occupied: true,
@@ -75,7 +79,14 @@ function findFreeBlock3D(matrix, gridWidth, gridHeight, shelfDepth, targetW, tar
         outer: for (let dy = 0; dy < targetH; dy++) {
           for (let dz = 0; dz < targetD; dz++) {
             for (let dx = 0; dx < targetW; dx++) {
-              if (matrix[y + dy][z + dz][x + dx].occupied) {
+              const cy = y + dy;
+              const cz = z + dz;
+              const cx = x + dx;
+              if (cy >= gridHeight || cz >= shelfDepth || cx >= gridWidth) {
+                free = false;
+                break outer;
+              }
+              if (matrix[cy][cz][cx].occupied) {
                 free = false;
                 break outer;
               }
@@ -98,7 +109,11 @@ function getBlockers3D(matrix, x, y, z, targetW, targetH, targetD) {
   for (let dy = 0; dy < targetH; dy++) {
     for (let dz = 0; dz < targetD; dz++) {
       for (let dx = 0; dx < targetW; dx++) {
-        const cell = matrix[y + dy][z + dz][x + dx];
+        const cy = y + dy;
+        const cz = z + dz;
+        const cx = x + dx;
+        if (cy >= gridHeight || cz >= shelfDepth || cx >= gridWidth) continue;
+        const cell = matrix[cy][cz][cx];
         if (cell.occupied && !seen.has(cell.sampleId)) {
           seen.add(cell.sampleId);
           blockers.push(cell);

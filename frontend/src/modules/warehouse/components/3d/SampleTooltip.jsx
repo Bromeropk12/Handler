@@ -25,6 +25,7 @@
  *  - disabled: boolean
  */
 import React from 'react';
+import PropTypes from 'prop-types';
 import { formatSampleId } from '../../utils/formatSampleId';
 import { SURFACE, BLUR, RADIUS, PADDING, FONT, ANIM, SHADOW, SGA_BADGE } from '../../constants';
 
@@ -194,5 +195,20 @@ const DataRow = ({ label, value }) => (
     }} title={String(value)}>{value}</span>
   </div>
 );
+
+SampleTooltip.propTypes = {
+  sample: PropTypes.object,
+  sgaColor: PropTypes.string,
+  onViewDetail: PropTypes.func,
+  onAddToGroup: PropTypes.func,
+  onMove: PropTypes.func,
+  onClose: PropTypes.func,
+  disabled: PropTypes.bool,
+};
+
+DataRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+};
 
 export default SampleTooltip;

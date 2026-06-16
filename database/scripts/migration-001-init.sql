@@ -261,7 +261,7 @@ CREATE TABLE movements (
   -- Referencia polimórfica: puede ser global_sample_id o dispensed_sample_id (null para acciones de sistema)
   sample_id   UUID,
   action_type action_type  NOT NULL,
-  user_id     UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id     UUID         NOT NULL REFERENCES users(id) ON DELETE SET NULL,
   -- Contexto adicional de la operación en formato JSON libre
   details     JSONB,
   timestamp   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -340,18 +340,8 @@ CREATE TRIGGER trg_dispensed_samples_updated_at
   BEFORE UPDATE ON dispensed_samples
   FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
 
--- =============================================================================
--- ROW LEVEL SECURITY (RLS)
--- =============================================================================
-ALTER TABLE users             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE market_lines      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE suppliers         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE shelves           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE shelf_suppliers   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE global_samples    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dispensed_samples ENABLE ROW LEVEL SECURITY;
-ALTER TABLE movements         ENABLE ROW LEVEL SECURITY;
-
+-- RLS desactivado intencionalmente. La autorización se maneja en la capa de aplicación
+-- (middleware auth.js) y no a nivel de filas en PostgreSQL.
 -- =============================================================================
 -- DATOS INICIALES — LÍNEAS DE MERCADO
 -- =============================================================================

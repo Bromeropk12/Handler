@@ -21,7 +21,7 @@ const MarketLinesPage = () => {
     try {
       setLoading(true);
       const resp = await marketLinesAPI.getAll();
-      setMarketLines(resp.data.data.marketLines || []);
+      setMarketLines(resp.data.marketLines || []);
     } catch (err) {
       setError('Error al cargar las líneas de mercado');
     } finally {

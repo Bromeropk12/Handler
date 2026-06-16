@@ -12,6 +12,7 @@
  *  - autoDismissMs: number
  */
 import React, { useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { RADIUS, PADDING, ANIM, SHADOW } from '../../constants';
 
 const TYPE_CONFIG = {
@@ -113,6 +114,13 @@ const ToastReject = ({
       )}
     </div>
   );
+};
+
+ToastReject.propTypes = {
+  rejection: PropTypes.object,
+  onReplace: PropTypes.func,
+  onDismiss: PropTypes.func,
+  autoDismissMs: PropTypes.number,
 };
 
 export default ToastReject;

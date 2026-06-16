@@ -1,12 +1,13 @@
 import { default as CircuitBreaker } from 'opossum';
 
 export interface CircuitBreakerOptions {
-  timeout: number; // Tiempo máximo de espera
-  errorThresholdPercentage: number; // Porcentaje de error para abrir
-  resetTimeout: number; // Tiempo para intentar cerrar
-  rollingCountTimeout: number; // Ventana de tiempo para estadísticas
-  rollingCountBuckets: number; // Número de buckets para estadísticas
-  name: string; // Nombre del circuit breaker
+  timeout: number;
+  errorThresholdPercentage: number;
+  resetTimeout: number;
+  rollingCountTimeout: number;
+  rollingCountBuckets: number;
+  name: string;
+  errorFilter?: (err: any) => boolean;
 }
 
 export class ApiCircuitBreaker {
@@ -14,12 +15,13 @@ export class ApiCircuitBreaker {
 
   // Configuración por defecto para APIs
   private defaultOptions: CircuitBreakerOptions = {
-    timeout: 10000, // 10 segundos
-    errorThresholdPercentage: 50, // Abrir si 50% de requests fallan
-    resetTimeout: 30000, // Intentar cerrar después de 30 segundos
-    rollingCountTimeout: 10000, // Estadísticas cada 10 segundos
+    timeout: 10000,
+    errorThresholdPercentage: 50,
+    resetTimeout: 30000,
+    rollingCountTimeout: 10000,
     rollingCountBuckets: 10,
-    name: 'api-breaker'
+    name: 'api-breaker',
+    errorFilter: (err: any) => err?.response?.status && err.response.status < 500
   };
 
   /**
@@ -31,7 +33,7 @@ export class ApiCircuitBreaker {
     }
 
     const options = { ...this.defaultOptions, ...customOptions, name: endpoint };
-    const breaker = new CircuitBreaker(this.executeRequest.bind(this, endpoint), options);
+    const breaker = new CircuitBreaker((...args: any[]) => this.executeRequest(endpoint, args[0], ...args.slice(1)), options);
 
     // Logging de eventos del circuit breaker (simplified)
     console.log(`🔧 Circuit Breaker initialized for ${endpoint}`);
@@ -43,8 +45,8 @@ export class ApiCircuitBreaker {
   /**
    * Ejecuta una petición HTTP con circuit breaker
    */
-  private async executeRequest(endpoint: string, requestFn: () => Promise<any>): Promise<any> {
-    return await requestFn();
+  private async executeRequest(endpoint: string, requestFn: (...args: any[]) => Promise<any>, ...args: any[]): Promise<any> {
+    return await requestFn(...args);
   }
 
   /**

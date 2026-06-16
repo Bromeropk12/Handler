@@ -4,6 +4,8 @@ const badgeVariants = {
   success: 'badge-success',
   warning: 'badge-warning',
   danger: 'badge-danger',
+  error: 'badge-error',
+  disabled: 'badge-disabled',
   info: 'badge-info',
   neutral: 'badge-neutral',
 };
@@ -16,6 +18,8 @@ const Badge = ({ children, variant = 'neutral', dot = false, className = '' }) =
           variant === 'success' ? 'bg-success-300' :
           variant === 'warning' ? 'bg-warning-300' :
           variant === 'danger' ? 'bg-danger-300' :
+          variant === 'error' ? 'bg-red-500' :
+          variant === 'disabled' ? 'bg-gray-400' :
           variant === 'info' ? 'bg-info-300' :
           'bg-gray-400'
         }`} />

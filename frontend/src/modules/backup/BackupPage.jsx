@@ -288,9 +288,9 @@ const BackupPage = () => {
         backupAPI.listBackups(),
         backupAPI.getSettings(),
       ]);
-      setStatus(statusRes.data.data);
-      setBackups(listRes.data.data.backups);
-      setSettings(settingsRes.data.data);
+      setStatus(statusRes.data);
+      setBackups(listRes.data.backups);
+      setSettings(settingsRes.data);
     } catch (err) {
       notify('danger', err.message || 'Error al cargar información de backups');
     } finally {
@@ -320,7 +320,7 @@ const BackupPage = () => {
     setAction('create');
     try {
       const res = await backupAPI.createBackup();
-      const d = res.data.data;
+      const d = res.data;
       notify('success', `✅ Backup creado: ${d.filename} (${d.sizeMB} MB)${d.deletedOldBackups?.length ? ` — ${d.deletedOldBackups.length} backup(s) antiguo(s) eliminado(s)` : ''}`);
       loadData();
     } catch (err) {
@@ -387,7 +387,7 @@ const BackupPage = () => {
     setAction('import');
     try {
       const res = await backupAPI.importBackup(file, password);
-      const d = res.data.data;
+      const d = res.data;
       notify('success', `✅ Backup importado: ${d.filename} (${d.sizeMB} MB)`);
       setImportOpen(false);
       loadData();

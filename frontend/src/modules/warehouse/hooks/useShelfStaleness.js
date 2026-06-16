@@ -43,7 +43,7 @@ export const useShelfStaleness = (shelfId, mapData) => {
     const tick = async () => {
       try {
         const res = await warehouseAPI.getShelfMap(shelfId);
-        const data = res?.data?.data;
+        const data = res?.data;
         const sig = computeSignature(data);
         setLastCheck(new Date());
         if (lastSignatureRef.current && sig && sig !== lastSignatureRef.current) {

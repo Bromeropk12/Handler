@@ -115,7 +115,7 @@ const CreateUserModal = ({ onClose, onCreated }) => {
     setError('');
     try {
       const res = await authAPI.createUser({ username: form.username, password: form.password, role: form.role });
-      const newUserId = res.data.data.user.id;
+      const newUserId = res.data.user.id;
       // Aplicar permisos personalizados si difieren del default
       await authAPI.setUserPermissions(newUserId, permissions);
       onCreated();
@@ -313,7 +313,7 @@ const UserManagementPage = () => {
     setLoading(true);
     try {
       const res = await authAPI.listUsers();
-      setUsers(res.data.data.users);
+      setUsers(res.data.users);
     } catch (err) {
       notify('danger', err.message || 'Error al cargar usuarios');
     } finally {

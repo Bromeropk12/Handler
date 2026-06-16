@@ -30,8 +30,9 @@ export function useCameraManager() {
                 return;
             }
 
-            // Solicitar permisos
-            await navigator.mediaDevices.getUserMedia({ video: true });
+            // Solicitar permisos y liberar tracks inmediatamente
+            const permStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            permStream.getTracks().forEach(t => t.stop());
 
             // Enumerar dispositivos
             const devices = await navigator.mediaDevices.enumerateDevices();

@@ -23,6 +23,16 @@ const ALLOWED_ROOTS = (() => {
   if (defaultCoa) {
     roots.push(path.resolve(defaultCoa));
   }
+  // Añadir directorio de datos de producción (ProgramData en Windows)
+  // Para que rutas bajo C:\ProgramData\HandlerTrackSamples\uploads\coa sean válidas
+  const programDataDir = path.join(
+    process.env.ALLUSERSPROFILE || 'C:\\ProgramData',
+    'HandlerTrackSamples'
+  );
+  roots.push(programDataDir);
+  roots.push(path.join(programDataDir, 'uploads'));
+  roots.push(path.join(programDataDir, 'uploads', 'coa'));
+
   // Eliminar duplicados y entradas inválidas
   return [...new Set(roots.filter(Boolean))];
 })();

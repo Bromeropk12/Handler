@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import Badge from '../../components/Badge';
 import Modal from '../../components/Modal';
@@ -41,7 +41,7 @@ const GHS_PICTOGRAM_MAP = {
 const ALL_PICTOGRAMS = Object.keys(GHS_PICTOGRAM_MAP);
 
 const SamplesPage = () => {
-  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [samples, setSamples] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -93,15 +93,27 @@ const SamplesPage = () => {
     return localStorage.getItem('handler_sort_alpha') === 'true';
   });
 
-  // Efecto para leer query params de la URL (cuando vienes desde el dashboard)
+  // Sincronizar URL → estado (cuando navegan desde dashboard)
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const searchParam = params.get('search');
-    const filterParam = params.get('filter');
+    const searchParam = searchParams.get('search');
+    const filterParam = searchParams.get('filter');
 
-    if (searchParam) setSearchTerm(searchParam);
+    if (searchParam !== null && searchParam !== searchTerm) setSearchTerm(searchParam);
     if (filterParam) setFilters(prev => ({ ...prev, status: filterParam }));
-  }, [location.search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Sincronizar estado → URL (cuando el usuario escribe en el input)
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (searchTerm) {
+      params.set('search', searchTerm);
+    } else {
+      params.delete('search');
+    }
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
 
   const loadSamples = async (page = 1) => {
     try {
@@ -124,16 +136,17 @@ const SamplesPage = () => {
         samplesAPI.getSuppliers(),
       ]);
 
-      const samplesData = samplesResp.data?.data?.bulkSamples || [];
-      const pagination = samplesResp.data?.data?.pagination || {};
+      const samplesData = samplesResp.data?.bulkSamples || [];
+      const pagination = samplesResp.data?.pagination || {};
 
       setSamples(samplesData);
       setCurrentPage(pagination.page || page);
       setTotalItems(pagination.total || 0);
       setTotalPages(pagination.totalPages || 1);
-      setMarketLines(mlResp.data?.data?.marketLines || []);
-      setSuppliers(suppResp.data?.data?.suppliers || []);
-    } catch (_err) {
+      setMarketLines(mlResp.data?.marketLines || []);
+      setSuppliers(suppResp.data?.suppliers || []);
+    } catch (err) {
+      console.error('[SamplesPage] Error cargando muestras:', err);
       setSamples([]);
       setTotalItems(0);
       setTotalPages(1);
@@ -200,7 +213,7 @@ const SamplesPage = () => {
       return;
     }
     try {
-      await samplesAPI.createBulkSample(formData, coaFile);
+      await samplesAPI.createBulkSample(formData);
       setShowCreateModal(false);
       resetForm();
       loadSamples();
@@ -217,10 +230,9 @@ const SamplesPage = () => {
       delete dataToSend.total_units;
       delete dataToSend.available_units;
 
-      await samplesAPI.updateBulkSampleWithCoA(selectedSample.id, dataToSend, coaFile);
+      await samplesAPI.updateBulkSample(selectedSample.id, dataToSend);
 
       setIsEditing(false);
-      setCoaFile(null); // Limpiar archivo tras subir
       setSelectedSample(null);
       loadSamples();
     } catch (err) {
@@ -279,6 +291,7 @@ const SamplesPage = () => {
       total_weight_grams: sample.total_weight_grams || '',
       ghs_pictograms: sample.ghs_pictograms || [],
       signal_word: sample.signal_word || 'ATENCION',
+      coa_file_path: sample.coa_file_path || '',
     });
   };
 
@@ -365,32 +378,7 @@ const SamplesPage = () => {
     },
   ];
 
-  const filteredSamples = samples.filter(s => {
-    if (!searchTerm && !filters.market_line_id && !filters.ghs_danger_class && !filters.status) return true;
-
-    const term = searchTerm.toLowerCase();
-    const matchesSearch = (
-      (s.name || s.product_name || '').toLowerCase().includes(term) ||
-      (s.lot || '').toLowerCase().includes(term) ||
-      (s.supplier_name || '').toLowerCase().includes(term)
-    );
-
-    const matchesMarketLine = !filters.market_line_id || s.market_line_id === filters.market_line_id;
-    const matchesDangerClass = !filters.ghs_danger_class || s.ghs_danger_class === filters.ghs_danger_class;
-
-    let matchesStatus = true;
-    if (filters.status === 'pending') matchesStatus = s.total_units === 0;
-    else if (filters.status === 'dispensed') matchesStatus = s.total_units > 0;
-    else if (filters.status === 'expired') matchesStatus = new Date(s.expiration_date) < new Date();
-    else if (filters.status === 'warning') {
-      const expDate = new Date(s.expiration_date);
-      const now = new Date();
-      const diffDays = (expDate - now) / (1000 * 60 * 60 * 24);
-      matchesStatus = diffDays >= 0 && diffDays <= 30;
-    }
-
-    return matchesSearch && matchesMarketLine && matchesDangerClass && matchesStatus;
-  });
+  const filteredSamples = samples;
 
   // Función para renderizar el checklist de pictogramas
   const renderPictogramChecklist = (selected, onToggle, disabled) => (
@@ -559,62 +547,61 @@ const SamplesPage = () => {
               <DocumentCheckIcon className="w-4 h-4 text-green-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-green-400 font-bold uppercase tracking-wider">CoA Actual Adjunto</p>
+              <p className="text-xs text-green-400 font-bold uppercase tracking-wider">Ruta CoA Actual Registrada</p>
               <p className="text-[10px] text-gray-500 truncate">{selectedSample.coa_file_path}</p>
             </div>
-            <a
-              href={`${API_BASE}/${selectedSample.coa_file_path}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={async () => {
+                if (window.electronAPI && window.electronAPI.openLocalFile) {
+                  const success = await window.electronAPI.openLocalFile(selectedSample.coa_file_path);
+                  if (!success) alert('No se pudo abrir el archivo PDF.');
+                } else {
+                  window.open(`${API_BASE}/api/samples/${selectedSample.id}/coa`, '_blank');
+                }
+              }}
               className="px-3 py-1.5 bg-blue-500/10 text-blue-400 text-xs font-bold rounded-lg hover:bg-blue-500/20 transition-colors shrink-0"
             >
               Ver PDF
-            </a>
+            </button>
           </div>
         )}
 
         {/* Input para nuevo archivo (Usado en Nuevo y en Editar como actualización) */}
         <div>
           <label className="label">
-            {isEdit ? 'Actualizar / Cambiar Archivo CoA (PDF)' : 'Archivo PDF del CoA (Opcional)'}
+            {isEdit ? 'Actualizar / Cambiar Ruta CoA (Opcional)' : 'Ruta del Archivo CoA (Ej: \\\\servidor\\docs\\coa.pdf)'}
           </label>
-          <div className="relative group">
+          <div className="flex gap-2">
             <input
-              type="file"
-              accept=".pdf"
-              onChange={e => setCoaFile(e.target.files[0] || null)}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              type="text"
+              className="input flex-1"
+              placeholder="Ej: C:\Users\Documentos\CoA.pdf o \\Servidor\Docs\CoA.pdf"
+              value={formData.coa_file_path || ''}
+              onChange={e => handleInputChange('coa_file_path', e.target.value)}
             />
-            <div className={`w-full p-4 rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 ${coaFile
-              ? 'bg-green-500/5 border-green-500/40'
-              : 'bg-surface-900 border-white/10 group-hover:border-white/20'
-              }`}>
-              {coaFile ? (
-                <>
-                  <CheckCircleIcon className="w-8 h-8 text-green-400" />
-                  <p className="text-sm font-bold text-gray-100">{coaFile.name}</p>
-                  <p className="text-xs text-green-400">Archivo listo para subir</p>
-                </>
-              ) : (
-                <>
-                  <CloudArrowUpIcon className="w-8 h-8 text-gray-500 group-hover:text-gray-400" />
-                  <p className="text-sm font-medium text-gray-400 group-hover:text-gray-300">
-                    Click para examinar o arrastre un PDF aquí
-                  </p>
-                  <p className="text-[10px] text-gray-600 uppercase font-bold">PDF MÁX. 10MB</p>
-                </>
-              )}
-            </div>
-          </div>
-          {coaFile && (
             <button
               type="button"
-              onClick={() => setCoaFile(null)}
-              className="mt-2 text-xs text-red-400 hover:text-red-300 font-medium"
+              className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-xl text-xs font-bold text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex items-center justify-center shrink-0"
+              onClick={async () => {
+                if (window.electronAPI && window.electronAPI.selectFile) {
+                  try {
+                    const filePath = await window.electronAPI.selectFile();
+                    if (filePath) {
+                      handleInputChange('coa_file_path', filePath);
+                    }
+                  } catch (err) {
+                    console.error('Error seleccionando archivo:', err);
+                  }
+                } else {
+                  alert('El selector nativo solo está disponible en la aplicación de escritorio.');
+                }
+              }}
             >
-              Quitar selección
+              Examinar...
             </button>
-          )}
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1">Pegue la ruta UNC de red o ruta local. El archivo se leerá directamente desde esa ubicación sin copiarse.</p>
         </div>
       </div>
     </div>
@@ -873,18 +860,24 @@ const SamplesPage = () => {
               <p className="text-xs text-gray-500 mb-2">Certificado de Análisis (CoA)</p>
               {selectedSample.coa_file_path ? (
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-green-400 font-medium">✓ CoA adjunto</span>
-                  <a
-                    href={`${API_BASE}/${selectedSample.coa_file_path}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <span className="text-sm text-green-400 font-medium">✓ Ruta CoA vinculada</span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.electronAPI && window.electronAPI.openLocalFile) {
+                        const success = await window.electronAPI.openLocalFile(selectedSample.coa_file_path);
+                        if (!success) alert('No se pudo abrir el archivo PDF.');
+                      } else {
+                        window.open(`${API_BASE}/api/samples/${selectedSample.id}/coa`, '_blank');
+                      }
+                    }}
                     className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-500/10 text-blue-400 text-xs font-medium rounded-lg hover:bg-blue-500/20"
                   >
-                    <DocumentArrowDownIcon className="w-3.5 h-3.5" />Ver / Descargar PDF
-                  </a>
+                    <DocumentArrowDownIcon className="w-3.5 h-3.5" />Abrir PDF desde la ruta
+                  </button>
                 </div>
               ) : (
-                <span className="text-sm text-yellow-500">⚠ Sin CoA adjunto</span>
+                <span className="text-sm text-yellow-500">⚠ Sin CoA vinculado</span>
               )}
             </div>
           </div>

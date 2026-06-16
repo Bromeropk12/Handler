@@ -62,6 +62,7 @@ const subdivideBulkSample = async (req, res, next) => {
 
     if (!global_sample_id) throw new AppError('El ID del Bulk Sample es requerido', 400);
     if (!number_of_units || number_of_units <= 0) throw new AppError('El número de unidades debe ser mayor a 0', 400);
+    if (number_of_units > 1000) throw new AppError('El número de unidades no puede exceder 1000', 400);
     if (!weight_per_unit || weight_per_unit <= 0) throw new AppError('El peso por frasco hijo debe ser mayor a 0', 400);
     if (!child_dimensions) throw new AppError('Las dimensiones del frasco hijo son requeridas', 400);
 
@@ -78,14 +79,6 @@ const subdivideBulkSample = async (req, res, next) => {
 
     const bulk = bulkCheck.rows[0];
 
-    // *** BLOQUEAR RE-DISPENSACIÓN ***
-    if (bulk.total_units > 0) {
-      throw new AppError(
-        `Esta muestra global ya fue dispensada (${bulk.total_units} unidades hijas existentes). No se permite crear más hijas del mismo lote. Si necesita más producto, registre un nuevo lote.`,
-        400
-      );
-    }
-
     // Parsear dimensiones del FRASCO HIJO (NO del bulk)
     const dims = parseDimensions(child_dimensions);
     const childWidth = dims.width;
@@ -93,6 +86,19 @@ const subdivideBulkSample = async (req, res, next) => {
     const childDepth = dims.depth || 1;
 
     await client.query('BEGIN');
+
+    // BLOQUEAR RE-DISPENSACIÓN DENTRO DE TRANSACCIÓN (FOR UPDATE)
+    const lockResult = await client.query(
+      'SELECT total_units FROM global_samples WHERE id = $1 FOR UPDATE',
+      [global_sample_id]
+    );
+    if (lockResult.rows.length === 0) throw new AppError('Muestra global no encontrada', 404);
+    if (lockResult.rows[0].total_units > 0) {
+      throw new AppError(
+        `Esta muestra global ya fue dispensada (${lockResult.rows[0].total_units} unidades hijas existentes). No se permite crear más hijas del mismo lote. Si necesita más producto, registre un nuevo lote.`,
+        400
+      );
+    }
 
     const txQueries = [];
     const generatedSamples = [];
@@ -173,9 +179,7 @@ const subdivideBulkSample = async (req, res, next) => {
       const r = await client.query(sql, params);
       txResult.push(r);
     }
-    await client.query('COMMIT');
-
-    // Extraer IDs de las muestras creadas
+    // Extraer IDs de las muestras creadas (COMMIT se hará después de colocar en anaquel)
     const sampleIds = txResult
       .slice(0, number_of_units)
       .map(result => result.rows[0].id);
@@ -212,6 +216,7 @@ const subdivideBulkSample = async (req, res, next) => {
 
     if (shelvesResult.rows.length === 0) {
       // No hay anaqueles pero la dispensación fue exitosa - quedan sin ubicar
+      await client.query('COMMIT');
       return res.json({
         success: true,
         message: `Se han dispensado ${number_of_units} unidades de ${bulk.name} pero no hay anaqueles disponibles para ubicarlas automáticamente.`,
@@ -327,6 +332,8 @@ const subdivideBulkSample = async (req, res, next) => {
       }
     }
 
+    await client.query('COMMIT');
+
     res.json({
       success: true,
       message: `Se han dispensado exitosamente ${number_of_units} unidades de ${bulk.name} (Lote: ${bulk.lot}).`,
@@ -348,7 +355,7 @@ const subdivideBulkSample = async (req, res, next) => {
     });
 
   } catch (error) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    try { await client.query('ROLLBACK'); } catch (e) { console.error('[DISPENSING] Error en rollback:', e.message); }
     next(error);
   } finally {
     client.release();
@@ -480,22 +487,26 @@ module.exports = {
  * PUT /api/dispensing/reassign-shelf
  */
 async function reassignShelf(req, res, next) {
+  const client = await pool.connect();
   try {
     const { global_sample_id, shelf_id } = req.body;
     if (!global_sample_id) throw new AppError('global_sample_id es requerido', 400);
     if (!shelf_id) throw new AppError('shelf_id es requerido', 400);
 
-    // Verificar que el anaquel existe
-    const shelfCheck = await query('SELECT * FROM shelves WHERE id = $1', [shelf_id]);
+    await client.query('BEGIN');
+
+    // Verificar que el anaquel existe (con FOR UPDATE)
+    const shelfCheck = await client.query('SELECT * FROM shelves WHERE id = $1 FOR UPDATE', [shelf_id]);
     if (shelfCheck.rows.length === 0) throw new AppError('Anaquel no encontrado', 404);
     const shelf = shelfCheck.rows[0];
 
-    // Obtener todas las muestras hijas almacenadas
-    const childSamples = await query(`
+    // Obtener todas las muestras hijas almacenadas (con FOR UPDATE)
+    const childSamples = await client.query(`
       SELECT id, width, height, depth, child_dimensions
       FROM dispensed_samples
       WHERE global_sample_id = $1 AND status = 'stored'
       ORDER BY created_at ASC
+      FOR UPDATE
     `, [global_sample_id]);
 
     if (childSamples.rows.length === 0) {
@@ -503,7 +514,7 @@ async function reassignShelf(req, res, next) {
     }
 
     // Limpiar ubicaciones actuales
-    await query(`
+    await client.query(`
       UPDATE dispensed_samples
       SET shelf_id = NULL, position_x = NULL, position_y = NULL, position_z = NULL
       WHERE global_sample_id = $1 AND status = 'stored'
@@ -515,7 +526,7 @@ async function reassignShelf(req, res, next) {
     for (const child of childSamples.rows) {
       try {
         const autoPos = await findAutoPlacement(shelf, child);
-        await query(`
+        await client.query(`
           UPDATE dispensed_samples
           SET shelf_id = $1, position_x = $2, position_y = $3, position_z = $4, updated_at = CURRENT_TIMESTAMP
           WHERE id = $5
@@ -526,13 +537,18 @@ async function reassignShelf(req, res, next) {
       }
     }
 
+    await client.query('COMMIT');
+
     res.json({
       success: true,
       message: `${placements.length} muestras reasignadas al anaquel "${shelf.name}". ${failed.length > 0 ? `${failed.length} no cupieron.` : ''}`,
       data: { placements, failed, shelf_name: shelf.name }
     });
   } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (e) { console.error('[DISPENSING] Error en rollback:', e.message); }
     next(err);
+  } finally {
+    client.release();
   }
 }
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PropTypes from 'prop-types';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Edges } from '@react-three/drei';
 import * as THREE from 'three';
@@ -87,9 +88,9 @@ const ShelfStructure = ({ totalCols, totalDepth, totalLevels }) => {
 export const ShelfOverviewMap = ({ mapData, selectedLevel, onSelectLevel, isTargetPickerMode }) => {
   const [hoveredLevel, setHoveredLevel] = useState(null);
 
-  const totalLevels = mapData.shelf.grid_height || 10;
-  const totalDepth  = mapData.shelf.shelf_depth || 10;
-  const totalCols   = mapData.shelf.grid_width || 10;
+  const totalLevels = mapData?.shelf?.grid_height ?? 10;
+  const totalDepth  = mapData?.shelf?.shelf_depth ?? 10;
+  const totalCols   = mapData?.shelf?.grid_width ?? 10;
 
   // Pre-compute sample counts per level for badges
   const sampleCountByLevel = {};
@@ -352,4 +353,11 @@ export const ShelfOverviewMap = ({ mapData, selectedLevel, onSelectLevel, isTarg
       </div>
     </div>
   );
+};
+
+ShelfOverviewMap.propTypes = {
+  mapData: PropTypes.object.isRequired,
+  selectedLevel: PropTypes.number,
+  onSelectLevel: PropTypes.func.isRequired,
+  isTargetPickerMode: PropTypes.bool,
 };

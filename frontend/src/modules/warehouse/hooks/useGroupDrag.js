@@ -52,17 +52,25 @@ export const useGroupDrag = ({
   const [dragState, setDragState] = useState(initialDragState);
   const [isShaking, setIsShaking] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
+  const shakeTimerRef = useRef(null);
 
   const groupSamplesRef = useRef(groupSamples);
   useEffect(() => {
     groupSamplesRef.current = groupSamples;
   }, [groupSamples]);
 
+  useEffect(() => {
+    return () => {
+      if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current);
+    };
+  }, []);
+
   const triggerShake = useCallback(() => {
     if (reducedMotion) return;
     setIsShaking(true);
     if (onShake) onShake();
-    setTimeout(() => setIsShaking(false), 400);
+    if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current);
+    shakeTimerRef.current = setTimeout(() => setIsShaking(false), 400);
   }, [reducedMotion, onShake]);
 
   const cancelDrag = useCallback(() => {

@@ -1,4 +1,4 @@
-const { query } = require('../../services/database');
+const { query, transaction } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const path = require('path');
 const fs = require('fs').promises;
@@ -32,19 +32,30 @@ const createSupplier = async (req, res, next) => {
     const { name, market_lines, phone, email, address } = req.body;
     if (!name) throw new AppError('El nombre es requerido', 400);
 
-    const existing = await query('SELECT id FROM suppliers WHERE name = $1', [name]);
-    if (existing.rows.length > 0) throw new AppError('El proveedor ya existe', 409);
+    const tx = await transaction();
+    try {
+      const existing = await tx.query('SELECT id FROM suppliers WHERE name = $1', [name]);
+      if (existing.rows.length > 0) {
+        await tx.rollback();
+        return next(new AppError('El proveedor ya existe', 409));
+      }
 
-    const result = await query(
-      'INSERT INTO suppliers (name, market_lines, phone, email, address) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [name, market_lines, phone, email, address]
-    );
+      const result = await tx.query(
+        'INSERT INTO suppliers (name, market_lines, phone, email, address) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [name, market_lines, phone, email, address]
+      );
 
-    res.status(201).json({
-      success: true,
-      message: 'Proveedor creado',
-      data: { supplier: result.rows[0] }
-    });
+      await tx.commit();
+
+      res.status(201).json({
+        success: true,
+        message: 'Proveedor creado',
+        data: { supplier: result.rows[0] }
+      });
+    } catch (txError) {
+      await tx.rollback();
+      return next(txError);
+    }
   } catch (error) {
     next(error);
   }
@@ -78,18 +89,30 @@ const deleteSupplier = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const references = await query('SELECT id FROM global_samples WHERE supplier_id = $1 LIMIT 1', [id]);
-    if (references.rows.length > 0) {
-      throw new AppError('No se puede eliminar porque tiene muestras asociadas', 400);
+    const tx = await transaction();
+    try {
+      const references = await tx.query('SELECT id FROM global_samples WHERE supplier_id = $1 LIMIT 1', [id]);
+      if (references.rows.length > 0) {
+        await tx.rollback();
+        return next(new AppError('No se puede eliminar porque tiene muestras asociadas', 400));
+      }
+
+      const result = await tx.query('DELETE FROM suppliers WHERE id = $1', [id]);
+      if (result.rowCount === 0) {
+        await tx.rollback();
+        return next(new AppError('Proveedor no encontrado', 404));
+      }
+
+      await tx.commit();
+
+      res.json({
+        success: true,
+        message: 'Proveedor eliminado'
+      });
+    } catch (txError) {
+      await tx.rollback();
+      return next(txError);
     }
-
-    const result = await query('DELETE FROM suppliers WHERE id = $1', [id]);
-    if (result.rowCount === 0) throw new AppError('Proveedor no encontrado', 404);
-
-    res.json({
-      success: true,
-      message: 'Proveedor eliminado'
-    });
   } catch (error) {
     next(error);
   }

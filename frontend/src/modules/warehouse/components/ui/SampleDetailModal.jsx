@@ -12,6 +12,7 @@
  *  - isExecuting: boolean
  */
 import React from 'react';
+import PropTypes from 'prop-types';
 import { formatSampleId } from '../../utils/formatSampleId';
 import { getSGAColor } from '../3d/Shared3DComponents';
 import {
@@ -239,5 +240,20 @@ const Field = ({ label, value, mono = false, accentColor = null }) => (
     }} title={String(value)}>{value}</span>
   </div>
 );
+
+SampleDetailModal.propTypes = {
+  sample: PropTypes.object,
+  onClose: PropTypes.func.isRequired,
+  onAddToGroup: PropTypes.func,
+  onMoveSingle: PropTypes.func,
+  isExecuting: PropTypes.bool,
+};
+
+Field.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  mono: PropTypes.bool,
+  accentColor: PropTypes.string,
+};
 
 export default SampleDetailModal;

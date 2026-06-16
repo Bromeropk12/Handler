@@ -5,6 +5,7 @@
  */
 
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
@@ -37,9 +38,25 @@ router.use(async (req, res, next) => {
   next();
 });
 
+// ─── Rate-limit estricto para setup ────────────────────────
+// 3 intentos cada 15 minutos por IP — evita fuerza bruta en el setup inicial
+const setupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      message: 'Demasiados intentos de configuración. Por favor intente en 15 minutos.',
+    },
+  },
+  skipSuccessfulRequests: true,
+});
+
 // POST /api/setup — Procesar la configuración inicial
 // (GET /setup eliminado: ahora la app React maneja el wizard automáticamente)
-router.post('/', async (req, res) => {
+router.post('/', setupLimiter, async (req, res) => {
   const { host, port, user, password, dbName, adminName, adminUsername, adminPassword } = req.body;
 
   // ─── Validaciones ────────────────────────────────────────
@@ -195,7 +212,7 @@ router.post('/', async (req, res) => {
     // Si ya existe, actualizamos su password al elegido en setup para que el wizard
     // siempre tenga efecto, incluso en reinstalaciones sobre DB existente.
     const hashedPassword = await bcrypt.hash(adminPassword, 12);
-    const secretHash = crypto.randomBytes(32).toString('hex');
+    const secretHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
     const existing = await migrationClient.query("SELECT id FROM users WHERE username = $1", [adminUsername]);
     if (existing.rows.length === 0) {
       await migrationClient.query(

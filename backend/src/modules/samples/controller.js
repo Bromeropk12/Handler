@@ -3,39 +3,13 @@
  * Gestión de muestras globales (bulk) con pictogramas GHS y CoA
  */
 
-const { query, transaction } = require('../../services/database');
+const { query, transaction, pool } = require('../../services/database');
 const { AppError } = require('../../middleware/errorHandler');
 const config = require('../../config');
 const fs = require('fs').promises;
 const path = require('path');
 
-let _cachedCoaBaseDir = null;
-let _cacheTimestamp = 0;
-const CACHE_TTL_MS = 60_000; // 1 min: balance entre seguridad y rendimiento
-
-const getCoaBaseDir = async () => {
-  const { resolveSafePath } = require('../../utils/pathSecurity');
-  const now = Date.now();
-  if (_cachedCoaBaseDir && (now - _cacheTimestamp) < CACHE_TTL_MS) {
-    return _cachedCoaBaseDir;
-  }
-  try {
-    const result = await query("SELECT value FROM settings WHERE key = 'coa_base_dir'");
-    if (result.rows.length > 0) {
-      const raw = result.rows[0].value;
-      // FIX #11: si el valor en BD no es seguro, hacer fallback a la config por defecto
-      try {
-        _cachedCoaBaseDir = resolveSafePath(raw);
-      } catch (err) {
-        console.warn(`[security] coa_base_dir en BD es inseguro (${err.message}); usando config por defecto`);
-        _cachedCoaBaseDir = resolveSafePath(config.coa.baseDir);
-      }
-      _cacheTimestamp = now;
-      return _cachedCoaBaseDir;
-    }
-  } catch {}
-  return resolveSafePath(config.coa.baseDir);
-};
+// Removed getCoaBaseDir since we no longer copy files internally
 
 // Pictogramas GHS válidos (los 9 del sistema SGA)
 const VALID_PICTOGRAMS = [
@@ -55,8 +29,16 @@ const validateBulkSampleData = (data) => {
     }
   }
 
-  // Validaciones de negocio
-  if (new Date(data.manufacture_date) > new Date(data.expiration_date)) {
+  // Validar fechas ISO reales
+  const manDate = new Date(data.manufacture_date);
+  const expDate = new Date(data.expiration_date);
+  if (isNaN(manDate.getTime())) {
+    throw new AppError(`Fecha de manufactura inválida: "${data.manufacture_date}". Use formato ISO (YYYY-MM-DD)`, 400);
+  }
+  if (isNaN(expDate.getTime())) {
+    throw new AppError(`Fecha de vencimiento inválida: "${data.expiration_date}". Use formato ISO (YYYY-MM-DD)`, 400);
+  }
+  if (manDate > expDate) {
     throw new AppError('La fecha de manufactura no puede ser posterior a la fecha de vencimiento', 400);
   }
 
@@ -96,20 +78,8 @@ const validateBulkSampleData = (data) => {
 const createBulkSample = async (req, res, next) => {
   try {
     const data = req.body;
-    let coaFilePath = null;
-
-    // Manejar upload de CoA si existe
-    if (req.file) {
-      if (req.file.mimetype !== 'application/pdf') {
-        throw new AppError('El archivo CoA debe ser un PDF', 400);
-      }
-      const coaDir = await getCoaBaseDir();
-      await fs.mkdir(coaDir, { recursive: true });
-      const fileName = `${data.lot}_${Date.now()}.pdf`;
-      const fullPath = path.join(coaDir, fileName);
-      await fs.rename(req.file.path, fullPath);
-      coaFilePath = `uploads/coa/${fileName}`;
-    }
+    // Tomar la ruta ingresada por el usuario (UNC o local) sin hacer copias
+    let coaFilePath = data.coa_file_path || null;
 
     // Parsear ghs_pictograms si viene como JSON string
     if (typeof data.ghs_pictograms === 'string') {
@@ -136,8 +106,13 @@ const createBulkSample = async (req, res, next) => {
       throw new AppError('Proveedor no encontrado', 404);
     }
 
-    const bulkQueries = [{
-      query: `
+    const client = await pool.connect();
+    let bulkSample;
+
+    try {
+      await client.query('BEGIN');
+
+      const result = await client.query(`
         INSERT INTO global_samples (
           name, supplier_id, lot, expiration_date, manufacture_date,
           ghs_danger_class, market_line_id, dimensions, dispensed_size,
@@ -146,28 +121,32 @@ const createBulkSample = async (req, res, next) => {
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING *
-      `,
-      params: [
+      `, [
         data.name, data.supplier_id, data.lot, data.expiration_date, data.manufacture_date,
         data.ghs_danger_class, data.market_line_id, data.dimensions, data.dispensed_size || '1x1x1',
-        0, 0, // total_units, available_units - Inician en 0 hasta dispensar
+        0, 0,
         data.total_weight_grams,
         data.ghs_pictograms || [],
         data.signal_word || 'ATENCION',
         coaFilePath
-      ]
-    }];
+      ]);
+      bulkSample = result.rows[0];
 
-    const txResult = await transaction(bulkQueries);
-    const bulkSample = txResult[0].rows[0];
+      await client.query(`
+        INSERT INTO movements (sample_id, action_type, user_id, details)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        bulkSample.id, 'created', req.user.id,
+        JSON.stringify({ type: 'bulk_creation', info: 'Muestra Global Creada, pendiente por dispensar.' })
+      ]);
 
-    await query(`
-      INSERT INTO movements (sample_id, action_type, user_id, details)
-      VALUES ($1, $2, $3, $4)
-    `, [
-      bulkSample.id, 'created', req.user.id,
-      JSON.stringify({ type: 'bulk_creation', info: 'Muestra Global Creada, pendiente por dispensar.' })
-    ]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
     res.status(201).json({
       success: true,
@@ -176,9 +155,6 @@ const createBulkSample = async (req, res, next) => {
     });
 
   } catch (error) {
-    if (req.file && req.file.path) {
-      try { await fs.unlink(req.file.path); } catch (e) { }
-    }
     next(error);
   }
 };
@@ -376,26 +352,7 @@ const updateBulkSample = async (req, res, next) => {
 
     const currentSample = existing.rows[0];
 
-    // Manejar upload de nuevo CoA si existe
-    if (req.file) {
-      if (req.file.mimetype !== 'application/pdf') {
-        throw new AppError('El archivo CoA debe ser un PDF', 400);
-      }
-
-      // Borrar CoA anterior si existía
-      if (currentSample.coa_file_path) {
-        try {
-          await fs.unlink(path.join(await getCoaBaseDir(), path.basename(currentSample.coa_file_path)));
-        } catch (e) { console.warn('No se pudo borrar el CoA anterior:', e.message); }
-      }
-
-      const coaDir = await getCoaBaseDir();
-      await fs.mkdir(coaDir, { recursive: true });
-      const fileName = `${data.lot || currentSample.lot}_${Date.now()}.pdf`;
-      const fullPath = path.join(coaDir, fileName);
-      await fs.rename(req.file.path, fullPath);
-      data.coa_file_path = `uploads/coa/${fileName}`;
-    }
+    const coaFilePath = data.coa_file_path || null;
 
     // Parsear ghs_pictograms si viene como JSON string (común en FormData)
     if (typeof data.ghs_pictograms === 'string') {
@@ -430,7 +387,7 @@ const updateBulkSample = async (req, res, next) => {
       }
     }
 
-    if (updateFields.length === 0 && !req.file) {
+    if (updateFields.length === 0) {
       throw new AppError('No se proporcionaron campos para actualizar', 400);
     }
 
@@ -445,22 +402,35 @@ const updateBulkSample = async (req, res, next) => {
 
     params.push(id);
 
-    const result = await query(updateQuery, params);
-    const updatedSample = result.rows[0];
+    const client = await pool.connect();
+    let updatedSample;
 
-    // Log del movimiento
-    await query(`
-      INSERT INTO movements (sample_id, action_type, user_id, details)
-      VALUES ($1, $2, $3, $4)
-    `, [
-      id,
-      'updated',
-      req.user.id,
-      JSON.stringify({
-        type: 'bulk_update',
-        changes: Object.keys(data).filter(k => allowedFields.includes(k))
-      })
-    ]);
+    try {
+      await client.query('BEGIN');
+
+      const result = await client.query(updateQuery, params);
+      updatedSample = result.rows[0];
+
+      await client.query(`
+        INSERT INTO movements (sample_id, action_type, user_id, details)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        id,
+        'updated',
+        req.user.id,
+        JSON.stringify({
+          type: 'bulk_update',
+          changes: Object.keys(data).filter(k => allowedFields.includes(k))
+        })
+      ]);
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
     res.json({
       success: true,
@@ -508,32 +478,44 @@ const deleteBulkSample = async (req, res, next) => {
       });
     }
 
-    // Eliminar archivo CoA si existe
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Eliminar de BD (CASCADE eliminará dispensed_samples)
+      await client.query('DELETE FROM global_samples WHERE id = $1', [id]);
+
+      // Log del movimiento
+      await client.query(`
+        INSERT INTO movements (sample_id, action_type, user_id, details)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        id,
+        'deleted',
+        req.user.id,
+        JSON.stringify({
+          type: 'bulk_deletion',
+          child_count: parseInt(sample.child_count),
+          total_weight: sample.total_weight_grams
+        })
+      ]);
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // Eliminar archivo CoA si existe (después de COMMIT, best-effort)
     if (sample.coa_file_path) {
       try {
-        await fs.unlink(path.join(await getCoaBaseDir(), path.basename(sample.coa_file_path)));
+        await fs.unlink(path.join(config.coa.baseDir, path.basename(sample.coa_file_path)));
       } catch (fileError) {
         console.warn('Error eliminando archivo CoA:', fileError.message);
       }
     }
-
-    // Eliminar de BD (CASCADE eliminará dispensed_samples)
-    await query('DELETE FROM global_samples WHERE id = $1', [id]);
-
-    // Log del movimiento
-    await query(`
-      INSERT INTO movements (sample_id, action_type, user_id, details)
-      VALUES ($1, $2, $3, $4)
-    `, [
-      id,
-      'deleted',
-      req.user.id,
-      JSON.stringify({
-        type: 'bulk_deletion',
-        child_count: parseInt(sample.child_count),
-        total_weight: sample.total_weight_grams
-      })
-    ]);
 
     res.json({
       success: true,
@@ -580,6 +562,47 @@ const getSuppliers = async (req, res, next) => {
   }
 };
 
+/**
+ * Proxy para descargar/ver CoA desde cualquier ruta del servidor (UNC/Local)
+ */
+const downloadCoA = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const sample = await query('SELECT coa_file_path FROM global_samples WHERE id = $1', [id]);
+    
+    if (sample.rows.length === 0 || !sample.rows[0].coa_file_path) {
+      throw new AppError('No hay CoA asociado a esta muestra', 404);
+    }
+    
+    const filePath = sample.rows[0].coa_file_path.trim();
+
+    try {
+      // Verificar si el archivo existe (fs.access)
+      await fs.access(filePath);
+      
+      // Enviar el archivo como attachment o inline
+      res.sendFile(filePath, { 
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="CoA_${id}.pdf"`
+        }
+      }, (err) => {
+        if (err) {
+          console.error(`Error al enviar archivo CoA desde ${filePath}:`, err);
+          if (!res.headersSent) {
+            res.status(500).json({ success: false, error: 'Error al enviar el archivo PDF.' });
+          }
+        }
+      });
+    } catch (fsError) {
+      console.error(`Ruta no encontrada o sin permisos: ${filePath}`, fsError);
+      throw new AppError(`No se pudo acceder al archivo en la ruta especificada: ${filePath}. Verifique los permisos de red.`, 404);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBulkSample,
   getBulkSamples,
@@ -588,4 +611,5 @@ module.exports = {
   deleteBulkSample,
   getMarketLines,
   getSuppliers,
+  downloadCoA
 };

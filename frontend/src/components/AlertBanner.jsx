@@ -2,10 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { alertsAPI } from '../services/api';
 import { ExclamationTriangleIcon, ClockIcon, CalendarIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
-/**
- * AlertBanner - Banner de alertas de vencimiento
- * Muestra alertas críticas (vencidos) y advertencias (por vencer)
- */
 const AlertBanner = ({ compact = false }) => {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,15 +9,19 @@ const AlertBanner = ({ compact = false }) => {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    fetchSummary();
+    const controller = new AbortController();
+    fetchSummary(controller);
+    return () => controller.abort();
   }, []);
 
-  const fetchSummary = async () => {
+  const fetchSummary = async (controller) => {
     try {
-      const resp = await alertsAPI.getSummary();
-      setSummary(resp.data.data);
+      const resp = await alertsAPI.getSummary({ signal: controller?.signal });
+      if (resp?.data) setSummary(resp.data);
     } catch (err) {
-      console.error('Error cargando alertas:', err);
+      if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+        console.error('Error cargando alertas:', err);
+      }
     } finally {
       setLoading(false);
     }

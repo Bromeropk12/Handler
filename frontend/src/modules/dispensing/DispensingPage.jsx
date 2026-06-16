@@ -58,9 +58,9 @@ const DispensingPage = () => {
         samplesAPI.getBulkSamples({ limit: 1000 }), // Límite máximo permitido por backend
         samplesAPI.getMarketLines()
       ]);
-      const samples = samplesResp.data?.data?.bulkSamples || [];
+      const samples = samplesResp.data?.bulkSamples || [];
       setGlobalSamples(samples);
-      setMarketLines(mlResp.data?.data?.marketLines || []);
+      setMarketLines(mlResp.data?.marketLines || []);
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -113,8 +113,8 @@ const DispensingPage = () => {
         shelf_id: selectedShelfId || undefined
       });
 
-      setSuccessData(resp.data.data.generated_samples || []);
-      setDispensingResult(resp.data.data);
+      setSuccessData(resp.data.generated_samples || []);
+      setDispensingResult(resp.data);
       setGlobalSamples(prev => prev.map(s => {
         if (s.id === selectedSample.id) {
           return { ...s, total_units: parseInt(unitsToGenerate, 10), available_units: parseInt(unitsToGenerate, 10) };
@@ -150,7 +150,7 @@ const DispensingPage = () => {
   const openExistingLabels = async (sample) => {
     try {
       const resp = await dispensingAPI.getDispensedSamples({ global_sample_id: sample.id });
-      const children = resp.data?.data?.samples || [];
+      const children = resp.data?.samples || [];
       setLabelSamples(children.map(c => ({ qr_code: c.qr_code, weight_grams: c.weight_grams })));
       setLabelBulk({
         name: sample.name,
@@ -191,7 +191,7 @@ const DispensingPage = () => {
       // Load compatible shelves for reassignment
       try {
         const resp = await warehouseAPI.getShelves({ limit: 200 });
-        const all = resp.data?.data?.shelves || [];
+        const all = resp.data?.shelves || [];
         const filtered = sample.market_line_id
           ? all.filter(s => s.market_line_id === sample.market_line_id)
           : all;
@@ -209,7 +209,7 @@ const DispensingPage = () => {
     // Load shelves filtered by this sample's market line
     try {
       const resp = await warehouseAPI.getShelves({ limit: 200 });
-      const all = resp.data?.data?.shelves || [];
+      const all = resp.data?.shelves || [];
       const filtered = sample.market_line_id
         ? all.filter(s => s.market_line_id === sample.market_line_id)
         : all;
@@ -478,14 +478,20 @@ const DispensingPage = () => {
                     <div>
                       <p className="text-xs text-gray-500">CoA</p>
                       {selectedSample.coa_file_path ? (
-                        <a
-                          href={`${API_BASE}/${selectedSample.coa_file_path}`}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (window.electronAPI && window.electronAPI.openLocalFile) {
+                              const success = await window.electronAPI.openLocalFile(selectedSample.coa_file_path);
+                              if (!success) alert('No se pudo abrir el archivo PDF.');
+                            } else {
+                              window.open(`${API_BASE}/api/samples/${selectedSample.id}/coa`, '_blank');
+                            }
+                          }}
                           className="inline-flex items-center gap-1.5 mt-0.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm border border-blue-500/40"
                         >
                           📄 Ver CoA PDF
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-xs text-yellow-500">⚠ Sin CoA</span>
                       )}

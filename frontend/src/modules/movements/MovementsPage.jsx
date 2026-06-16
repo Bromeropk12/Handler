@@ -189,8 +189,8 @@ const MovementsPage = () => {
     try {
       setLoading(true);
       const response = await movementsAPI.getMovements({ ...currentFilters, page, limit: 50 });
-      setMovements(response.data.data.movements || []);
-      setPagination(response.data.data.pagination);
+      setMovements(response.data.movements || []);
+      setPagination(response.data.pagination);
     } catch (err) {
       console.error('Error al cargar movimientos:', err);
     } finally {
@@ -201,7 +201,7 @@ const MovementsPage = () => {
   const fetchTypes = async () => {
     try {
       const response = await movementsAPI.getMovementTypes();
-      setMovementTypes(response.data.data.types || []);
+      setMovementTypes(response.data.types || []);
     } catch (err) {
       console.error('Error al cargar tipos:', err);
     }
@@ -210,14 +210,17 @@ const MovementsPage = () => {
   const fetchSummary = useCallback(async (currentFilters = EMPTY_FILTERS) => {
     try {
       const response = await movementsAPI.getMovementsSummary(currentFilters);
-      setSummary(response.data.data);
+      setSummary(response.data);
     } catch (err) {
       console.error('Error al cargar resumen:', err);
     }
   }, []);
 
   useEffect(() => {
-    fetchMovements();
+    const init = async () => {
+      await fetchMovements();
+    };
+    init();
     fetchTypes();
     fetchSummary();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

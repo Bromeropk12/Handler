@@ -246,31 +246,42 @@ const confirmDefragMove = async (req, res, next) => {
       }
     }
 
-    // Ejecutar movimiento
-    await query(`
-      UPDATE dispensed_samples
-      SET position_x = $1, position_y = $2, position_z = $3, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4
-    `, [to_x, to_y, finalZ, sample_id]);
+    // Ejecutar movimiento (transaccional)
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Registrar en movimientos/trazabilidad
-    await query(`
-      INSERT INTO movements (sample_id, action_type, user_id, details)
-      VALUES ($1, $2, $3, $4)
-    `, [
-      sample_id,
-      'moved',
-      req.user.id,
-      JSON.stringify({
-        type: 'defragmentation_move',
-        shelf_id: id,
-        shelf_name: shelf.name,
-        from_position: { x: from_x ?? sample.position_x, y: from_y ?? sample.position_y, z: from_z ?? sample.position_z },
-        to_position: { x: to_x, y: to_y, z: finalZ },
-        sga_validated: true,
-        executed_by: req.user.id,
-      }),
-    ]);
+      await client.query(`
+        UPDATE dispensed_samples
+        SET position_x = $1, position_y = $2, position_z = $3, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+      `, [to_x, to_y, finalZ, sample_id]);
+
+      await client.query(`
+        INSERT INTO movements (sample_id, action_type, user_id, details)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        sample_id,
+        'moved',
+        req.user.id,
+        JSON.stringify({
+          type: 'defragmentation_move',
+          shelf_id: id,
+          shelf_name: shelf.name,
+          from_position: { x: from_x ?? sample.position_x, y: from_y ?? sample.position_y, z: from_z ?? sample.position_z },
+          to_position: { x: to_x, y: to_y, z: finalZ },
+          sga_validated: true,
+          executed_by: req.user.id,
+        }),
+      ]);
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
     return res.json({
       success: true,

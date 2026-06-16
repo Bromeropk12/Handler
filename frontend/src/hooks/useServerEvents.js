@@ -14,24 +14,44 @@ export function useServerEvents() {
   }, []);
 
   useEffect(() => {
-    // No conectar si estamos en modo setup o fuera de producción
     if (!window.location) return;
 
     let eventSource;
     let retryTimeout;
+    let heartbeatTimeout;
     let retryCount = 0;
-    const MAX_RETRIES = 5;
+    const MAX_RETRIES = 10;
+    const HEARTBEAT_MS = 45000;
+
+    function clearTimers() {
+      if (retryTimeout) clearTimeout(retryTimeout);
+      if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+    }
+
+    function scheduleHeartbeat() {
+      if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+      heartbeatTimeout = setTimeout(() => {
+        console.warn('[SSE] Heartbeat perdido — forzando reconexión.');
+        if (eventSource) eventSource.close();
+        retryCount++;
+        const delay = Math.min(1000 * 2 ** retryCount, 30000);
+        retryTimeout = setTimeout(connect, delay);
+      }, HEARTBEAT_MS);
+    }
 
     function connect() {
+      clearTimers();
       try {
         eventSource = new EventSource('/api/events');
 
         eventSource.addEventListener('connected', () => {
           console.log('[SSE] Conectado al canal de eventos del servidor.');
           retryCount = 0;
+          scheduleHeartbeat();
         });
 
         eventSource.addEventListener('system-restart', (e) => {
+          scheduleHeartbeat();
           try {
             const data = JSON.parse(e.data);
             setNotification({
@@ -46,6 +66,7 @@ export function useServerEvents() {
         });
 
         eventSource.addEventListener('system-update', (e) => {
+          scheduleHeartbeat();
           try {
             const data = JSON.parse(e.data);
             setNotification({
@@ -58,17 +79,32 @@ export function useServerEvents() {
           } catch (_) {}
         });
 
+        eventSource.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === 'heartbeat') scheduleHeartbeat();
+          } catch (_) {}
+          scheduleHeartbeat(); // always reset on any valid message
+        };
+
         eventSource.onerror = () => {
           eventSource.close();
           if (retryCount < MAX_RETRIES) {
             retryCount++;
             const delay = Math.min(1000 * 2 ** retryCount, 30000);
-            console.warn(`[SSE] Desconectado. Reintentando en ${delay / 1000}s...`);
+            console.warn(`[SSE] Desconectado. Reintentando en ${delay / 1000}s (intento ${retryCount}/${MAX_RETRIES})...`);
             retryTimeout = setTimeout(connect, delay);
+          } else {
+            console.error('[SSE] Máximo de reintentos alcanzado. No se reconectará.');
           }
         };
       } catch (err) {
         console.warn('[SSE] No se pudo conectar al canal de eventos:', err.message);
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          const delay = Math.min(1000 * 2 ** retryCount, 30000);
+          retryTimeout = setTimeout(connect, delay);
+        }
       }
     }
 
@@ -76,7 +112,7 @@ export function useServerEvents() {
 
     return () => {
       if (eventSource) eventSource.close();
-      if (retryTimeout) clearTimeout(retryTimeout);
+      clearTimers();
     };
   }, []);
 

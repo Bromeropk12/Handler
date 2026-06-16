@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import PropTypes from 'prop-types';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html, ContactShadows, Edges } from '@react-three/drei';
 import * as THREE from 'three';
@@ -96,11 +97,13 @@ const FloorPanel = ({ totalCols, totalDepth }) => (
 // ─── AisleShelfMesh: bloque en la vista de pasillo ───────────────────────────
 const AisleShelfMesh = ({ shelf, position, index, isHovered, onHover, onClick }) => {
   const meshRef = useRef();
+  const scaleVec = useRef(new THREE.Vector3());
 
   useFrame((state) => {
     if (!meshRef.current) return;
     const targetScale = isHovered ? 1.06 : 1;
-    meshRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+    scaleVec.current.set(targetScale, targetScale, targetScale);
+    meshRef.current.scale.lerp(scaleVec.current, 0.1);
     const t = state.clock.getElapsedTime();
     const floatY = position[1] + (isHovered ? 0.18 : 0) + Math.sin(t * 2 + index) * 0.04;
     meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, floatY, 0.1);
@@ -353,14 +356,19 @@ export const ReplicaWarehouseModal = ({
       setGroupPreviewData(null);
       return;
     }
+    const controller = new AbortController();
     warehouseAPI.previewGroupMove(currentShelfId, {
       target_shelf_id: selectedShelfId,
       sample_ids: samples.map(s => s.id),
-    })
-      .then(res => setGroupPreviewData(res.data.data))
+    }, { signal: controller.signal })
+      .then(res => {
+        if (!controller.signal.aborted) setGroupPreviewData(res.data);
+      })
       .catch(err => {
+        if (err.name === 'AbortError' || err.name === 'CanceledError') return;
         console.error('Error loading group preview compatibility:', err);
       });
+    return () => controller.abort();
   }, [selectedShelfId, currentShelfId, samples]);
 
   const previewCompatibilityMap = useMemo(() => {
@@ -383,18 +391,25 @@ export const ReplicaWarehouseModal = ({
   // Cargar mapa al seleccionar anaquel
   useEffect(() => {
     if (!selectedShelfId) { setTargetMapData(null); setAssignedCells([]); return; }
+    const controller = new AbortController();
     setLoadingShelfData(true);
     setShelfError(null);
     setAssignedCells([]);
     setSelectedLevelY(null);
 
-    warehouseAPI.getShelfMap(selectedShelfId)
-      .then(res => setTargetMapData(res.data.data))
+    warehouseAPI.getShelfMap(selectedShelfId, { signal: controller.signal })
+      .then(res => {
+        if (!controller.signal.aborted) setTargetMapData(res.data);
+      })
       .catch(err => {
+        if (err.name === 'AbortError' || err.name === 'CanceledError') return;
         console.error('Error loading shelf map:', err);
         setShelfError('No se pudo cargar el entorno 3D del anaquel seleccionado');
       })
-      .finally(() => setLoadingShelfData(false));
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingShelfData(false);
+      });
+    return () => controller.abort();
   }, [selectedShelfId]);
 
   const gridWidth  = targetMapData?.shelf?.grid_width  || 10;
@@ -1067,12 +1082,8 @@ export const ReplicaWarehouseModal = ({
                         <Canvas
                           key={`shelf-right-${selectedShelfId}-${selectedLevelY}`}
                           camera={{
-                            fov: 44,
-                            position: [
-                              gridWidth * 0.75,
-                              Math.max(gridWidth, shelfDepth) * 0.85,
-                              shelfDepth * 0.8 + 10,
-                            ],
+                            fov: 42,
+                            position: [10, 7, 10],
                           }}
                           gl={{ alpha: true, antialias: true }}
                         >
@@ -1220,6 +1231,14 @@ export const ReplicaWarehouseModal = ({
       </div>
     </div>
   );
+};
+
+ReplicaWarehouseModal.propTypes = {
+  samples: PropTypes.array,
+  currentShelfId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  compatibleShelves: PropTypes.array,
+  onClose: PropTypes.func,
+  onSuccess: PropTypes.func,
 };
 
 export default ReplicaWarehouseModal;

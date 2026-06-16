@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../services/api';
 import Modal from './Modal';
@@ -38,11 +38,13 @@ const UserManagement = ({ isOpen, onClose }) => {
         role: 'operator'
     });
     const [passwordFormData, setPasswordFormData] = useState({
+        currentPassword: '',
         newPassword: '',
         confirmPassword: ''
     });
     const [userToDelete, setUserToDelete] = useState(null);
     const [errors, setErrors] = useState({});
+    const [fetchError, setFetchError] = useState(null);
 
     // Validaciones de contraseña - Solo para operadores al cambiar contraseña
     const validatePassword = (password) => {
@@ -55,23 +57,39 @@ const UserManagement = ({ isOpen, onClose }) => {
         return errors;
     };
 
+    const isMountedRef = useRef(true);
+
+    useEffect(() => {
+      isMountedRef.current = true;
+      return () => { isMountedRef.current = false; };
+    }, []);
+
     // Cargar usuarios
-    const loadUsers = async () => {
+    const loadUsers = async (signal) => {
         try {
             setLoading(true);
-            const response = await authAPI.listUsers();
-            setUsers(response.data.data.users);
+            setFetchError(null);
+            const response = await authAPI.listUsers({ signal });
+            if (!isMountedRef.current) return;
+            if (response?.data?.users) setUsers(response.data.users);
         } catch (error) {
-            setMessage({ type: 'error', text: 'Error al cargar usuarios' });
+            if (!isMountedRef.current) return;
+            if (error?.name !== 'CanceledError' && error?.code !== 'ERR_CANCELED') {
+                setMessage({ type: 'error', text: 'Error al cargar usuarios' });
+                setFetchError(error.message || 'Error al cargar usuarios');
+            }
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) setLoading(false);
         }
     };
 
     useEffect(() => {
         if (isOpen) {
-            loadUsers();
+            const controller = new AbortController();
+            loadUsers(controller.signal);
             setActiveTab('overview');
+            setFetchError(null);
+            return () => controller.abort();
         }
     }, [isOpen]);
 
@@ -125,9 +143,11 @@ const UserManagement = ({ isOpen, onClose }) => {
             await authAPI.createUser({
                 username: createFormData.username,
                 password: createFormData.password,
-                role: createFormData.role
+                role: createFormData.role,
+                forceWeakPassword: createFormData.role === 'admin'
             });
 
+            if (!isMountedRef.current) return;
             setMessage({
                 type: 'success',
                 text: createFormData.role === 'operator'
@@ -138,9 +158,9 @@ const UserManagement = ({ isOpen, onClose }) => {
             setShowCreateForm(false);
             loadUsers();
         } catch (error) {
-            setMessage({ type: 'error', text: error.message || 'Error al crear usuario' });
+            if (isMountedRef.current) setMessage({ type: 'error', text: error.message || 'Error al crear usuario' });
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) setLoading(false);
         }
     };
 
@@ -187,17 +207,19 @@ const UserManagement = ({ isOpen, onClose }) => {
 
         try {
             await authAPI.changeUserPassword(showPasswordForm.id, {
+                currentPassword: passwordFormData.currentPassword,
                 newPassword: passwordFormData.newPassword
             });
 
+            if (!isMountedRef.current) return;
             setMessage({ type: 'success', text: `Contraseña de ${showPasswordForm.username} actualizada` });
-            setPasswordFormData({ newPassword: '', confirmPassword: '' });
+            setPasswordFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
             setShowPasswordForm(null);
             loadUsers();
         } catch (error) {
-            setMessage({ type: 'error', text: error.message || 'Error al cambiar contraseña' });
+            if (isMountedRef.current) setMessage({ type: 'error', text: error.message || 'Error al cambiar contraseña' });
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) setLoading(false);
         }
     };
 
@@ -214,6 +236,12 @@ const UserManagement = ({ isOpen, onClose }) => {
                 <div className="px-8 py-6 space-y-5">
                     {/* Message */}
                     <MessageBanner message={message} />
+                    {fetchError && (
+                        <div className="p-3 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center justify-between">
+                            <span>{fetchError}</span>
+                            <button onClick={() => loadUsers()} className="text-xs font-semibold underline hover:text-red-300">Reintentar</button>
+                        </div>
+                    )}
 
                     {/* Tab Content */}
                     {activeTab === 'overview' && (
@@ -246,6 +274,7 @@ const UserManagement = ({ isOpen, onClose }) => {
                                     setUsers(prev => prev.map(u => u.id === uid ? { ...u, permissions: perms } : u));
                                     setMessage({ type: 'success', text: 'Permisos actualizados exitosamente ✓' });
                                 }}
+                                onRetry={() => loadUsers()}
                             />
                         </div>
                     )}

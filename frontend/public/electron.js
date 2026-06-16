@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, session, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, session, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
@@ -35,6 +35,14 @@ function createMainWindow() {
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('[Handler] did-fail-load:', errorCode, errorDescription);
+  });
+
+  // Interceptar enlaces target="_blank" (como el visor de PDF de CoA)
+  // para que se abran en el navegador web predeterminado del sistema (Chrome, Edge, etc.)
+  // Esto previene crashes de Electron al intentar inyectar preload.js en el visor PDF interno.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   mainWindow.on('page-title-updated', (event) => {
@@ -293,10 +301,28 @@ ipcMain.handle('get-sse-client-count', async () => {
 
 // ─── Setup / Configuración inicial ───────────────────────────────────────
 ipcMain.handle('check-setup', async () => {
-  const envPath = path.join(programDataPath, '.env');
-  if (!fs.existsSync(envPath)) return true;
-  const content = fs.readFileSync(envPath, 'utf8');
-  return !content.includes('DATABASE_URL');
+  return fs.existsSync(prodEnvPath);
+});
+
+// Selector nativo de archivos (para el CoA)
+ipcMain.handle('select-file', async (event, options = {}) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Seleccionar Archivo PDF (CoA)',
+    properties: ['openFile'],
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    ...options
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
+});
+
+ipcMain.handle('open-local-file', async (event, filePath) => {
+  if (!filePath) return false;
+  const result = await shell.openPath(filePath);
+  return result === ''; // openPath returns an empty string on success
 });
 
 ipcMain.handle('setup-database', async (_event, formData) => {

@@ -26,7 +26,7 @@ const SuppliersPage = () => {
     try {
       setLoading(true);
       const response = await suppliersAPI.getSuppliers();
-      setSuppliers(response.data.data.suppliers);
+      setSuppliers(response.data.suppliers);
     } catch (err) {
       console.error('Error al cargar proveedores', err);
     } finally {

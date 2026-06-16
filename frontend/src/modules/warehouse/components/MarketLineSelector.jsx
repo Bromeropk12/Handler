@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
 import { samplesAPI, warehouseAPI } from '../../../services/api';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { Canvas, useFrame } from '@react-three/fiber';
@@ -10,6 +11,7 @@ import { ArrowRightIcon } from '@heroicons/react/24/outline';
 const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) => {
   const groupRef = useRef();
   const coreRef = useRef();
+  const scaleVec = useRef(new THREE.Vector3());
   const [hovered, setHovered] = useState(false);
 
   useFrame((state) => {
@@ -22,7 +24,8 @@ const MarketLineChamber = ({ position, color, line, stats, index, onSelect }) =>
     coreRef.current.position.y = 1.5 + Math.sin(time * 2 + index) * 0.2;
 
     const targetScale = hovered ? 1.2 : 1;
-    coreRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+    scaleVec.current.set(targetScale, targetScale, targetScale);
+    coreRef.current.scale.lerp(scaleVec.current, 0.1);
   });
 
   const occupancyPct = stats.totalShelves > 0
@@ -151,18 +154,19 @@ const MarketLineSelector = ({ onSelectMarketLine }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchData = async () => {
       try {
         setLoading(true);
-        const mlResponse = await samplesAPI.getMarketLines();
-        const lines = mlResponse.data.data.marketLines;
+        const mlResponse = await samplesAPI.getMarketLines({ signal: controller.signal });
+        const lines = mlResponse.data.marketLines;
 
         const statsMap = {};
         await Promise.all(
           lines.map(async (line) => {
             try {
-              const shelfResponse = await warehouseAPI.getShelves({ market_line_id: line.id, limit: 200 });
-              const shelves = shelfResponse.data.data.shelves;
+              const shelfResponse = await warehouseAPI.getShelves({ market_line_id: line.id, limit: 200 }, { signal: controller.signal });
+              const shelves = shelfResponse.data.shelves;
               statsMap[line.id] = {
                 totalShelves: shelves.length,
                 occupiedShelves: shelves.filter(s => s.occupancy_percentage > 0).length,
@@ -174,16 +178,19 @@ const MarketLineSelector = ({ onSelectMarketLine }) => {
           })
         );
 
+        if (controller.signal.aborted) return;
         setMarketLines(lines);
         setShelfStats(statsMap);
-      } catch (_err) {
+      } catch (err) {
+        if (err.name === 'AbortError' || err.name === 'CanceledError') return;
         setError('Error al cargar las líneas de mercado');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
     fetchData();
+    return () => controller.abort();
   }, []);
 
   if (loading) {
@@ -272,7 +279,7 @@ const MarketLineSelector = ({ onSelectMarketLine }) => {
         <p className="text-gray-400 text-sm tracking-[0.3em] font-medium uppercase mt-2">Selección de Sector // Terminal Primaria</p>
       </div>
 
-      <div className="absolute bottom-6 lefot-1/2 -translate-x-1/2 pointer-events-none z-10">
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 pointer-events-none z-10">
         <div className="flex flex-col items-center gap-2">
           <span className="text-[10px] font-black tracking-[0.2em] text-gray-300 bg-black/80 backdrop-blur-md px-6 py-2.5 rounded-full border border-gray-600/50 shadow-[0_0_30px_rgba(0,0,0,0.8)] uppercase">
             Arrastra (Click) para Rotar Cámaras
@@ -281,6 +288,10 @@ const MarketLineSelector = ({ onSelectMarketLine }) => {
       </div>
     </div>
   );
+};
+
+MarketLineSelector.propTypes = {
+  onSelectMarketLine: PropTypes.func.isRequired,
 };
 
 export default MarketLineSelector;

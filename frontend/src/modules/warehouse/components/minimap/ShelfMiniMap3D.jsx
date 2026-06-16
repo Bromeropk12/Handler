@@ -16,6 +16,7 @@
  *   - title?: string
  */
 import React, { useRef, useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { LEVEL_HEIGHT, getColorByName } from '../3d/Shared3DComponents';
 
@@ -268,6 +269,15 @@ const ShelfMiniMap3D = ({
       </div>
     </div>
   );
+};
+
+ShelfMiniMap3D.propTypes = {
+  mapData: PropTypes.object.isRequired,
+  target: PropTypes.object,
+  validity: PropTypes.string,
+  onSelectCell: PropTypes.func,
+  title: PropTypes.string,
+  compact: PropTypes.bool,
 };
 
 export default ShelfMiniMap3D;

@@ -209,29 +209,56 @@ console.log(`[DEBUG] Directorio CoA: ${coaDir}`);
 app.get('/uploads/coa/:filename', async (req, res, next) => {
   try {
     const { query } = require('./services/database');
-    const { resolveSafeFilePath, resolveSafePath } = require('./utils/pathSecurity');
-    const result = await query("SELECT value FROM settings WHERE key = 'coa_base_dir'");
+    const { resolveSafeFilePath } = require('./utils/pathSecurity');
+
+    // Determinar directorio CoA activo (DB tiene prioridad, con fallback a coaDir por defecto)
     let activeCoaDir = coaDir;
-    if (result.rows.length > 0) {
-      try {
-        activeCoaDir = resolveSafePath(result.rows[0].value);
-      } catch (err) {
-        console.warn(`[security] coa_base_dir en BD es inseguro: ${err.message}`);
-        return res.status(403).json({ success: false, error: 'Configuración de directorio CoA inválida' });
+    try {
+      const result = await query("SELECT value FROM settings WHERE key = 'coa_base_dir'");
+      if (result.rows.length > 0 && result.rows[0].value) {
+        const raw = result.rows[0].value;
+        const resolved = require('path').resolve(raw);
+        // Solo usar si el directorio existe fisicamente
+        if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+          activeCoaDir = resolved;
+        }
       }
+    } catch (_) {
+      // Si la BD falla, se queda con coaDir por defecto
     }
-    // FIX #11: defensa en profundidad — el filename no debe escapar del directorio base
+
+    // Validar que el nombre de archivo no tenga path traversal
     let safeFilePath;
     try {
       safeFilePath = resolveSafeFilePath(activeCoaDir, req.params.filename);
     } catch (err) {
       return res.status(403).json({ success: false, error: 'Nombre de archivo inválido' });
     }
-    res.sendFile(safeFilePath, (err) => {
-      if (err) next();
+
+    // Intentar servir desde el directorio activo
+    if (fs.existsSync(safeFilePath)) {
+      return res.sendFile(safeFilePath);
+    }
+
+    // Fallback: si no existe en el dir activo, buscar en coaDir por defecto
+    if (activeCoaDir !== coaDir) {
+      try {
+        const fallbackPath = resolveSafeFilePath(coaDir, req.params.filename);
+        if (fs.existsSync(fallbackPath)) {
+          return res.sendFile(fallbackPath);
+        }
+      } catch (_) { /* ignore */ }
+    }
+
+    // Archivo no encontrado en ningún directorio
+    return res.status(404).json({
+      success: false,
+      error: { message: `Ruta no encontrada - /uploads/coa/${req.params.filename}` }
     });
-  } catch {
-    next();
+
+  } catch (err) {
+    console.error('[CoA] Error sirviendo archivo:', err.message);
+    next(err);
   }
 });
 app.use('/uploads/coa', express.static(coaDir));
@@ -369,14 +396,22 @@ server.listen(PORT, HOST, async () => {
 });
 
 // Manejo de señales de terminación
-process.on('SIGTERM', () => {
-  loggerInstance.info('SIGTERM recibido, cerrando servidor...');
-  process.exit(0);
-});
+async function gracefulShutdown(signal) {
+  loggerInstance.info(`${signal} recibido, cerrando servidor gracefulmente...`);
+  server.close(async () => {
+    loggerInstance.info('Servidor HTTP cerrado.');
+    const { close } = require('./services/database');
+    await close();
+    loggerInstance.info('Pool de BD cerrado.');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    loggerInstance.error('Forzando cierre después de timeout de 10s.');
+    process.exit(1);
+  }, 10000);
+}
 
-process.on('SIGINT', () => {
-  loggerInstance.info('SIGINT recibido, cerrando servidor...');
-  process.exit(0);
-});
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = app;
