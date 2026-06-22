@@ -1,5 +1,5 @@
 const express = require('express');
-const { subdivideBulkSample, getDispensedSamples, getUnplacedSamples, reassignShelf } = require('./controller');
+const { subdivideBulkSample, getDispensedSamples, getUnplacedSamples, reassignShelf, searchLabelsForLabelPrint } = require('./controller');
 const { verifyToken, requireAdmin } = require('../auth/controller');
 const { requirePermission } = require('../../middleware/permissions');
 
@@ -91,5 +91,7 @@ router.get('/', verifyToken, requirePermission('dispensing.view'), getDispensedS
  *         description: Lista de muestras sin anaquel
  */
 router.get('/unplaced', verifyToken, requirePermission('dispensing.view'), getUnplacedSamples);
+
+router.get('/search-for-labels', verifyToken, requirePermission('dispensing.view'), searchLabelsForLabelPrint);
 
 module.exports = router;

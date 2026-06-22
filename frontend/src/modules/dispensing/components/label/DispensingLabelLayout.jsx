@@ -17,16 +17,15 @@ const PRECAUTION_PHRASES = {
 
 const DispensingLabelLayout = ({ sample, bulkData }) => {
   const isPeligro = bulkData.signal_word === 'PELIGRO';
-  // INERTE: ghs_danger_class='Sin Riesgo', signal_word='ATENCION', sin pictogramas
+  // Sin Peligro: ghs_danger_class='Sin Riesgo', signal_word='ATENCION', sin pictogramas
   const isInerte = bulkData.ghs_danger_class === 'Sin Riesgo'
     && bulkData.signal_word === 'ATENCION'
     && (!bulkData.ghs_pictograms || bulkData.ghs_pictograms.length === 0);
   const pictograms = bulkData.ghs_pictograms || [];
 
-  const precautionList = pictograms
-    .map(p => PRECAUTION_PHRASES[p])
-    .filter(Boolean)
-    .slice(0, 4);
+  const precautionList = (bulkData.precaution_phrases && bulkData.precaution_phrases.length > 0)
+    ? bulkData.precaution_phrases.map(ph => ph.text).slice(0, 4)
+    : pictograms.map(p => PRECAUTION_PHRASES[p]).filter(Boolean).slice(0, 4);
 
   const numPrecautions = precautionList.length === 0 ? 2 : precautionList.length;
   // Ajuste inteligente y extremo del espacio para advertencias extremadamente largas (hasta 4 items)
@@ -107,10 +106,10 @@ const DispensingLabelLayout = ({ sample, bulkData }) => {
           <div style={{
             fontSize: '10pt', fontWeight: 900, lineHeight: 1,
             marginBottom: '0.5mm', textAlign: 'center',
-            color: isPeligro ? '#dc2626' : (isInerte ? '#111827' : '#ea580c'),
+            color: isPeligro ? '#dc2626' : (isInerte ? '#1a1a1a' : '#ea580c'),
             letterSpacing: '-0.3pt', textTransform: 'uppercase'
           }}>
-            {isInerte ? 'INERTE' : (bulkData.signal_word || (isPeligro ? 'PELIGRO' : 'ATENCIÓN'))}
+            {isInerte ? 'NO PELIGROSO' : (bulkData.signal_word || (isPeligro ? 'PELIGRO' : 'ATENCIÓN'))}
           </div>
           <ul style={{
             fontSize: pFontSize, lineHeight: pLineHeight, color: '#1f2937',
@@ -119,7 +118,7 @@ const DispensingLabelLayout = ({ sample, bulkData }) => {
           }}>
             {precautionList.map((phrase, i) => (
               <li key={i} style={{ paddingLeft: '2mm', textIndent: '-2mm', marginBottom: pMargin }}>
-                <span style={{ color: isPeligro ? '#dc2626' : (isInerte ? '#111827' : '#ea580c'), fontWeight: 'bold' }}>•</span> {phrase}
+                <span style={{ color: isPeligro ? '#dc2626' : (isInerte ? '#1a1a1a' : '#ea580c'), fontWeight: 'bold' }}>•</span> {phrase}
               </li>
             ))}
             {precautionList.length === 0 && (
@@ -146,7 +145,7 @@ const DispensingLabelLayout = ({ sample, bulkData }) => {
       {/* Franja de Color - Nombre de Producto */}
       <div style={{
         gridColumn: 2, gridRow: 2,
-        backgroundColor: isPeligro ? '#dc2626' : (isInerte ? '#3b82f6' : '#eab308'),
+        backgroundColor: isPeligro ? '#dc2626' : (isInerte ? '#49d840' : '#eab308'),
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '0.5mm', boxSizing: 'border-box',
         borderRight: '0.3mm solid #e5e7eb',

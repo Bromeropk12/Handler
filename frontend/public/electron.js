@@ -319,6 +319,20 @@ ipcMain.handle('select-file', async (event, options = {}) => {
   return result.filePaths[0];
 });
 
+// Selector nativo de carpetas (para ruta de backups)
+ipcMain.handle('select-folder', async (event, options = {}) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Seleccionar carpeta de destino para backups',
+    properties: ['openDirectory'],
+    ...options
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
+});
+
 ipcMain.handle('open-local-file', async (event, filePath) => {
   if (!filePath) return false;
   const result = await shell.openPath(filePath);

@@ -26,7 +26,7 @@ export const useAuthStore = create()(
 
           set({
             user,
-            token: null,
+            token: data.data.token || null,
             isAuthenticated: true,
             isLoading: false,
             error: null,

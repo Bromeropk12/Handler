@@ -16,7 +16,7 @@
  */
 
 const { query } = require('./database');
-const { performBackup } = require('../modules/backup/controller');
+const { performBackup, getLocalBackupDir } = require('../modules/backup/controller');
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // cada hora
 
@@ -25,16 +25,21 @@ const CHECK_INTERVAL_MS = 60 * 60 * 1000; // cada hora
  * Más robusto que restar manualmente 5h porque maneja horario de verano (DST).
  * Colombia NO tiene DST, pero esta forma es más explícita y portable.
  */
-const getBogotaHour = () => {
+const getBogotaTime = () => {
   const now = new Date();
   const bogotaTime = new Intl.DateTimeFormat('es-CO', {
     timeZone: 'America/Bogota',
     hour: 'numeric',
+    minute: 'numeric',
     hour12: false,
   }).format(now);
-  // Intl puede devolver "24" en medianoche en algunos entornos → normalizar a 0
-  const h = parseInt(bogotaTime, 10);
-  return isNaN(h) ? 0 : h % 24;
+  const parts = bogotaTime.split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  return {
+    hour: isNaN(h) ? 0 : h % 24,
+    minutes: isNaN(m) ? 0 : m
+  };
 };
 
 /**
@@ -64,6 +69,7 @@ const getBogotaDateString = () => {
 const shouldRunBackup = async () => {
   let intervalDays = 20;
   let backupHour   = 12;
+  let backupMinutes = 0;
 
   try {
     const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
@@ -74,13 +80,14 @@ const shouldRunBackup = async () => {
       }
       intervalDays = Number(config.interval_days) || 20;
       backupHour   = Number(config.hour) ?? 12;
+      backupMinutes = Number(config.minutes) ?? 0;
     }
   } catch (_) {}
 
-  const currentHour        = getBogotaHour();
-  const todayBogota        = getBogotaDateString();
+  const { hour: currentHour, minutes: currentMinutes } = getBogotaTime();
+  const todayBogota = getBogotaDateString();
 
-  console.log(`[SCHEDULER] Verificación — Hora Bogotá: ${currentHour}:xx | Hora programada: ${backupHour}:00 | Intervalo: ${intervalDays} días`);
+  console.log(`[SCHEDULER] Verificación — Hora Bogotá: ${currentHour}:${String(currentMinutes).padStart(2, '0')} | Hora programada: ${backupHour}:${String(backupMinutes).padStart(2, '0')} | Intervalo: ${intervalDays} días`);
 
   // Verificar último backup
   let lastBackupDate = null;
@@ -121,14 +128,15 @@ const shouldRunBackup = async () => {
 
   // Regla C: El intervalo de días se cumplió
   if (daysSinceLast >= intervalDays) {
-    // Ventana de ejecución: desde la hora programada hasta las 23:59
-    // Esto permite que el backup se ejecute aunque el servidor haya arrancado
-    // después de la hora exacta configurada.
-    if (currentHour >= backupHour) {
-      console.log(`[SCHEDULER] ✅ Condición cumplida — ${daysSinceLast.toFixed(1)} días >= ${intervalDays} días y hora ${currentHour} >= ${backupHour}`);
+    // Comparar hora + minutos exactos
+    const nowMinutes = currentHour * 60 + currentMinutes;
+    const scheduledMinutes = backupHour * 60 + backupMinutes;
+
+    if (nowMinutes >= scheduledMinutes) {
+      console.log(`[SCHEDULER] ✅ Condición cumplida — ${daysSinceLast.toFixed(1)} días >= ${intervalDays} días y hora ${currentHour}:${String(currentMinutes).padStart(2, '0')} >= ${backupHour}:${String(backupMinutes).padStart(2, '0')}`);
       return true;
     } else {
-      console.log(`[SCHEDULER] Intervalo cumplido pero hora ${currentHour} < ${backupHour} programada. Esperando...`);
+      console.log(`[SCHEDULER] Intervalo cumplido pero hora ${currentHour}:${String(currentMinutes).padStart(2, '0')} < ${backupHour}:${String(backupMinutes).padStart(2, '0')} programada. Esperando...`);
       return false;
     }
   }
@@ -165,4 +173,4 @@ const startBackupScheduler = () => {
   if (timer.unref) timer.unref();
 };
 
-module.exports = { startBackupScheduler, runSchedulerCheck, getBogotaHour, getBogotaDateString, shouldRunBackup };
+module.exports = { startBackupScheduler, runSchedulerCheck, getBogotaTime, getBogotaDateString, shouldRunBackup };

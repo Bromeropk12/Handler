@@ -14,6 +14,8 @@ const {
   importBackup,
   downloadBackup,
   getBackupStatus,
+  getLocalPath,
+  setLocalPath,
 } = require('./controller');
 const { verifyToken, requireAdmin } = require('../auth/controller');
 
@@ -69,30 +71,11 @@ router.get('/cron', runCronJob);
  */
 router.route('/settings')
   .get(getSettings)
-/**
- * @openapi
- * /api/backup/settings:
- *   put:
- *     summary: Actualizar configuración de backups
- *     tags: [Backup]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               interval:
- *                 type: string
- *               enabled:
- *                 type: boolean
- *     responses:
- *       200:
- *         description: Configuración actualizada
- */
   .put(updateSettings);
+
+router.route('/local-path')
+  .get(getLocalPath)
+  .put(setLocalPath);
 
 /**
  * @openapi

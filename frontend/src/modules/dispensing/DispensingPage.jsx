@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BeakerIcon, Search, PlusCircle, CheckCircle2, Box, Info, Ruler, Tag, Building2, Scale, FlaskConical } from 'lucide-react';
 import { samplesAPI, dispensingAPI, warehouseAPI } from '../../services/api';
+import { useAuthStore } from '../../stores/authStore';
 import Modal from '../../components/Modal';
 import LabelPrint from './components/LabelPrint';
 
@@ -36,10 +37,9 @@ const DispensingPage = () => {
   const [dispensingResult, setDispensingResult] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showLabelPreview, setShowLabelPreview] = useState(false);
-  const [labelSamples, setLabelSamples] = useState([]);
+  const [labelLabels, setLabelLabels] = useState([]);
   const [availableShelves, setAvailableShelves] = useState([]);
   const [selectedShelfId, setSelectedShelfId] = useState('');
-  const [labelBulk, setLabelBulk] = useState(null);
   const [reassignShelfId, setReassignShelfId] = useState('');
   const [reassignLoading, setReassignLoading] = useState(false);
   const [reassignMessage, setReassignMessage] = useState(null);
@@ -130,8 +130,7 @@ const DispensingPage = () => {
 
   // Abrir etiquetas de una muestra recién dispensada
   const openNewLabels = () => {
-    setLabelSamples(successData);
-    setLabelBulk({
+    const bulk = {
       name: selectedSample.name,
       lot: selectedSample.lot,
       expiration_date: selectedSample.expiration_date,
@@ -142,7 +141,9 @@ const DispensingPage = () => {
       ghs_pictograms: dispensingResult.ghs_pictograms || selectedSample.ghs_pictograms || [],
       ghs_danger_class: selectedSample.ghs_danger_class,
       weight_per_unit: parseFloat(weightPerUnit),
-    });
+      precaution_phrases: selectedSample.precaution_phrases || [],
+    };
+    setLabelLabels(successData.map(s => ({ ...s, bulkData: bulk })));
     setShowLabelPreview(true);
   };
 
@@ -151,8 +152,7 @@ const DispensingPage = () => {
     try {
       const resp = await dispensingAPI.getDispensedSamples({ global_sample_id: sample.id });
       const children = resp.data?.samples || [];
-      setLabelSamples(children.map(c => ({ qr_code: c.qr_code, weight_grams: c.weight_grams })));
-      setLabelBulk({
+      const bulk = {
         name: sample.name,
         lot: sample.lot,
         expiration_date: sample.expiration_date,
@@ -163,7 +163,9 @@ const DispensingPage = () => {
         ghs_pictograms: sample.ghs_pictograms || [],
         ghs_danger_class: sample.ghs_danger_class,
         weight_per_unit: children[0]?.weight_grams || 0,
-      });
+        precaution_phrases: sample.precaution_phrases || [],
+      };
+      setLabelLabels(children.map(c => ({ qr_code: c.qr_code, weight_grams: c.weight_grams, bulkData: bulk })));
       setShowLabelPreview(true);
     } catch (err) {
       alert('No se pudieron cargar las muestras hijas: ' + (err.message || ''));
@@ -485,7 +487,7 @@ const DispensingPage = () => {
                               const success = await window.electronAPI.openLocalFile(selectedSample.coa_file_path);
                               if (!success) alert('No se pudo abrir el archivo PDF.');
                             } else {
-                              window.open(`${API_BASE}/api/samples/${selectedSample.id}/coa`, '_blank');
+                              window.open(`${API_BASE}/api/samples/${selectedSample.id}/coa?token=${useAuthStore.getState().token}`, '_blank');
                             }
                           }}
                           className="inline-flex items-center gap-1.5 mt-0.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm border border-blue-500/40"
@@ -731,10 +733,9 @@ const DispensingPage = () => {
       </Modal>
 
       {/* Label Preview/Print */}
-      {showLabelPreview && labelBulk && (
+      {showLabelPreview && labelLabels.length > 0 && (
         <LabelPrint
-          samples={labelSamples}
-          bulkData={labelBulk}
+          labels={labelLabels}
           onClose={() => setShowLabelPreview(false)}
         />
       )}

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import Badge from '../../components/Badge';
 import Modal from '../../components/Modal';
+import { useAuthStore } from '../../stores/authStore';
 import { samplesAPI } from '../../services/api';
 import {
   PlusIcon,
@@ -39,6 +40,18 @@ const GHS_PICTOGRAM_MAP = {
 };
 
 const ALL_PICTOGRAMS = Object.keys(GHS_PICTOGRAM_MAP);
+
+const PRECAUTION_DEFAULTS = {
+  'Explosivo': 'Peligro de explosión en masa. Evitar someter a choque, fricción o fuego.',
+  'Inflamable': 'Líquido y vapores inflamables. Mantener alejado del calor, chispas y llamas al descubierto. No fumar.',
+  'Comburente': 'Puede provocar o agravar un incendio; comburente. Mantener alejado de materiales combustibles.',
+  'Gas Bajo Presión': 'Contiene gas a presión; peligro de explosión en caso de calentamiento. Proteger de la luz solar.',
+  'Corrosivo': 'Provoca quemaduras graves en la piel y lesiones oculares graves. Usar guantes y equipo de protección.',
+  'Toxicidad Aguda': 'Mortal en caso de ingestión, contacto con la piel o inhalación. No respirar polvos/humos/gases/nieblas/vapores.',
+  'Irritante': 'Provoca irritación cutánea y ocular grave. Lavarse cuidadosamente después de la manipulación.',
+  'Toxicidad Crónica': 'Provoca daños en los órganos tras exposiciones prolongadas o repetidas. Pedir instrucciones especiales antes del uso.',
+  'Tóxico para Medio Ambiente': 'Muy tóxico para los organismos acuáticos, con efectos nocivos duraderos. Evitar su liberación al medio ambiente.',
+};
 
 const SamplesPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -77,6 +90,7 @@ const SamplesPage = () => {
     total_weight_grams: '',
     ghs_pictograms: [],
     signal_word: 'ATENCION',
+    precaution_phrases: [],
   });
 
   const resetForm = () => {
@@ -84,7 +98,7 @@ const SamplesPage = () => {
       name: '', supplier_id: '', lot: '', expiration_date: '',
       manufacture_date: '', ghs_danger_class: '', market_line_id: '',
       dimensions: '1x1x1', dispensed_size: '1x1x1', total_weight_grams: '',
-      ghs_pictograms: [], signal_word: 'ATENCION',
+      ghs_pictograms: [], signal_word: 'ATENCION', precaution_phrases: [],
     });
     setCoaFile(null);
   };
@@ -196,11 +210,75 @@ const SamplesPage = () => {
   const togglePictogram = (pictogram) => {
     setFormData(prev => {
       const current = prev.ghs_pictograms || [];
-      const newPictos = current.includes(pictogram)
+      const wasSelected = current.includes(pictogram);
+      const newPictos = wasSelected
         ? current.filter(p => p !== pictogram)
         : [...current, pictogram];
-      return { ...prev, ghs_pictograms: newPictos };
+
+      let newPhrases = [...(prev.precaution_phrases || [])];
+      if (!wasSelected && PRECAUTION_DEFAULTS[pictogram]) {
+        newPhrases.push({ pictogram, text: PRECAUTION_DEFAULTS[pictogram] });
+      }
+      if (wasSelected) {
+        newPhrases = newPhrases.filter(ph => ph.pictogram !== pictogram);
+      }
+      newPhrases = newPhrases.slice(0, 4);
+
+      return { ...prev, ghs_pictograms: newPictos, precaution_phrases: newPhrases };
     });
+  };
+
+  const updatePhraseText = (index, newText) => {
+    setFormData(prev => {
+      const phrases = [...(prev.precaution_phrases || [])];
+      if (phrases[index]) {
+        phrases[index] = { ...phrases[index], text: newText.substring(0, 120) };
+      }
+      return { ...prev, precaution_phrases: phrases };
+    });
+  };
+
+  const removePhrase = (index) => {
+    setFormData(prev => {
+      const phrases = [...(prev.precaution_phrases || [])];
+      const removed = phrases.splice(index, 1)[0];
+      // Also unselect the associated pictogram
+      const newPictos = (prev.ghs_pictograms || []).filter(p => p !== removed.pictogram);
+      return { ...prev, precaution_phrases: phrases, ghs_pictograms: newPictos };
+    });
+  };
+
+  const reorderPhrases = (fromIndex, toIndex) => {
+    setFormData(prev => {
+      const phrases = [...(prev.precaution_phrases || [])];
+      const [moved] = phrases.splice(fromIndex, 1);
+      phrases.splice(toIndex, 0, moved);
+      return { ...prev, precaution_phrases: phrases };
+    });
+  };
+
+  const [draggedPhraseIdx, setDraggedPhraseIdx] = useState(null);
+
+  const handlePhraseDragStart = (e, idx) => {
+    setDraggedPhraseIdx(idx);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', idx);
+  };
+
+  const handlePhraseDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handlePhraseDrop = (e, targetIdx) => {
+    e.preventDefault();
+    if (draggedPhraseIdx === null || draggedPhraseIdx === targetIdx) return;
+    reorderPhrases(draggedPhraseIdx, targetIdx);
+    setDraggedPhraseIdx(null);
+  };
+
+  const handlePhraseDragEnd = () => {
+    setDraggedPhraseIdx(null);
   };
 
   const handleCreateSample = async () => {
@@ -292,6 +370,7 @@ const SamplesPage = () => {
       ghs_pictograms: sample.ghs_pictograms || [],
       signal_word: sample.signal_word || 'ATENCION',
       coa_file_path: sample.coa_file_path || '',
+      precaution_phrases: sample.precaution_phrases || [],
     });
   };
 
@@ -482,6 +561,72 @@ const SamplesPage = () => {
         {renderPictogramChecklist(formData.ghs_pictograms, togglePictogram, false)}
       </div>
 
+      {/* Frases de Precaución */}
+      {formData.ghs_pictograms?.length > 0 && formData.precaution_phrases?.length > 0 && (
+        <div className="border-t border-gray-700/50 pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+            </svg>
+            <h4 className="text-sm font-medium text-gray-300">Frases de Precaución (Etiqueta)</h4>
+            <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-bold">
+              {formData.precaution_phrases.length}/4
+            </span>
+          </div>
+          <p className="text-[10px] text-gray-500 mb-3">Arrastra para reordena. Máx. 120 caracteres por frase. Estas frases aparecen en la etiqueta de dispensación.</p>
+          <div className="space-y-2">
+            {formData.precaution_phrases.map((phrase, idx) => {
+              const pictoInfo = GHS_PICTOGRAM_MAP[phrase.pictogram];
+              return (
+                <div
+                  key={`${phrase.pictogram}-${idx}`}
+                  draggable
+                  onDragStart={(e) => handlePhraseDragStart(e, idx)}
+                  onDragOver={handlePhraseDragOver}
+                  onDrop={(e) => handlePhraseDrop(e, idx)}
+                  onDragEnd={handlePhraseDragEnd}
+                  className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
+                    draggedPhraseIdx === idx
+                      ? 'bg-amber-500/10 border-amber-500/50 opacity-50'
+                      : 'bg-surface-900 border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <div className="cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300 shrink-0" title="Arrastrar para reordenar">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 6a2 2 0 110-4 2 2 0 010 4zm0 8a2 2 0 110-4 2 2 0 010 4zm0 8a2 2 0 110-4 2 2 0 010 4zm8-16a2 2 0 110-4 2 2 0 010 4zm0 8a2 2 0 110-4 2 2 0 010 4zm0 8a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </div>
+                  {pictoInfo && (
+                    <img src={`/recursos/pictogramas/${pictoInfo.file}`} alt={phrase.pictogram} className="w-5 h-5 object-contain shrink-0" />
+                  )}
+                  <input
+                    type="text"
+                    value={phrase.text}
+                    onChange={(e) => updatePhraseText(idx, e.target.value)}
+                    maxLength={120}
+                    className="flex-1 bg-surface-800 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-amber-500 focus:outline-none"
+                    placeholder="Texto de precaución..."
+                  />
+                  <span className={`text-[10px] shrink-0 font-mono ${phrase.text.length >= 110 ? 'text-red-400' : 'text-gray-500'}`}>
+                    {phrase.text.length}/120
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removePhrase(idx)}
+                    className="text-gray-500 hover:text-red-400 shrink-0 p-1"
+                    title="Eliminar frase"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="label">Peso Total del Bulk (g) *</label>
@@ -557,7 +702,7 @@ const SamplesPage = () => {
                   const success = await window.electronAPI.openLocalFile(selectedSample.coa_file_path);
                   if (!success) alert('No se pudo abrir el archivo PDF.');
                 } else {
-                  window.open(`${API_BASE}/api/samples/${selectedSample.id}/coa`, '_blank');
+                  window.open(`${API_BASE}/api/samples/${selectedSample.id}/coa?token=${useAuthStore.getState().token}`, '_blank');
                 }
               }}
               className="px-3 py-1.5 bg-blue-500/10 text-blue-400 text-xs font-bold rounded-lg hover:bg-blue-500/20 transition-colors shrink-0"
@@ -855,6 +1000,21 @@ const SamplesPage = () => {
               </div>
             )}
 
+            {/* Frases de Precaución */}
+            {selectedSample.precaution_phrases && selectedSample.precaution_phrases.length > 0 && (
+              <div className="border-t border-gray-700 pt-4">
+                <p className="text-xs text-gray-500 mb-2">Frases de Precaución (Etiqueta)</p>
+                <div className="space-y-1.5">
+                  {selectedSample.precaution_phrases.map((ph, idx) => (
+                    <div key={idx} className="flex items-start gap-2 text-xs">
+                      <span className="text-amber-400 font-bold mt-0.5">•</span>
+                      <span className="text-gray-300">{ph.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* CoA */}
             <div className="border-t border-gray-700 pt-4">
               <p className="text-xs text-gray-500 mb-2">Certificado de Análisis (CoA)</p>
@@ -868,7 +1028,7 @@ const SamplesPage = () => {
                         const success = await window.electronAPI.openLocalFile(selectedSample.coa_file_path);
                         if (!success) alert('No se pudo abrir el archivo PDF.');
                       } else {
-                        window.open(`${API_BASE}/api/samples/${selectedSample.id}/coa`, '_blank');
+                        window.open(`${API_BASE}/api/samples/${selectedSample.id}/coa?token=${useAuthStore.getState().token}`, '_blank');
                       }
                     }}
                     className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-500/10 text-blue-400 text-xs font-medium rounded-lg hover:bg-blue-500/20"

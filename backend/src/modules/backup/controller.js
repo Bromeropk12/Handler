@@ -19,11 +19,31 @@ const MAX_BACKUPS = 3;
 
 // Carpeta raíz del proyecto: Handler/
 const PROJECT_ROOT = path.resolve(__dirname, '../../../../');
-// Carpeta local de backups: C:\ProgramData\HandlerTrackSamples\backups en Prod, o Handler/backups en Dev
+
+// Fallback por defecto (se usa solo si no hay setting en BD)
 const isProd = process.env.NODE_ENV === 'production';
-const LOCAL_BACKUP_DIR = isProd
+const DEFAULT_LOCAL_BACKUP_DIR = isProd
   ? path.join(process.env.ALLUSERSPROFILE || 'C:\\ProgramData', 'HandlerTrackSamples', 'backups')
   : path.join(PROJECT_ROOT, 'backups');
+
+/**
+ * Obtiene la ruta local de backups desde la BD (setting 'backup_local_path').
+ * Si no existe, usa DEFAULT_LOCAL_BACKUP_DIR.
+ */
+const getLocalBackupDir = async () => {
+  try {
+    const res = await query("SELECT value FROM settings WHERE key = 'backup_local_path'");
+    if (res.rows.length > 0 && res.rows[0].value) {
+      const val = typeof res.rows[0].value === 'string'
+        ? JSON.parse(res.rows[0].value)
+        : res.rows[0].value;
+      if (val.path && fs.existsSync(val.path)) {
+        return val.path;
+      }
+    }
+  } catch (_) {}
+  return DEFAULT_LOCAL_BACKUP_DIR;
+};
 
 // ─────────────────────────────────────────
 //  UTILIDADES DE RUTAS
@@ -206,9 +226,11 @@ const performBackup = async (createdBy, manual = false) => {
   const jsonStr  = JSON.stringify(data, null, 2);
   const sizeBytes = Buffer.byteLength(jsonStr, 'utf8');
 
-  // 1. Guardar localmente en Handler/backups/
-  const localResult = writeBackupFile(LOCAL_BACKUP_DIR, filename, jsonStr);
-  rotateFiles(LOCAL_BACKUP_DIR);
+  // 1. Guardar localmente (ruta configurable desde BD)
+  const localBackupDir = await getLocalBackupDir();
+  ensureDir(localBackupDir);
+  const localResult = writeBackupFile(localBackupDir, filename, jsonStr);
+  rotateFiles(localBackupDir);
 
   // 2. Guardar en OneDrive (si existe)
   const oneDriveDir = getOneDrivePath();
@@ -302,7 +324,7 @@ const listBackups = async (req, res, next) => {
         nextBackupScheduled: nextBackup,
         totalBackups: backups.length,
         storageType: 'local-file + db' + (oneDriveDir ? ' + onedrive' : ''),
-        localBackupDir: LOCAL_BACKUP_DIR,
+        localBackupDir: await getLocalBackupDir(),
         oneDriveDir: oneDriveDir || null,
       },
     });
@@ -439,7 +461,8 @@ const restoreBackup = async (req, res, next) => {
       backupData = dbResult.rows[0].data;
     } else {
       // Intentar leer desde archivo local
-      const localFile = path.join(LOCAL_BACKUP_DIR, safeFilename);
+      const localDir = await getLocalBackupDir();
+      const localFile = path.join(localDir, safeFilename);
       if (fs.existsSync(localFile)) {
         backupData = JSON.parse(fs.readFileSync(localFile, 'utf8'));
       }
@@ -555,19 +578,17 @@ const deleteBackup = async (req, res, next) => {
 
     if (result.rows.length > 0) {
       const { local_path, onedrive_path } = result.rows[0];
-      // Eliminar archivos físicos si existen (validar que estén dentro de LOCAL_BACKUP_DIR)
+      // Eliminar archivos físicos si existen
       if (local_path && fs.existsSync(local_path)) {
-        const normalized = path.resolve(local_path);
-        if (normalized.startsWith(path.resolve(LOCAL_BACKUP_DIR))) {
-          try { fs.unlinkSync(local_path); } catch (err) { console.error('[BACKUP] Error eliminando archivo local:', err.message); }
-        }
+        try { fs.unlinkSync(local_path); } catch (err) { console.error('[BACKUP] Error eliminando archivo local:', err.message); }
       }
       if (onedrive_path && fs.existsSync(onedrive_path)) {
         try { fs.unlinkSync(onedrive_path); } catch (err) { console.error('[BACKUP] Error eliminando archivo onedrive:', err.message); }
       }
     } else {
       // Puede ser que solo exista el archivo sin registro en BD
-      const localFile = path.join(LOCAL_BACKUP_DIR, safeFilename);
+      const localDir = await getLocalBackupDir();
+      const localFile = path.join(localDir, safeFilename);
       if (!fs.existsSync(localFile)) throw new AppError('Backup no encontrado', 404);
       fs.unlinkSync(localFile);
     }
@@ -631,7 +652,8 @@ const importBackup = async (req, res, next) => {
     const sizeBytes = Buffer.byteLength(jsonStr, 'utf8');
 
     // 5. Escribir a disco local
-    const localResult = writeBackupFile(LOCAL_BACKUP_DIR, filename, jsonStr);
+    const localDir = await getLocalBackupDir();
+    const localResult = writeBackupFile(localDir, filename, jsonStr);
 
     // 6. Copiar a OneDrive si existe
     const oneDriveDir = getOneDrivePath();
@@ -703,13 +725,10 @@ const downloadBackup = async (req, res, next) => {
     const safeFilename = sanitizeFilename(req.params.filename);
 
     // Prioridad 1: archivo en disco
-    const localFile = path.join(LOCAL_BACKUP_DIR, safeFilename);
+    const localDir = await getLocalBackupDir();
+    const localFile = path.join(localDir, safeFilename);
     if (fs.existsSync(localFile)) {
       const normalized = path.resolve(localFile);
-      // Validar que el archivo está dentro del directorio permitido
-      if (!normalized.startsWith(path.resolve(LOCAL_BACKUP_DIR))) {
-        throw new AppError('Ruta invalida', 400);
-      }
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
       return res.sendFile(normalized);
@@ -739,11 +758,13 @@ const getBackupStatus = async (req, res, next) => {
     const now = new Date();
     let intervalDays = 20;
     let hour = 12;
+    let minutes = 0;
     try {
       const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
       if (configRes.rows.length > 0) {
         intervalDays = configRes.rows[0].value.interval_days || 20;
         hour = configRes.rows[0].value.hour || 12;
+        minutes = configRes.rows[0].value.minutes || 0;
       }
     } catch (err) { console.error('[BACKUP] Error leyendo config:', err.message); }
 
@@ -757,9 +778,10 @@ const getBackupStatus = async (req, res, next) => {
     }
 
     const oneDriveDir = getOneDrivePath();
+    const localDir = await getLocalBackupDir();
 
     // Verificar estado real de las carpetas
-    const localOk = fs.existsSync(LOCAL_BACKUP_DIR);
+    const localOk = fs.existsSync(localDir);
     const onedriveOk = oneDriveDir && fs.existsSync(oneDriveDir);
 
     res.json({
@@ -769,16 +791,17 @@ const getBackupStatus = async (req, res, next) => {
         maxBackups: MAX_BACKUPS,
         intervalDays,
         hour,
+        minutes,
         isDue,
         daysSinceLast,
         lastBackup: result.rows.length > 0 ? result.rows[0].created_at : null,
         storage: {
-          localDir: LOCAL_BACKUP_DIR,
+          localDir,
           localReady: localOk,
           onedriveDir: oneDriveDir || null,
           onedriveReady: !!onedriveOk,
         },
-        schedulerInfo: `Backup automático cada ${intervalDays} días a las ${hour}:00 hora Bogotá`,
+        schedulerInfo: `Backup automático cada ${intervalDays} días a las ${hour}:${String(minutes).padStart(2, '0')} hora Bogotá`,
       },
     });
   } catch (error) {
@@ -806,7 +829,8 @@ const syncToOneDrive = async (req, res, next) => {
     ensureDir(oneDriveDir);
 
     // Listar archivos locales
-    if (!fs.existsSync(LOCAL_BACKUP_DIR)) {
+    const localDir = await getLocalBackupDir();
+    if (!fs.existsSync(localDir)) {
       return res.json({
         success: true,
         message: 'Carpeta local de backups vacía, nada que sincronizar.',
@@ -815,7 +839,7 @@ const syncToOneDrive = async (req, res, next) => {
       });
     }
 
-    const localFiles = fs.readdirSync(LOCAL_BACKUP_DIR)
+    const localFiles = fs.readdirSync(localDir)
       .filter(f => f.startsWith('backup_handler_') && f.endsWith('.json'));
 
     const errors = [];
@@ -829,7 +853,7 @@ const syncToOneDrive = async (req, res, next) => {
         continue;
       }
       try {
-        const content = fs.readFileSync(path.join(LOCAL_BACKUP_DIR, filename), 'utf8');
+        const content = fs.readFileSync(path.join(localDir, filename), 'utf8');
         fs.writeFileSync(target, content, 'utf8');
         copied++;
       } catch (err) {
@@ -873,14 +897,16 @@ const getSettings = async (req, res, next) => {
   try {
     await ensureBackupTables();
     const configRes = await query("SELECT value FROM settings WHERE key = 'backup_config'");
-    const config = configRes.rows.length > 0 ? configRes.rows[0].value : { interval_days: 20, hour: 12 };
+    const config = configRes.rows.length > 0 ? configRes.rows[0].value : { interval_days: 20, hour: 12, minutes: 0 };
 
     const oneDriveDir = getOneDrivePath();
+    const localDir = await getLocalBackupDir();
     res.json({
       success: true,
       data: {
         ...config,
-        localBackupDir: LOCAL_BACKUP_DIR,
+        minutes: config.minutes || 0,
+        localBackupDir: localDir,
         oneDriveDir: oneDriveDir || null,
         oneDriveAvailable: !!oneDriveDir,
       },
@@ -895,15 +921,16 @@ const getSettings = async (req, res, next) => {
  */
 const updateSettings = async (req, res, next) => {
   try {
-    const { interval_days, hour } = req.body;
+    const { interval_days, hour, minutes } = req.body;
     if (!interval_days || typeof interval_days !== 'number' || interval_days < 1) {
       throw new AppError('interval_days debe ser un número positivo', 400);
     }
     if (typeof hour !== 'number' || hour < 0 || hour > 23) {
       throw new AppError('hour debe estar entre 0 y 23', 400);
     }
+    const mins = typeof minutes === 'number' ? Math.min(59, Math.max(0, Math.round(minutes))) : 0;
 
-    const value = JSON.stringify({ interval_days, hour });
+    const value = JSON.stringify({ interval_days, hour, minutes: mins });
     await query(`
       INSERT INTO settings (key, value)
       VALUES ('backup_config', $1::jsonb)
@@ -911,6 +938,47 @@ const updateSettings = async (req, res, next) => {
     `, [value]);
 
     res.json({ success: true, message: 'Configuración guardada exitosamente' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/backup/local-path
+ */
+const getLocalPath = async (req, res, next) => {
+  try {
+    const localDir = await getLocalBackupDir();
+    res.json({
+      success: true,
+      data: { path: localDir }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PUT /api/backup/local-path
+ */
+const setLocalPath = async (req, res, next) => {
+  try {
+    const { path: newPath } = req.body;
+    if (!newPath || typeof newPath !== 'string') {
+      throw new AppError('La ruta es requerida', 400);
+    }
+    // Normalizar separadores
+    const normalizedPath = newPath.replace(/\//g, '\\');
+    // Asegurar que la carpeta exista
+    ensureDir(normalizedPath);
+
+    await query(`
+      INSERT INTO settings (key, value)
+      VALUES ('backup_local_path', $1::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = $1::jsonb, updated_at = CURRENT_TIMESTAMP
+    `, [JSON.stringify({ path: normalizedPath })]);
+
+    res.json({ success: true, message: 'Ruta de backups actualizada', data: { path: normalizedPath } });
   } catch (err) {
     next(err);
   }
@@ -954,8 +1022,10 @@ module.exports = {
   getBackupStatus,
   getSettings,
   updateSettings,
+  getLocalPath,
+  setLocalPath,
   runCronJob,
   performBackup,      // Exportada para uso en backupScheduler
-  LOCAL_BACKUP_DIR,
+  getLocalBackupDir,
   getOneDrivePath,
 };

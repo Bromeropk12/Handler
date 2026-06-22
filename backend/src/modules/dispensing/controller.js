@@ -475,11 +475,87 @@ const getUnplacedSamples = async (req, res, next) => {
   }
 };
 
+/**
+ * Buscar muestras dispensadas para agregar etiquetas adicionales al imprimir
+ * GET /api/dispensing/search-for-labels?name=...
+ */
+const searchLabelsForLabelPrint = async (req, res, next) => {
+  try {
+    const { name } = req.query;
+
+    let whereConditions = ["ds.status = 'stored'"];
+    let params = [];
+    let paramIndex = 1;
+
+    if (name && name.trim()) {
+      whereConditions.push(`gs.name ILIKE $${paramIndex}`);
+      params.push(`%${name.trim()}%`);
+      paramIndex++;
+    }
+
+    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+
+    // Obtener productos agrupados con sus unidades hijas
+    const result = await query(`
+      SELECT
+        gs.id as global_sample_id,
+        gs.name as product_name,
+        gs.lot,
+        gs.expiration_date,
+        gs.ghs_danger_class,
+        gs.ghs_pictograms,
+        gs.signal_word,
+        gs.precaution_phrases,
+        sup.name as supplier_name,
+        sup.logo_path as supplier_logo_path,
+        json_agg(
+          json_build_object(
+            'id', ds.id,
+            'qr_code', ds.qr_code,
+            'weight_grams', ds.weight_grams,
+            'child_dimensions', ds.child_dimensions
+          ) ORDER BY ds.created_at ASC
+        ) as units
+      FROM dispensed_samples ds
+      JOIN global_samples gs ON ds.global_sample_id = gs.id
+      LEFT JOIN suppliers sup ON gs.supplier_id = sup.id
+      ${whereClause}
+      GROUP BY gs.id, gs.name, gs.lot, gs.expiration_date, gs.ghs_danger_class,
+               gs.ghs_pictograms, gs.signal_word, gs.precaution_phrases, sup.name, sup.logo_path
+      ORDER BY gs.name ASC
+      LIMIT 50
+    `, params);
+
+    res.json({
+      success: true,
+      data: {
+        products: result.rows.map(row => ({
+          global_sample_id: row.global_sample_id,
+          name: row.product_name,
+          lot: row.lot,
+          expiration_date: row.expiration_date,
+          ghs_danger_class: row.ghs_danger_class,
+          ghs_pictograms: row.ghs_pictograms || [],
+          signal_word: row.signal_word || 'ATENCION',
+          precaution_phrases: typeof row.precaution_phrases === 'string' ? JSON.parse(row.precaution_phrases) : (row.precaution_phrases || []),
+          supplier_name: row.supplier_name,
+          supplier_logo_path: row.supplier_logo_path,
+          units: row.units
+        })),
+        total: result.rows.length
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   subdivideBulkSample,
   getDispensedSamples,
   getUnplacedSamples,
-  reassignShelf
+  reassignShelf,
+  searchLabelsForLabelPrint
 };
 
 /**

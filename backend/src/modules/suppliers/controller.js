@@ -3,6 +3,9 @@ const { AppError } = require('../../middleware/errorHandler');
 const path = require('path');
 const fs = require('fs').promises;
 
+const isProd = process.env.NODE_ENV === 'production';
+const baseDataDir = isProd ? path.join(process.env.ALLUSERSPROFILE || 'C:\\ProgramData', 'HandlerTrackSamples') : process.cwd();
+
 const getSuppliers = async (req, res, next) => {
   try {
     const result = await query(`
@@ -142,12 +145,12 @@ const uploadSupplierLogo = async (req, res, next) => {
     const oldLogo = supplier.rows[0].logo_path;
     if (oldLogo && oldLogo.startsWith('uploads/')) {
       try {
-        await fs.unlink(path.join(process.cwd(), oldLogo));
+        await fs.unlink(path.join(baseDataDir, oldLogo));
       } catch (_) {}
     }
 
     // Guardar ruta relativa
-    const relativePath = path.relative(process.cwd(), req.file.path).replace(/\\/g, '/');
+    const relativePath = path.relative(baseDataDir, req.file.path).replace(/\\/g, '/');
 
     await query(
       'UPDATE suppliers SET logo_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',

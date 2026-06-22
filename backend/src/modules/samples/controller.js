@@ -70,6 +70,21 @@ const validateBulkSampleData = (data) => {
       }
     }
   }
+
+  // Validar precaution_phrases si se proporcionan
+  if (data.precaution_phrases && Array.isArray(data.precaution_phrases)) {
+    if (data.precaution_phrases.length > 4) {
+      throw new AppError('Máximo 4 frases de precaución permitidas', 400);
+    }
+    for (const ph of data.precaution_phrases) {
+      if (!ph.text || typeof ph.text !== 'string') {
+        throw new AppError('Cada frase de precaución debe tener un campo "text" válido', 400);
+      }
+      if (ph.text.length > 120) {
+        throw new AppError(`Frase de precaución excede 120 caracteres: "${ph.text.substring(0, 30)}..."`, 400);
+      }
+    }
+  }
 };
 
 /**
@@ -84,6 +99,11 @@ const createBulkSample = async (req, res, next) => {
     // Parsear ghs_pictograms si viene como JSON string
     if (typeof data.ghs_pictograms === 'string') {
       try { data.ghs_pictograms = JSON.parse(data.ghs_pictograms); } catch (_) { data.ghs_pictograms = []; }
+    }
+
+    // Parsear precaution_phrases si viene como JSON string
+    if (typeof data.precaution_phrases === 'string') {
+      try { data.precaution_phrases = JSON.parse(data.precaution_phrases); } catch (_) { data.precaution_phrases = []; }
     }
 
     validateBulkSampleData(data);
@@ -117,9 +137,9 @@ const createBulkSample = async (req, res, next) => {
           name, supplier_id, lot, expiration_date, manufacture_date,
           ghs_danger_class, market_line_id, dimensions, dispensed_size,
           total_units, available_units, total_weight_grams,
-          ghs_pictograms, signal_word, coa_file_path
+          ghs_pictograms, signal_word, coa_file_path, precaution_phrases
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         RETURNING *
       `, [
         data.name, data.supplier_id, data.lot, data.expiration_date, data.manufacture_date,
@@ -128,7 +148,8 @@ const createBulkSample = async (req, res, next) => {
         data.total_weight_grams,
         data.ghs_pictograms || [],
         data.signal_word || 'ATENCION',
-        coaFilePath
+        coaFilePath,
+        JSON.stringify(data.precaution_phrases || [])
       ]);
       bulkSample = result.rows[0];
 
@@ -362,6 +383,11 @@ const updateBulkSample = async (req, res, next) => {
       }
     }
 
+    // Parsear precaution_phrases si viene como JSON string
+    if (typeof data.precaution_phrases === 'string') {
+      try { data.precaution_phrases = JSON.parse(data.precaution_phrases); } catch (_) { data.precaution_phrases = []; }
+    }
+
     // Validar datos si se proporcionan
     if (Object.keys(data).length > 0) {
       validateBulkSampleData({ ...currentSample, ...data });
@@ -376,13 +402,14 @@ const updateBulkSample = async (req, res, next) => {
     const allowedFields = [
       'name', 'supplier_id', 'lot', 'expiration_date', 'manufacture_date',
       'ghs_danger_class', 'market_line_id', 'dimensions', 'dispensed_size', 'total_weight_grams',
-      'coa_file_path', 'ghs_pictograms', 'signal_word'
+      'coa_file_path', 'ghs_pictograms', 'signal_word', 'precaution_phrases'
     ];
 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
         updateFields.push(`${field} = $${paramIndex}`);
-        params.push(data[field]);
+        // Stringify precaution_phrases for JSONB column
+        params.push(field === 'precaution_phrases' ? JSON.stringify(data[field]) : data[field]);
         paramIndex++;
       }
     }
@@ -564,6 +591,7 @@ const getSuppliers = async (req, res, next) => {
 
 /**
  * Proxy para descargar/ver CoA desde cualquier ruta del servidor (UNC/Local)
+ * Usa fs.readFile + res.send en vez de res.sendFile para compatibilidad con rutas UNC
  */
 const downloadCoA = async (req, res, next) => {
   try {
@@ -575,28 +603,30 @@ const downloadCoA = async (req, res, next) => {
     }
     
     const filePath = sample.rows[0].coa_file_path.trim();
+    const isUNC = filePath.startsWith('\\\\');
 
     try {
-      // Verificar si el archivo existe (fs.access)
-      await fs.access(filePath);
+      // Leer el archivo completo en memoria (funciona con rutas UNC y locales)
+      const fileBuffer = await fs.readFile(filePath);
       
-      // Enviar el archivo como attachment o inline
-      res.sendFile(filePath, { 
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="CoA_${id}.pdf"`
-        }
-      }, (err) => {
-        if (err) {
-          console.error(`Error al enviar archivo CoA desde ${filePath}:`, err);
-          if (!res.headersSent) {
-            res.status(500).json({ success: false, error: 'Error al enviar el archivo PDF.' });
-          }
-        }
-      });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Length', fileBuffer.length);
+      res.setHeader('Content-Disposition', `inline; filename="CoA_${id}.pdf"`);
+      res.send(fileBuffer);
     } catch (fsError) {
-      console.error(`Ruta no encontrada o sin permisos: ${filePath}`, fsError);
-      throw new AppError(`No se pudo acceder al archivo en la ruta especificada: ${filePath}. Verifique los permisos de red.`, 404);
+      console.error(`[CoA] Error accediendo a archivo: ${filePath}`, fsError.message);
+      
+      let hint = '';
+      if (isUNC) {
+        hint = ` La ruta es de red (UNC). Verifique: 1) El servicio backend tiene permisos de red, 2) La ruta ${filePath} es accesible desde esta máquina, 3) Las credenciales de red del servicio tienen acceso al share.`;
+      } else {
+        hint = ' Verifique que la ruta sea accesible desde la máquina donde corre el servidor.';
+      }
+
+      throw new AppError(
+        `No se pudo acceder al archivo CoA en: ${filePath}.${hint}`,
+        404
+      );
     }
   } catch (error) {
     next(error);

@@ -8,10 +8,13 @@ const { requirePermission } = require('../../middleware/permissions');
 
 const router = express.Router();
 
+const isProd = process.env.NODE_ENV === 'production';
+const baseDataDir = isProd ? path.join(process.env.ALLUSERSPROFILE || 'C:\\ProgramData', 'HandlerTrackSamples') : process.cwd();
+
 const logoStorage = multer.diskStorage({
   destination: async (req, file, cb) => {
     try {
-      const uploadDir = path.join(process.cwd(), 'uploads', 'proveedores');
+      const uploadDir = path.join(baseDataDir, 'uploads', 'proveedores');
       await fs.mkdir(uploadDir, { recursive: true });
       cb(null, uploadDir);
     } catch (error) {

@@ -172,6 +172,7 @@ export const dispensingAPI = {
   dispense: data => api.post('/dispensing/subdivide', data),
   getDispensedSamples: params => api.get('/dispensing', { params }),
   reassignShelf: data => api.put('/dispensing/reassign-shelf', data),
+  searchLabelsForPrint: name => api.get('/dispensing/search-for-labels', { params: { name } }),
 };
 
 export const dispatchAPI = {
@@ -219,7 +220,8 @@ export const backupAPI = {
   restoreBackup:  (data) => api.post('/backup/restore',   data, { timeout: 300000 }),
   deleteBackup:   (filename) => api.delete(`/backup/${encodeURIComponent(filename)}`),
   syncToOneDrive: () => api.post('/backup/sync-onedrive', {}, { timeout: 300000 }),
-  // Importar backup desde archivo .json del cliente (multipart/form-data)
+  getLocalPath:   () => api.get('/backup/local-path'),
+  setLocalPath:   (path) => api.put('/backup/local-path', { path }),
   importBackup:   (file, password) => {
     const formData = new FormData();
     formData.append('backup', file);

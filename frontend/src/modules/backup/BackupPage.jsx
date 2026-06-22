@@ -272,8 +272,14 @@ const BackupPage = () => {
   const [importOpen, setImportOpen] = useState(false);
 
   // Settings state
-  const [settings, setSettings] = useState({ interval_days: 20, hour: 12 });
+  const [settings, setSettings] = useState({ interval_days: 20, hour: 12, minutes: 0 });
   const [isEditingSettings, setIsEditing] = useState(false);
+
+  // Local path state
+  const [localPath, setLocalPath] = useState('');
+  const [localPathLoading, setLocalPathLoading] = useState(false);
+  const [editingPath, setEditingPath] = useState(false);
+  const [tempPath, setTempPath] = useState('');
 
   const notify = (type, msg) => {
     setNotif({ type, msg });
@@ -283,14 +289,18 @@ const BackupPage = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [statusRes, listRes, settingsRes] = await Promise.all([
+      const [statusRes, listRes, settingsRes, localPathRes] = await Promise.all([
         backupAPI.getStatus(),
         backupAPI.listBackups(),
         backupAPI.getSettings(),
+        backupAPI.getLocalPath(),
       ]);
       setStatus(statusRes.data);
       setBackups(listRes.data.backups);
       setSettings(settingsRes.data);
+      const resolvedPath = localPathRes.data?.path || statusRes.data?.storage?.localDir || '';
+      setLocalPath(resolvedPath);
+      setTempPath(resolvedPath);
     } catch (err) {
       notify('danger', err.message || 'Error al cargar información de backups');
     } finally {
@@ -312,6 +322,35 @@ const BackupPage = () => {
       notify('danger', err.message || 'Error al actualizar configuración');
     } finally {
       setAction('');
+    }
+  };
+
+  const handleSavePath = async () => {
+    setLocalPathLoading(true);
+    try {
+      await backupAPI.setLocalPath(tempPath);
+      setLocalPath(tempPath);
+      setEditingPath(false);
+      notify('success', 'Ruta de backups actualizada correctamente');
+      loadData();
+    } catch (err) {
+      notify('danger', err.message || 'Error al guardar la ruta');
+    } finally {
+      setLocalPathLoading(false);
+    }
+  };
+
+  const handleSelectFolder = async () => {
+    try {
+      if (window.electronAPI && window.electronAPI.selectFolder) {
+        const folder = await window.electronAPI.selectFolder();
+        if (folder) {
+          setTempPath(folder);
+          setEditingPath(true);
+        }
+      }
+    } catch (err) {
+      notify('danger', 'No se pudo abrir el selector de carpetas');
     }
   };
 
@@ -540,6 +579,82 @@ const BackupPage = () => {
             </div>
 
             {/* Configuración del Scheduler */}
+
+            {/* Ruta de Backups Locales */}
+            <div className="bg-surface-400 border border-gray-700/50 rounded-xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-white font-semibold flex items-center gap-2 text-sm uppercase tracking-wider">
+                  📁 Carpeta de Backups
+                </h3>
+                {!editingPath && (
+                  <button 
+                    onClick={() => { setEditingPath(true); setTempPath(localPath); }}
+                    className="text-xs text-handler-red hover:underline"
+                  >
+                    Editar
+                  </button>
+                )}
+              </div>
+
+              {editingPath ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Ruta de la carpeta:</label>
+                    <input 
+                      type="text"
+                      value={tempPath}
+                      onChange={e => setTempPath(e.target.value)}
+                      placeholder="Ej: C:\Backups\Handler"
+                      className="w-full bg-surface-300 border border-gray-600 rounded px-3 py-1.5 text-white text-sm font-mono"
+                    />
+                  </div>
+                  {window.electronAPI && window.electronAPI.selectFolder && (
+                    <button
+                      type="button"
+                      onClick={handleSelectFolder}
+                      className="w-full text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 py-1.5 rounded flex items-center justify-center gap-2"
+                    >
+                      📂 Examinar carpetas...
+                    </button>
+                  )}
+                  <div className="flex gap-2">
+                    <button 
+                      type="button"
+                      onClick={() => { setEditingPath(false); setTempPath(localPath); }}
+                      className="flex-1 text-xs bg-gray-700 hover:bg-gray-600 text-white py-1.5 rounded"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      onClick={handleSavePath}
+                      disabled={localPathLoading || !tempPath.trim()}
+                      className="flex-1 text-xs bg-handler-red hover:bg-red-700 disabled:opacity-50 text-white py-1.5 rounded flex items-center justify-center gap-2"
+                    >
+                      {localPathLoading ? <ArrowPathIcon className="w-3 h-3 animate-spin" /> : 'Guardar ruta'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="bg-surface-300 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-1">Ruta actual:</p>
+                    <p className="text-white text-sm font-mono break-all">{localPath || 'No configurada'}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className={`w-2 h-2 rounded-full ${status?.storage?.localReady ? 'bg-green-400' : 'bg-red-400'}`} />
+                    <span className="text-gray-400">{status?.storage?.localReady ? 'Carpeta accesible' : 'Carpeta no encontrada'}</span>
+                  </div>
+                  {status?.storage?.onedriveDir && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className={`w-2 h-2 rounded-full ${status?.storage?.onedriveReady ? 'bg-blue-400' : 'bg-yellow-400'}`} />
+                      <span className="text-gray-400">OneDrive: {status?.storage?.onedriveReady ? 'Sincronizando' : 'No disponible'}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Configuración del Scheduler */}
             <div className="bg-surface-400 border border-gray-700/50 rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-white font-semibold flex items-center gap-2 text-sm uppercase tracking-wider">
@@ -569,22 +684,35 @@ const BackupPage = () => {
                       className="w-full bg-surface-300 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
                     />
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-400 block mb-1">Hora (0-23):</label>
-                    <input 
-                      type="number"
-                      min="0"
-                      max="23"
-                      value={settings.hour !== undefined ? settings.hour : ''}
-                      onChange={e => setSettings({...settings, hour: e.target.value === '' ? '' : parseInt(e.target.value)})}
-                      className="w-full bg-surface-300 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
-                    />
-                    <p className="text-[10px] text-gray-500 mt-1 italic">* Hora de Bogotá (UTC-5)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-1">Hora (0-23):</label>
+                      <input 
+                        type="number"
+                        min="0"
+                        max="23"
+                        value={settings.hour !== undefined ? settings.hour : ''}
+                        onChange={e => setSettings({...settings, hour: e.target.value === '' ? '' : parseInt(e.target.value)})}
+                        className="w-full bg-surface-300 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-1">Minutos (0-59):</label>
+                      <input 
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={settings.minutes !== undefined ? settings.minutes : 0}
+                        onChange={e => setSettings({...settings, minutes: e.target.value === '' ? 0 : parseInt(e.target.value)})}
+                        className="w-full bg-surface-300 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
+                      />
+                    </div>
                   </div>
+                  <p className="text-[10px] text-gray-500 italic">* Hora de Bogotá (UTC-5)</p>
                   <div className="flex gap-2 pt-2">
                     <button 
                       type="button"
-                      onClick={() => { setIsEditing(false); setSettings({ interval_days: status.intervalDays, hour: status.hour }); }}
+                      onClick={() => { setIsEditing(false); setSettings({ interval_days: status.intervalDays, hour: status.hour, minutes: status.minutes || 0 }); }}
                       className="flex-1 text-xs bg-gray-700 hover:bg-gray-600 text-white py-1.5 rounded"
                     >
                       Cancelar
@@ -606,7 +734,7 @@ const BackupPage = () => {
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-gray-700/50">
                     <span className="text-sm text-gray-400">Hora programada</span>
-                    <span className="text-sm text-white font-medium">{status?.hour}:00 Bog</span>
+                    <span className="text-sm text-white font-medium">{status?.hour}:{String(status?.minutes || 0).padStart(2, '0')} Bog</span>
                   </div>
                   <p className="text-[11px] text-gray-500 leading-relaxed italic">
                     El sistema verificará cada hora si es el momento de realizar el respaldo automático basado en estos parámetros.

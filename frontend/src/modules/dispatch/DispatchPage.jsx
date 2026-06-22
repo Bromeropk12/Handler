@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Box, AlertTriangle, FileText, CheckCircle2, QrCode, Camera, History, Calendar, LayoutGrid, ArrowRight, ArrowLeft, Printer, Eye } from 'lucide-react';
 import { dispatchAPI } from '../../services/api';
+import { useAuthStore } from '../../stores/authStore';
 import { Html5Qrcode } from 'html5-qrcode';
 import Modal from '../../components/Modal';
 import { useCameraManager } from '../../hooks/useCameraManager';
@@ -671,7 +672,7 @@ const DispatchPage = () => {
                                             } else {
                                                 // Fallback genérico si no hay electron, usando labelData.id que podría no servir sin arreglar backend
                                                 // pero el objetivo principal es usar openLocalFile
-                                                window.open(`${API_BASE}/api/samples/${labelData.id}/coa`, '_blank');
+                                                window.open(`${API_BASE}/api/samples/${labelData.id}/coa?token=${useAuthStore.getState().token}`, '_blank');
                                             }
                                         }}
                                         className="mt-2 py-2 px-4 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-700 flex items-center gap-2 transition-colors"
