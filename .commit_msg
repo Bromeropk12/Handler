@@ -1,0 +1,25 @@
+fix(CoA): arreglar acceso UNC a certificados CoA desde navegador
+
+PROBLEMA:
+- El servicio Windows HandlerTrackSamples corría como LocalSystem (sin credenciales de red)
+- Electron abría CoA con shell.openPath() -> credenciales del usuario (funcionaba)
+- Navegador usaba fs.readFile() -> credenciales del servicio (fallaba con 404)
+
+SOLUCION:
+1. installer.nsh: +ObjectName "NT AUTHORITY\NetworkService" -> servicio se instala con acceso de red
+2. electron.js: +handler IPC reconfigure-service-account -> reparar instalaciones existentes
+3. preload.js: +API reconfigureServiceAccount expuesta al renderer
+4. samples/controller.js: fs.readFile + error hints UNC (ya implementado)
+
+VERIFICACION:
+- sc.exe qc HandlerTrackSamples | findstr SERVICE_START_NAME
+- Debe mostrar: NT AUTHORITY\NetworkService
+- Si share \\172.16.0.2\d permite "Usuarios autenticados" -> funciona sin config extra
+
+ARCHIVOS:
+- frontend/public/installer.nsh
+- frontend/public/electron.js
+- frontend/public/preload.js
+- backend/src/modules/samples/controller.js (previo)
+
+Build: Handler TrackSamples Setup 2.2.0.exe
