@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Servicio Windows
   getServiceStatus:   () => ipcRenderer.invoke('get-service-status'),
   controlService:     (action) => ipcRenderer.invoke('control-service', action),
+  reconfigureServiceAccount: () => ipcRenderer.invoke('reconfigure-service-account'),
   // Logs y red
   getLatestLogs:      () => ipcRenderer.invoke('get-latest-logs'),
   getNetworkInfo:     () => ipcRenderer.invoke('get-network-info'),

@@ -38,6 +38,7 @@
   nsExec::ExecToLog '"$INSTDIR\resources\backend\nssm.exe" install HandlerTrackSamples "$INSTDIR\resources\backend\backend.exe"'
   nsExec::ExecToLog '"$INSTDIR\resources\backend\nssm.exe" set HandlerTrackSamples AppDirectory "$INSTDIR\resources\backend"'
   nsExec::ExecToLog '"$INSTDIR\resources\backend\nssm.exe" set HandlerTrackSamples AppEnvironmentExtra "NODE_ENV=production" "PORT=3001"'
+  nsExec::ExecToLog '"$INSTDIR\resources\backend\nssm.exe" set HandlerTrackSamples ObjectName "NT AUTHORITY\NetworkService"'
   nsExec::ExecToLog '"$INSTDIR\resources\backend\nssm.exe" set HandlerTrackSamples Start SERVICE_AUTO_START'
   nsExec::ExecToLog '"$INSTDIR\resources\backend\nssm.exe" start HandlerTrackSamples'
 

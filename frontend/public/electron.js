@@ -213,6 +213,25 @@ ipcMain.handle('control-service', async (event, action) => {
   });
 });
 
+ipcMain.handle('reconfigure-service-account', async () => {
+  const { exec } = require('child_process');
+  const util = require('util');
+  const execAsync = util.promisify(exec);
+
+  try {
+    // 1. Configurar NetworkService
+    await execAsync('nssm set HandlerTrackSamples ObjectName "NT AUTHORITY\\NetworkService"');
+
+    // 2. Reiniciar servicio (net stop + net start)
+    await execAsync('net stop HandlerTrackSamples');
+    await execAsync('net start HandlerTrackSamples');
+
+    return { success: true, message: 'Servicio reconfigurado con NetworkService.' };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle('get-latest-logs', async () => {
   try {
     const logsDir = path.join(programDataPath, 'logs');
